@@ -1,0 +1,44 @@
+WHITESPACE = _{ " " | "\n" | "\t" }
+
+COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+
+program = {
+    SOI ~
+    (statement ~ ";")* ~
+    EOI
+}
+statement = { assert | assignment | func_call }
+assignment = { "let" ~ identifier ~ "=" ~ expression }
+
+expression = { term ~ (operator ~ term)* }
+
+// operator = { "+" | "-" | "*" | "//" | "%" | "==" | "!=" | "<" | "<=" | ">" | ">=" | "&&" | "||" }
+operator = { add | subtract | multiply | divide | equals132 }
+    add = { "+" }
+    subtract = { "-" }
+    multiply = { "*" }
+    divide = { "//" }
+    equals132 = { "==" }
+
+assert = { "assert" ~ "(" ~ expression ~ ")" }
+
+jet = @{"jet_" ~ (ASCII_ALPHANUMERIC)+}
+witness = @{"wit_" ~ (ASCII_ALPHANUMERIC)+}
+
+term = { constants | jet | witness | func_call | identifier| "(" ~ expression ~ ")"}
+identifier = @{ !(reserved) ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC)* }
+
+
+reserved = { jet | witness }
+
+constants = { none | false_ | true_ | number | str}
+none = { "None" }
+number = @{ (ASCII_DIGIT)+ | hex_number}
+false_ = { "False" }
+true_ = { "True" }
+hex_number = @{ "0x" ~ (HEX_DIGIT)+ }
+str = @{ "\"" ~ (ASCII_ALPHANUMERIC | " ")* ~ "\"" }
+
+// In built functions
+func_call = { func_name ~ "(" ~ (expression ~ ("," ~ expression)*)? ~ ")" }
+func_name = _{jet | identifier}

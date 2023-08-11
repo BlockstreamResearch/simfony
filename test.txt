@@ -1,0 +1,7 @@
+let ver = jet_version;
+assert(ver == 2);
+/* This is a comment */
+let pk = 1; /* Inline comment */
+let wit = 2 + (7 // 19);
+let sighash = jet_sighashall;
+jet_assertchecksign(pk, sighash, wit);
