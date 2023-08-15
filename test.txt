@@ -1,7 +1,16 @@
-let ver = jet_version;
-assert(ver == 2);
-/* This is a comment */
-let pk = 1; /* Inline comment */
-let wit = 2 + (7 // 19);
-let sighash = jet_sighashall;
-jet_assertchecksign(pk, sighash, wit);
+let v1 = {
+    let v2 = {
+        let v7 : u32 = 10;
+        let v3 = {
+            let v4 : u32 = 2;
+            let v5 : u32 = 3;
+            jet_verify(jet_eq_32(v7, 10)); /* Can use upper scope variables here.*/
+            let v7 : u32 = 7; /* Can also shadow the upper scope here.*/
+            jet_max_32(jet_max_32(v4, v5),v7) /* Rust like, missing ; here is the return type of expression.*/
+        };
+        jet_verify(jet_eq_32(v7, 10)); /* Upper scope is same just like regular Programming languages*/
+        jet_min_32(v7, v3) /*Return value of v2 block*/
+    };
+    v2
+};
+jet_verify(jet_eq_32(7, v1));

@@ -7,32 +7,22 @@ program = {
     (statement ~ ";")* ~
     EOI
 }
-statement = { assert | assignment | witness_decl |  func_call }
+statement = { assignment | witness_decl |  func_call }
 witness_decl = { "let" ~ witness}
 assignment = { "let" ~ identifier ~ (":" ~ ty)? ~ "=" ~ expression }
 
-expression = { block_expression |pair | single_expression }
-single_expression = { term ~ (operator ~ term)* }
-block_expression = { "{" ~ (statement ~ ";")* ~ expression ~ "}" }
+expression = { block_expr | pair | term }
+block_expr = { "{" ~ (statement ~ ";")* ~ expression ~ "}" }
+
 pair = {"(" ~ expression ~ "," ~ expression  ~ ")"}
 ty = { unsigned_types | x_only_key_hex }
 unsigned_types = { "u8" | "u16" | "u32" | "u64" | "u256" }
 x_only_key_hex = { "pubkey"}
 
-// operator = { "+" | "-" | "*" | "//" | "%" | "==" | "!=" | "<" | "<=" | ">" | ">=" | "&&" | "||" }
-operator = _{ add | subtract | multiply | divide | equals }
-    add = { "+" }
-    subtract = { "-" }
-    multiply = { "*" }
-    divide = { "//" }
-    equals = { "==" }
-
-assert = { "assert" ~ "(" ~ expression ~ ")" }
-
 jet = @{"jet_" ~ (ASCII_ALPHANUMERIC | "_")+}
 witness = @{"wit_" ~ (ASCII_ALPHANUMERIC | "_")+}
 
-term = { func_call | jet | constants | witness | identifier| "(" ~ expression ~ ")"}
+term = { func_call | constants | witness | identifier| "(" ~ expression ~ ")"}
 identifier = @{ !(reserved) ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 
 

@@ -1,0 +1,7 @@
+let ver = jet_version;
+assert(ver == 2);
+/* This is a comment */
+let pk = 0xf57f15937068d3054a4f437ac95cba65bae3c1b0529a84caa29d40200bf49c85; /* Inline comment */
+let wit_sig;
+let sighash = jet_sighashall;
+jet_bip_0340_verify(pk, sighash, wit_sig);
