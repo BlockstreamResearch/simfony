@@ -8,35 +8,34 @@ program = {
     EOI
 }
 statement = { assignment | witness_decl |  func_call }
-witness_decl = { "let" ~ witness}
+witness_decl = _{ "let" ~ witness}
 assignment = { "let" ~ identifier ~ (":" ~ ty)? ~ "=" ~ expression }
 
-expression = { block_expr | pair | term }
-block_expr = { "{" ~ (statement ~ ";")* ~ expression ~ "}" }
-
+expression = { block_expression | pair | single_expression }
+single_expression = {term}
+block_expression = { "{" ~ (statement ~ ";")* ~ expression ~ "}" }
 pair = {"(" ~ expression ~ "," ~ expression  ~ ")"}
+
 ty = { unsigned_types | x_only_key_hex }
 unsigned_types = { "u8" | "u16" | "u32" | "u64" | "u256" }
 x_only_key_hex = { "pubkey"}
 
+term = { func_call | constants | witness | identifier| "(" ~ expression ~ ")"}
+
 jet = @{"jet_" ~ (ASCII_ALPHANUMERIC | "_")+}
 witness = @{"wit_" ~ (ASCII_ALPHANUMERIC | "_")+}
+reserved = _{ jet | witness }
 
-term = { func_call | constants | witness | identifier| "(" ~ expression ~ ")"}
 identifier = @{ !(reserved) ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 
 
-reserved = { jet | witness }
-
-constants = { unit | none | false_ | true_ | number | str}
+constants = { unit | none | false_ | true_ | number }
 unit = { "()" }
 none = { "None" }
 number = @{ hex_number| (ASCII_DIGIT)+}
 false_ = { "False" }
 true_ = { "True" }
 hex_number = @{ "0x" ~ (HEX_DIGIT)+ }
-str = @{ "\"" ~ (ASCII_ALPHANUMERIC | "_" |" ")* ~ "\"" }
 
 // In built functions
-func_call = { func_name ~ "(" ~ (expression ~ ("," ~ expression)*)? ~ ")" }
-func_name = _{jet | identifier}
+func_call = { jet ~ "(" ~ (expression ~ ("," ~ expression)*)? ~ ")" }
