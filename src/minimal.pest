@@ -7,9 +7,12 @@ program = {
     (statement ~ ";")* ~
     EOI
 }
-statement = { assignment | witness_decl |  func_call }
+statement = { assignment | destruct_pair| witness_decl |  func_call }
 witness_decl = _{ "let" ~ witness}
 assignment = { "let" ~ identifier ~ (":" ~ ty)? ~ "=" ~ expression }
+
+// Allows destructuring of tuples
+destruct_pair = { "let" ~ "(" ~ identifier ~ ("," ~ identifier) ~ ")" ~ (":" ~ ty)? ~ "=" ~ expression }
 
 expression = { block_expression | pair | single_expression }
 single_expression = {term}
@@ -17,17 +20,17 @@ block_expression = { "{" ~ (statement ~ ";")* ~ expression ~ "}" }
 pair = {"(" ~ expression ~ "," ~ expression  ~ ")"}
 
 ty = { unsigned_types | x_only_key_hex }
-unsigned_types = { "u8" | "u16" | "u32" | "u64" | "u256" }
+unsigned_types = { "u1"| "u2"| "u4"|"u8" | "u16" | "u32" | "u64" | "u256" }
 x_only_key_hex = { "pubkey"}
 
 term = { func_call | constants | witness | identifier| "(" ~ expression ~ ")"}
 
 jet = @{"jet_" ~ (ASCII_ALPHANUMERIC | "_")+}
+builtin = @{"builtin_" ~ (ASCII_ALPHANUMERIC | "_")+}
 witness = @{"wit_" ~ (ASCII_ALPHANUMERIC | "_")+}
-reserved = _{ jet | witness }
+reserved = _{ jet | witness | builtin }
 
 identifier = @{ !(reserved) ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
-
 
 constants = { unit | none | false_ | true_ | number }
 unit = { "()" }
@@ -38,4 +41,4 @@ true_ = { "True" }
 hex_number = @{ "0x" ~ (HEX_DIGIT)+ }
 
 // In built functions
-func_call = { jet ~ "(" ~ (expression ~ ("," ~ expression)*)? ~ ")" }
+func_call = { (jet | builtin) ~ "(" ~ (expression ~ ("," ~ expression)*)? ~ ")" }

@@ -18,12 +18,26 @@ pub struct Program {
 /// A statement in a simplicity program.
 #[derive(Debug)]
 pub enum Statement {
+    /// Destruct an assignment
+    DestructTuple(DestructPair),
     /// A declaration of a variable.
     Assignment(Assignment),
     /// A declaration of a witness.
     WitnessDecl(String),
     /// A function call.
     FuncCall(FuncCall),
+}
+
+#[derive(Debug)]
+pub struct DestructPair {
+    /// The name of the left variable.
+    pub l_ident: String,
+    /// The name of the right variable.
+    pub r_ident: String,
+    /// The type of the variable.
+    pub ty: Option<Type>,
+    /// The expression that the variable is assigned to.
+    pub expression: Expression,
 }
 
 /// A variable declaration.
@@ -47,9 +61,18 @@ pub struct Assignment {
 #[derive(Debug)]
 pub struct FuncCall {
     /// The name of the function.
-    pub func_name: String,
+    pub func_name: FuncType,
     /// The arguments to the function.
     pub args: Vec<Expression>,
+}
+
+/// A function(jet) name.
+#[derive(Debug)]
+pub enum FuncType {
+    /// A jet name.
+    Jet(String),
+    /// A builtin function name.
+    BuiltIn(String),
 }
 
 /// An expression.
@@ -195,10 +218,33 @@ impl PestParse for Statement {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
         let inner_pair = pair.into_inner().next().unwrap();
         match inner_pair.as_rule() {
+            Rule::destruct_pair => Statement::DestructTuple(DestructPair::parse(inner_pair)),
             Rule::assignment => Statement::Assignment(Assignment::parse(inner_pair)),
             Rule::witness => Statement::WitnessDecl(parse_witness(inner_pair)),
             Rule::func_call => Statement::FuncCall(FuncCall::parse(inner_pair)),
             x => panic!("{:?}", x),
+        }
+    }
+}
+
+impl PestParse for DestructPair {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        let mut inner_pair = pair.into_inner();
+        let l_ident = inner_pair.next().unwrap().as_str();
+        let r_ident = inner_pair.next().unwrap().as_str();
+
+        let reqd_ty = if let Rule::ty = inner_pair.peek().unwrap().as_rule() {
+            let ty = inner_pair.next().unwrap().as_str().parse::<Type>().unwrap();
+            Some(ty)
+        } else {
+            None
+        };
+        let expression = Expression::parse(inner_pair.next().unwrap());
+        DestructPair {
+            l_ident: l_ident.to_string(),
+            r_ident: r_ident.to_string(),
+            ty: reqd_ty,
+            expression,
         }
     }
 }
@@ -226,7 +272,7 @@ impl PestParse for FuncCall {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
         let mut pair = pair.into_inner();
         let func_name_pair = pair.next().unwrap();
-        let func_name = parse_jet_name(func_name_pair);
+        let func_name = parse_func_name(func_name_pair);
         let mut args = Vec::new();
         for inner_pair in pair {
             match inner_pair.as_rule() {
@@ -312,9 +358,12 @@ pub fn parse_identifier(pair: pest::iterators::Pair<Rule>) -> String {
 }
 
 /// Parse a jet name
-pub fn parse_jet_name(pair: pest::iterators::Pair<Rule>) -> String {
+pub fn parse_func_name(pair: pest::iterators::Pair<Rule>) -> FuncType {
     match pair.as_rule() {
-        Rule::jet => pair.as_str().strip_prefix("jet_").unwrap().to_string(),
+        Rule::jet => FuncType::Jet(pair.as_str().strip_prefix("jet_").unwrap().to_string()),
+        Rule::builtin => {
+            FuncType::BuiltIn(pair.as_str().strip_prefix("builtin_").unwrap().to_string())
+        }
         x => {
             panic!("expected jet name found {:?}", x);
         }

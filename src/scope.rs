@@ -11,7 +11,24 @@ use crate::ProgNode;
 /// position in the environment.
 #[derive(Debug)]
 pub struct GlobalScope {
-    variables: Vec<Vec<String>>,
+    variables: Vec<Vec<Variable>>,
+}
+
+#[derive(Debug)]
+pub enum Variable {
+    /// Single variable. let a = [e]. Constructed by a single assignment.
+    Single(String),
+    /// Tuple variable. let (a, b) = [e]. Constructed by a tuple assignment.
+    Tuple(String, String),
+}
+
+impl Variable {
+    fn contains(&self, key: &str) -> bool {
+        match self {
+            Variable::Single(s) => s == key,
+            Variable::Tuple(s1, s2) => s1 == key || s2 == key,
+        }
+    }
 }
 
 impl GlobalScope {
@@ -37,7 +54,7 @@ impl GlobalScope {
     }
 
     /// Pushes a new variable to the latest scope.
-    pub fn insert(&mut self, key: String) {
+    pub fn insert(&mut self, key: Variable) {
         self.variables.last_mut().unwrap().push(key);
     }
 
@@ -53,25 +70,41 @@ impl GlobalScope {
     pub fn get(&self, key: &str) -> ProgNode {
         // search in the vector of vectors from the end
         let mut pos = 0;
-        let mut found = false;
+        let mut var = None;
         for v in self.variables.iter().rev() {
-            if let Some(idx) = v.iter().rev().position(|var_name| var_name == key) {
+            if let Some(idx) = v.iter().rev().position(|var_name| var_name.contains(key)) {
                 pos += idx;
-                found = true;
+                var = Some(&v[v.len() - 1 - idx]);
                 break;
             } else {
                 pos += v.len();
             }
         }
-        if !found {
-            panic!("Variable {} not found", key);
+        println!("Fetching variable {:?} at position {}", var, pos);
+        match var {
+            Some(v) => {
+                let mut child = ProgNode::iden();
+                child = match v {
+                    Variable::Single(_s) => child,
+                    Variable::Tuple(s1, s2) => {
+                        if s1 == key {
+                            ProgNode::take(&child)
+                        } else if s2 == key {
+                            child = ProgNode::drop_(&child);
+                            println!("Child: {:?}", child);
+                            child
+                        } else {
+                            panic!("Variable {} not found", key);
+                        }
+                    }
+                };
+                child = ProgNode::drop_(&child);
+                for _ in 0..pos {
+                    child = ProgNode::take(&child);
+                }
+                child
+            }
+            None => panic!("Variable {} not found", key),
         }
-        let mut child = ProgNode::iden();
-        child = ProgNode::drop_(&child);
-        for _ in 0..pos {
-            child = ProgNode::take(&child);
-        }
-        // println!("Fetching for variable {key} as {pos}, {child:?}");
-        child
     }
 }

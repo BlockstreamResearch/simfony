@@ -9,8 +9,10 @@ use simplicity::{
 };
 
 use crate::{
-    parse::{Constants, Expression, FuncCall, Program, SingleExpression, Statement, Term, Type},
-    scope::GlobalScope,
+    parse::{
+        Constants, Expression, FuncCall, FuncType, Program, SingleExpression, Statement, Term, Type,
+    },
+    scope::{GlobalScope, Variable},
     ProgNode,
 };
 
@@ -29,13 +31,12 @@ fn eval_blk(
     let res = match &stmts[index] {
         Statement::Assignment(assignment) => {
             let expr = assignment.expression.eval(scope, assignment.ty);
-            scope.insert(assignment.identifier.clone());
+            scope.insert(Variable::Single(assignment.identifier.clone()));
             let left = ProgNode::pair(&ProgNode::iden(), &expr).expect("TYPECHECK: must succeed.");
             let right = eval_blk(stmts, scope, index + 1, last_expr);
             println!("l:{} r:{} index:{index}", &left.arrow(), &right.arrow());
-            ProgNode::comp(&left, &right).expect(&format!(
-                "Improve this error. assignments must be of unit target type {index}"
-            ))
+            ProgNode::comp(&left, &right)
+                .expect(&format!("Assignments must be of unit target type {index}"))
         }
         Statement::WitnessDecl(_witness_ident) => {
             let _witness = ProgNode::witness(node::NoWitness);
@@ -48,8 +49,20 @@ fn eval_blk(
             let right = eval_blk(stmts, scope, index + 1, last_expr);
             combine_seq(&left, &right)
         }
+        Statement::DestructTuple(tuple) => {
+            let expr = tuple.expression.eval(scope, tuple.ty);
+            scope.insert(Variable::Tuple(
+                tuple.l_ident.clone(),
+                tuple.r_ident.clone(),
+            ));
+            let left = ProgNode::pair(&ProgNode::iden(), &expr).expect("TYPECHECK: must succeed.");
+
+            let right = eval_blk(stmts, scope, index + 1, last_expr);
+            ProgNode::comp(&left, &right)
+                .expect(&format!("Assignments must be of unit target type {index}"))
+        }
     };
-    dbg!(res)
+    res
 }
 
 fn combine_seq(a: &ProgNode, b: &ProgNode) -> ProgNode {
@@ -67,26 +80,44 @@ impl Program {
 
 impl FuncCall {
     pub fn eval(&self, scope: &mut GlobalScope, _reqd_ty: Option<Type>) -> ProgNode {
-        let args = self
-            .args
-            .iter()
-            .map(|e| e.eval(scope, None)) // TODO: Pass the jet source type here.
-            .reduce(|acc, e| ProgNode::pair(&acc, &e).expect("Function arg creation error"));
-        let jet_name = &self.func_name;
-        println!("Jet name: {}", jet_name);
-        let res = match args {
-            Some(param) => {
-                let jet = Elements::from_str(jet_name).expect("Invalid jet name");
+        match &self.func_name {
+            FuncType::Jet(jet_name) => {
+                let args = self
+                    .args
+                    .iter()
+                    .map(|e| e.eval(scope, None)) // TODO: Pass the jet source type here.
+                    .reduce(|acc, e| {
+                        ProgNode::pair(&acc, &e).expect("Function arg creation error")
+                    });
+                let jet = Elements::from_str(&jet_name).expect("Invalid jet name");
                 let jet = ProgNode::jet(jet);
-                ProgNode::comp(&param, &jet)
-                    .expect("Improve this error. func calls must have correct arguments")
+                match args {
+                    Some(param) => {
+                        ProgNode::comp(&param, &jet)
+                            .expect("Improve this error. func calls must have correct arguments")
+                    }
+                    None => {
+                        ProgNode::comp(&ProgNode::unit(), &jet)
+                            .expect("Improve this error. func calls must have correct arguments")
+                    }
+                }
             }
-            None => {
-                let jet = Elements::from_str(jet_name).expect("Invalid jet name");
-                ProgNode::jet(jet)
-            }
-        };
-        res
+            FuncType::BuiltIn(f_name) => {
+                // binary builtins
+                if self.args.len() != 1 {
+                    panic!("Only unary builtins supported");
+                }
+                let left = self.args[0].eval(scope, None);
+                match f_name.as_str() {
+                    "not" => {
+                        let res = ProgNode::not(&left).expect("TYPECHECK: and typecheck");
+                        println!("not: {}", res.arrow());
+                        res
+                    },
+                    _ => panic!("Unknown builtin function")
+                }
+            },
+        }
     }
 }
 
@@ -165,7 +196,11 @@ impl Term {
             },
             Term::Witness(_witness) => ProgNode::witness(node::NoWitness),
             Term::FuncCall(func_call) => func_call.eval(scope, reqd_ty),
-            Term::Identifier(identifier) => scope.get(identifier),
+            Term::Identifier(identifier) => {
+                let res = scope.get(identifier);
+                println!("Identifier {}: {}", identifier, res.arrow());
+                res
+            },
             Term::Expression(expression) => expression.eval(scope, reqd_ty),
         };
         if let Some(reqd_ty) = reqd_ty {
