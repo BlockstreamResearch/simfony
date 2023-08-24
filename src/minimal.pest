@@ -10,8 +10,6 @@ program = {
 statement = { assignment | destruct_pair| witness_decl |  func_call }
 witness_decl = _{ "let" ~ witness}
 assignment = { "let" ~ identifier ~ (":" ~ ty)? ~ "=" ~ expression }
-
-// Allows destructuring of tuples
 destruct_pair = { "let" ~ "(" ~ identifier ~ ("," ~ identifier) ~ ")" ~ (":" ~ ty)? ~ "=" ~ expression }
 
 expression = { block_expression | pair | single_expression }
@@ -27,8 +25,11 @@ term = { func_call | constants | witness | identifier| "(" ~ expression ~ ")"}
 
 jet = @{"jet_" ~ (ASCII_ALPHANUMERIC | "_")+}
 builtin = @{"builtin_" ~ (ASCII_ALPHANUMERIC | "_")+}
+asserts = _{ assertl | assertr}
+assertl = @{"assertl"}
+assertr = @{"assertr"}
 witness = @{"wit_" ~ (ASCII_ALPHANUMERIC | "_")+}
-reserved = _{ jet | witness | builtin }
+reserved = _{ jet | witness | builtin | asserts }
 
 identifier = @{ !(reserved) ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 
@@ -41,4 +42,4 @@ true_ = { "True" }
 hex_number = @{ "0x" ~ (HEX_DIGIT)+ }
 
 // In built functions
-func_call = { (jet | builtin) ~ "(" ~ (expression ~ ("," ~ expression)*)? ~ ")" }
+func_call = { (jet | builtin) ~ "(" ~ (expression ~ ("," ~ expression)*)? ~ ")" | asserts ~ "(" ~ expression ~ ")" }

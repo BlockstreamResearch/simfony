@@ -10,7 +10,7 @@ use simplicity::{
 };
 
 /// Return a dummy Elements environment
-pub fn dummy() -> ElementsEnv {
+pub fn dummy() -> ElementsEnv<Arc<elements::Transaction>> {
     let lock_time = elements::LockTime::ZERO;
     let sequence = elements::Sequence::MAX;
     use elements::AssetIssuance;

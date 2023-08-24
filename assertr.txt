@@ -1,0 +1,6 @@
+let res = jet_parse_lock(10);
+let res2 = res;
+let res3 = assertl(res);
+jet_verify(jet_eq_32(assertl(res), 10));
+jet_verify(jet_eq_32(assertl(res2), 10));
+jet_verify(jet_eq_32(res3, 10));

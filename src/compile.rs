@@ -1,11 +1,11 @@
 //! Compile the parsed ast into a simplicity program
 
-use std::{str::FromStr, sync::Arc};
+use std::str::FromStr;
 
 use simplicity::{
     jet::Elements,
     node::{self, CoreConstructible, JetConstructible, WitnessConstructible},
-    Value,
+    FailEntropy, Value,
 };
 
 use crate::{
@@ -32,17 +32,18 @@ fn eval_blk(
         Statement::Assignment(assignment) => {
             let expr = assignment.expression.eval(scope, assignment.ty);
             scope.insert(Variable::Single(assignment.identifier.clone()));
-            let left = ProgNode::pair(&ProgNode::iden(), &expr).expect("TYPECHECK: must succeed.");
+            let left = ProgNode::pair(&expr, &ProgNode::iden()).expect("TYPECHECK: must succeed.");
             let right = eval_blk(stmts, scope, index + 1, last_expr);
             println!("l:{} r:{} index:{index}", &left.arrow(), &right.arrow());
-            ProgNode::comp(&left, &right)
-                .expect(&format!("Assignments must be of unit target type {index}"))
+            ProgNode::comp(&left, &right).expect(&format!(
+                "Assignments must be of unit target type {index} {}",
+                &assignment.identifier
+            ))
         }
-        Statement::WitnessDecl(_witness_ident) => {
-            let _witness = ProgNode::witness(node::NoWitness);
-            todo!();
-            // scope.insert(witness_ident.to_string());
-            // continue;
+        Statement::WitnessDecl(witness_ident) => {
+            // let _witness = ProgNode::witness(node::NoWitness);
+            scope.insert_witness(witness_ident.to_string());
+            eval_blk(stmts, scope, index + 1, last_expr)
         }
         Statement::FuncCall(func_call) => {
             let left = func_call.eval(scope, None);
@@ -55,7 +56,7 @@ fn eval_blk(
                 tuple.l_ident.clone(),
                 tuple.r_ident.clone(),
             ));
-            let left = ProgNode::pair(&ProgNode::iden(), &expr).expect("TYPECHECK: must succeed.");
+            let left = ProgNode::pair(&expr, &ProgNode::iden()).expect("TYPECHECK: must succeed.");
 
             let right = eval_blk(stmts, scope, index + 1, last_expr);
             ProgNode::comp(&left, &right)
@@ -93,13 +94,13 @@ impl FuncCall {
                 let jet = ProgNode::jet(jet);
                 match args {
                     Some(param) => {
+                        println!("param: {}", param.arrow());
+                        println!("jet: {}", jet.arrow());
                         ProgNode::comp(&param, &jet)
                             .expect("Improve this error. func calls must have correct arguments")
                     }
-                    None => {
-                        ProgNode::comp(&ProgNode::unit(), &jet)
-                            .expect("Improve this error. func calls must have correct arguments")
-                    }
+                    None => ProgNode::comp(&ProgNode::unit(), &jet)
+                        .expect("Improve this error. func calls must have correct arguments"),
                 }
             }
             FuncType::BuiltIn(f_name) => {
@@ -113,10 +114,42 @@ impl FuncCall {
                         let res = ProgNode::not(&left).expect("TYPECHECK: and typecheck");
                         println!("not: {}", res.arrow());
                         res
-                    },
-                    _ => panic!("Unknown builtin function")
+                    }
+                    _ => panic!("Unknown builtin function"),
                 }
-            },
+            }
+            FuncType::AssertL => {
+                debug_assert!(self.args.len() == 1);
+                let e1 = self.args[0].eval(scope, None);
+                let fail_entropy = FailEntropy::from_byte_array([0; 64]);
+                println!("left: {}", e1.arrow());
+                let e1 = ProgNode::pair(&e1, &ProgNode::unit()).expect("TYPECHECK: and typecheck");
+                let res = ProgNode::case(&ProgNode::iden(), &ProgNode::fail(fail_entropy))
+                    .expect("TYPECHECK: and typecheck");
+                println!("assert_l: {} target {:?}", res.arrow(), res.arrow().target);
+                let res = ProgNode::comp(&e1, &res).unwrap();
+                println!("assert_l: {}", res.arrow());
+                let res = ProgNode::comp(&res, &ProgNode::take(&ProgNode::iden())).unwrap();
+                println!("assert_l: {}", res.arrow());
+                res
+            }
+            FuncType::AssertR => {
+                // comp (assertr cmrFail0 (pair ⟦e1⟧Ξ iden))
+                debug_assert!(self.args.len() == 1);
+                let e1 = self.args[0].eval(scope, None);
+                // let pair_e1_iden = ProgNode::pair(&e1, &ProgNode::iden()).unwrap();
+                let fail_entropy = FailEntropy::from_byte_array([0; 64]);
+                let e1 = ProgNode::pair(&e1, &ProgNode::unit()).expect("TYPECHECK: and typecheck");
+                println!("e1: {}", e1.arrow());
+                let res = ProgNode::case(&ProgNode::fail(fail_entropy), &ProgNode::iden())
+                    .expect("TYPECHECK: and typecheck");
+                println!("assert_r: {}", res.arrow());
+                let res = ProgNode::comp(&e1, &res).unwrap();
+                println!("assert_r: {}", res.arrow());
+                let res = ProgNode::comp(&res, &ProgNode::take(&ProgNode::iden())).unwrap();
+                println!("assert_r: {}", res.arrow());
+                res
+            }
         }
     }
 }
@@ -173,12 +206,12 @@ impl Term {
             Term::Constants(constants) => match constants {
                 Constants::None => todo!("None type here"),
                 Constants::False => {
-                    let _false = Arc::new(Value::u1(0));
+                    let _false = Value::u1(0);
                     assert_type(reqd_ty, Type::U1);
                     ProgNode::const_word(_false)
                 }
                 Constants::True => {
-                    let _true = Arc::new(Value::u1(1));
+                    let _true = Value::u1(1);
                     assert_type(reqd_ty, Type::U1);
                     ProgNode::const_word(_true)
                 }
@@ -189,7 +222,7 @@ impl Term {
                         let num = number.parse::<u32>().unwrap();
                         Value::u32(num)
                     };
-                    ProgNode::comp(&ProgNode::unit(), &ProgNode::const_word(Arc::new(v)))
+                    ProgNode::comp(&ProgNode::unit(), &ProgNode::const_word(v))
                         .expect("Const word have source type one")
                 }
                 Constants::Unit => ProgNode::unit(),
@@ -200,7 +233,7 @@ impl Term {
                 let res = scope.get(identifier);
                 println!("Identifier {}: {}", identifier, res.arrow());
                 res
-            },
+            }
             Term::Expression(expression) => expression.eval(scope, reqd_ty),
         };
         if let Some(reqd_ty) = reqd_ty {

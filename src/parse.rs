@@ -2,7 +2,7 @@
 //! tokens into an AST.
 
 use core::fmt;
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc};
 
 use simplicity::{hex::FromHex, types, Value};
 
@@ -71,6 +71,10 @@ pub struct FuncCall {
 pub enum FuncType {
     /// A jet name.
     Jet(String),
+    /// AssertL function
+    AssertL,
+    /// AssertR function
+    AssertR,
     /// A builtin function name.
     BuiltIn(String),
 }
@@ -141,7 +145,7 @@ pub enum Type {
 impl Type {
     /// Parse a number from a string for the given type
     /// and return the corresponding value.
-    pub fn parse_num(&self, s: &str) -> Value {
+    pub fn parse_num(&self, s: &str) -> Arc<Value> {
         match self {
             Type::U1 => Value::u1(s.parse::<u8>().unwrap()),
             Type::U2 => Value::u2(s.parse::<u8>().unwrap()),
@@ -364,8 +368,10 @@ pub fn parse_func_name(pair: pest::iterators::Pair<Rule>) -> FuncType {
         Rule::builtin => {
             FuncType::BuiltIn(pair.as_str().strip_prefix("builtin_").unwrap().to_string())
         }
+        Rule::assertl => FuncType::AssertL,
+        Rule::assertr => FuncType::AssertR,
         x => {
-            panic!("expected jet name found {:?}", x);
+            panic!("expected function name found {:?}", x);
         }
     }
 }

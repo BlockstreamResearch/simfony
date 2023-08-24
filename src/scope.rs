@@ -12,6 +12,7 @@ use crate::ProgNode;
 #[derive(Debug)]
 pub struct GlobalScope {
     variables: Vec<Vec<Variable>>,
+    witnesses: Vec<Vec<String>>,
 }
 
 #[derive(Debug)]
@@ -36,12 +37,14 @@ impl GlobalScope {
     pub fn new() -> Self {
         GlobalScope {
             variables: vec![Vec::new()],
+            witnesses: vec![Vec::new()],
         }
     }
 
     /// Pushes a new scope to the stack.
     pub fn push_scope(&mut self) {
         self.variables.push(Vec::new());
+        self.witnesses.push(Vec::new());
     }
 
     /// Pops the latest scope from the stack.
@@ -51,11 +54,17 @@ impl GlobalScope {
     /// Panics if the stack is empty.
     pub fn pop_scope(&mut self) {
         self.variables.pop().expect("Popping scope zero");
+        self.witnesses.pop().expect("Popping scope zero");
     }
 
     /// Pushes a new variable to the latest scope.
     pub fn insert(&mut self, key: Variable) {
         self.variables.last_mut().unwrap().push(key);
+    }
+
+    /// Pushes a new witness to the latest scope.
+    pub fn insert_witness(&mut self, key: String) {
+        self.witnesses.last_mut().unwrap().push(key);
     }
 
     /// Fetches the [`ProgNode`] for a variable.
@@ -98,9 +107,9 @@ impl GlobalScope {
                         }
                     }
                 };
-                child = ProgNode::drop_(&child);
+                child = ProgNode::take(&child);
                 for _ in 0..pos {
-                    child = ProgNode::take(&child);
+                    child = ProgNode::drop_(&child);
                 }
                 child
             }

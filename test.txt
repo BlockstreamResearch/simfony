@@ -1,4 +1,4 @@
-let v = jet_add_32(1, 2);
-let (b, v2) = v;
-jet_verify(jet_eq_32(v2, 3));
-jet_verify(builtin_not(b));
+let wit_a;
+let a = 10;
+let res = 20;
+jet_verify(jet_eq_32(jet_max_32(a, wit_a), res));
