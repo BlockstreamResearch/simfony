@@ -1,6 +1,6 @@
 //! Compile the parsed ast into a simplicity program
 
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc};
 
 use simplicity::{
     jet::Elements,
@@ -9,6 +9,7 @@ use simplicity::{
 };
 
 use crate::{
+    named::{ConstructExt, NamedConstructNode, ProgExt},
     parse::{
         Constants, Expression, FuncCall, FuncType, Program, SingleExpression, Statement, Term, Type,
     },
@@ -25,20 +26,17 @@ fn eval_blk(
     if index >= stmts.len() {
         return match last_expr {
             Some(expr) => expr.eval(scope, None),
-            None => ProgNode::unit(),
+            None => Arc::new(NamedConstructNode::_new(node::Inner::Unit).unwrap()),
         };
     }
     let res = match &stmts[index] {
         Statement::Assignment(assignment) => {
             let expr = assignment.expression.eval(scope, assignment.ty);
             scope.insert(Variable::Single(assignment.identifier.clone()));
-            let left = ProgNode::pair(&expr, &ProgNode::iden()).expect("TYPECHECK: must succeed.");
+            let left = ProgNode::pair(expr, ProgNode::iden());
             let right = eval_blk(stmts, scope, index + 1, last_expr);
             println!("l:{} r:{} index:{index}", &left.arrow(), &right.arrow());
-            ProgNode::comp(&left, &right).expect(&format!(
-                "Assignments must be of unit target type {index} {}",
-                &assignment.identifier
-            ))
+            ProgNode::comp(left, right)
         }
         Statement::WitnessDecl(witness_ident) => {
             // let _witness = ProgNode::witness(node::NoWitness);
@@ -48,7 +46,7 @@ fn eval_blk(
         Statement::FuncCall(func_call) => {
             let left = func_call.eval(scope, None);
             let right = eval_blk(stmts, scope, index + 1, last_expr);
-            combine_seq(&left, &right)
+            combine_seq(left, right)
         }
         Statement::DestructTuple(tuple) => {
             let expr = tuple.expression.eval(scope, tuple.ty);
@@ -56,21 +54,19 @@ fn eval_blk(
                 tuple.l_ident.clone(),
                 tuple.r_ident.clone(),
             ));
-            let left = ProgNode::pair(&expr, &ProgNode::iden()).expect("TYPECHECK: must succeed.");
+            let left = ProgNode::pair(expr, ProgNode::iden());
 
             let right = eval_blk(stmts, scope, index + 1, last_expr);
-            ProgNode::comp(&left, &right)
-                .expect(&format!("Assignments must be of unit target type {index}"))
+            ProgNode::comp(left, right)
         }
     };
     res
 }
 
-fn combine_seq(a: &ProgNode, b: &ProgNode) -> ProgNode {
-    let pair = ProgNode::pair(a, b).expect("Pair creation error");
-    let drop_iden = ProgNode::drop_(&ProgNode::iden());
-    ProgNode::comp(&pair, &drop_iden)
-        .expect("Improve this error. func calls must be of unit target type")
+fn combine_seq(a: ProgNode, b: ProgNode) -> ProgNode {
+    let pair = ProgNode::pair(a, b);
+    let drop_iden = ProgNode::drop_(ProgNode::iden());
+    ProgNode::comp(pair, drop_iden)
 }
 
 impl Program {
@@ -88,7 +84,7 @@ impl FuncCall {
                     .iter()
                     .map(|e| e.eval(scope, None)) // TODO: Pass the jet source type here.
                     .reduce(|acc, e| {
-                        ProgNode::pair(&acc, &e).expect("Function arg creation error")
+                        ProgNode::pair(acc, e)
                     });
                 let jet = Elements::from_str(&jet_name).expect("Invalid jet name");
                 let jet = ProgNode::jet(jet);
@@ -96,11 +92,9 @@ impl FuncCall {
                     Some(param) => {
                         println!("param: {}", param.arrow());
                         println!("jet: {}", jet.arrow());
-                        ProgNode::comp(&param, &jet)
-                            .expect("Improve this error. func calls must have correct arguments")
+                        ProgNode::comp(param, jet)
                     }
-                    None => ProgNode::comp(&ProgNode::unit(), &jet)
-                        .expect("Improve this error. func calls must have correct arguments"),
+                    None => ProgNode::comp(ProgNode::unit(), jet),
                 }
             }
             FuncType::BuiltIn(f_name) => {
@@ -111,9 +105,10 @@ impl FuncCall {
                 let left = self.args[0].eval(scope, None);
                 match f_name.as_str() {
                     "not" => {
-                        let res = ProgNode::not(&left).expect("TYPECHECK: and typecheck");
-                        println!("not: {}", res.arrow());
-                        res
+                        todo!()
+                        // let res = ProgNode::not(&left).expect("TYPECHECK: and typecheck");
+                        // println!("not: {}", res.arrow());
+                        // res
                     }
                     _ => panic!("Unknown builtin function"),
                 }
@@ -123,13 +118,12 @@ impl FuncCall {
                 let e1 = self.args[0].eval(scope, None);
                 let fail_entropy = FailEntropy::from_byte_array([0; 64]);
                 println!("left: {}", e1.arrow());
-                let e1 = ProgNode::pair(&e1, &ProgNode::unit()).expect("TYPECHECK: and typecheck");
-                let res = ProgNode::case(&ProgNode::iden(), &ProgNode::fail(fail_entropy))
-                    .expect("TYPECHECK: and typecheck");
+                let e1 = ProgNode::pair(e1, ProgNode::unit());
+                let res = ProgNode::case(ProgNode::iden(), ProgNode::fail(fail_entropy));
                 println!("assert_l: {} target {:?}", res.arrow(), res.arrow().target);
-                let res = ProgNode::comp(&e1, &res).unwrap();
+                let res = ProgNode::comp(e1, res);
                 println!("assert_l: {}", res.arrow());
-                let res = ProgNode::comp(&res, &ProgNode::take(&ProgNode::iden())).unwrap();
+                let res = ProgNode::comp(res, ProgNode::take(ProgNode::iden()));
                 println!("assert_l: {}", res.arrow());
                 res
             }
@@ -139,14 +133,13 @@ impl FuncCall {
                 let e1 = self.args[0].eval(scope, None);
                 // let pair_e1_iden = ProgNode::pair(&e1, &ProgNode::iden()).unwrap();
                 let fail_entropy = FailEntropy::from_byte_array([0; 64]);
-                let e1 = ProgNode::pair(&e1, &ProgNode::unit()).expect("TYPECHECK: and typecheck");
+                let e1 = ProgNode::pair(e1, ProgNode::unit());
                 println!("e1: {}", e1.arrow());
-                let res = ProgNode::case(&ProgNode::fail(fail_entropy), &ProgNode::iden())
-                    .expect("TYPECHECK: and typecheck");
+                let res = ProgNode::case(ProgNode::fail(fail_entropy), ProgNode::iden());
                 println!("assert_r: {}", res.arrow());
-                let res = ProgNode::comp(&e1, &res).unwrap();
+                let res = ProgNode::comp(e1, res);
                 println!("assert_r: {}", res.arrow());
-                let res = ProgNode::comp(&res, &ProgNode::take(&ProgNode::iden())).unwrap();
+                let res = ProgNode::comp(res, ProgNode::take(ProgNode::iden()));
                 println!("assert_r: {}", res.arrow());
                 res
             }
@@ -164,7 +157,7 @@ impl Expression {
                 res
             }
             Expression::Pair(e1, e2) => {
-                ProgNode::pair(&e1.eval(scope, None), &e2.eval(scope, None)).expect("Pair error")
+                ProgNode::pair(e1.eval(scope, None), e2.eval(scope, None))
             }
             Expression::SingleExpression(e) => e.eval(scope, reqd_ty),
         }
@@ -222,12 +215,11 @@ impl Term {
                         let num = number.parse::<u32>().unwrap();
                         Value::u32(num)
                     };
-                    ProgNode::comp(&ProgNode::unit(), &ProgNode::const_word(v))
-                        .expect("Const word have source type one")
+                    ProgNode::comp(ProgNode::unit(), ProgNode::const_word(v))
                 }
                 Constants::Unit => ProgNode::unit(),
             },
-            Term::Witness(_witness) => ProgNode::witness(node::NoWitness),
+            Term::Witness(_witness) => ProgNode::witness(),
             Term::FuncCall(func_call) => func_call.eval(scope, reqd_ty),
             Term::Identifier(identifier) => {
                 let res = scope.get(identifier);

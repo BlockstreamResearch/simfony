@@ -1,6 +1,6 @@
 use simplicity::node::CoreConstructible;
 
-use crate::ProgNode;
+use crate::{ProgNode, named::ProgExt};
 
 /// A global scope is a stack of scopes.
 /// Each scope is a vector of variables.
@@ -97,9 +97,9 @@ impl GlobalScope {
                     Variable::Single(_s) => child,
                     Variable::Tuple(s1, s2) => {
                         if s1 == key {
-                            ProgNode::take(&child)
+                            ProgNode::take(child)
                         } else if s2 == key {
-                            child = ProgNode::drop_(&child);
+                            child = ProgNode::drop_(child);
                             println!("Child: {:?}", child);
                             child
                         } else {
@@ -107,9 +107,9 @@ impl GlobalScope {
                         }
                     }
                 };
-                child = ProgNode::take(&child);
+                child = ProgNode::take(child);
                 for _ in 0..pos {
-                    child = ProgNode::drop_(&child);
+                    child = ProgNode::drop_(child);
                 }
                 child
             }
