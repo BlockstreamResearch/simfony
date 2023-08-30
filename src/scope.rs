@@ -1,6 +1,8 @@
+use std::sync::Arc;
+
 use simplicity::node::CoreConstructible;
 
-use crate::{ProgNode, named::ProgExt};
+use crate::{named::ProgExt, ProgNode};
 
 /// A global scope is a stack of scopes.
 /// Each scope is a vector of variables.
@@ -18,16 +20,16 @@ pub struct GlobalScope {
 #[derive(Debug)]
 pub enum Variable {
     /// Single variable. let a = [e]. Constructed by a single assignment.
-    Single(String),
+    Single(Arc<str>),
     /// Tuple variable. let (a, b) = [e]. Constructed by a tuple assignment.
-    Tuple(String, String),
+    Tuple(Arc<str>, Arc<str>),
 }
 
 impl Variable {
     fn contains(&self, key: &str) -> bool {
         match self {
-            Variable::Single(s) => s == key,
-            Variable::Tuple(s1, s2) => s1 == key || s2 == key,
+            Variable::Single(s) => s.as_ref() == key,
+            Variable::Tuple(s1, s2) => s1.as_ref() == key || s2.as_ref() == key,
         }
     }
 }
@@ -96,9 +98,9 @@ impl GlobalScope {
                 child = match v {
                     Variable::Single(_s) => child,
                     Variable::Tuple(s1, s2) => {
-                        if s1 == key {
+                        if s1.as_ref() == key {
                             ProgNode::take(child)
-                        } else if s2 == key {
+                        } else if s2.as_ref() == key {
                             child = ProgNode::drop_(child);
                             println!("Child: {:?}", child);
                             child

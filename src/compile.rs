@@ -2,16 +2,13 @@
 
 use std::{str::FromStr, sync::Arc};
 
-use simplicity::{
-    jet::Elements,
-    node::{self, CoreConstructible, JetConstructible, WitnessConstructible},
-    FailEntropy, Value,
-};
+use simplicity::{jet::Elements, node, FailEntropy, Value};
 
 use crate::{
     named::{ConstructExt, NamedConstructNode, ProgExt},
     parse::{
-        Constants, Expression, FuncCall, FuncType, Program, SingleExpression, Statement, Term, Type,
+        ConstantsInner, Expression, ExpressionInner, FuncCall, FuncType, Program, SingleExpression,
+        Statement, Term, TermInner, Type,
     },
     scope::{GlobalScope, Variable},
     ProgNode,
@@ -32,14 +29,12 @@ fn eval_blk(
     let res = match &stmts[index] {
         Statement::Assignment(assignment) => {
             let expr = assignment.expression.eval(scope, assignment.ty);
-            scope.insert(Variable::Single(assignment.identifier.clone()));
+            scope.insert(Variable::Single(Arc::clone(&assignment.identifier)));
             let left = ProgNode::pair(expr, ProgNode::iden());
             let right = eval_blk(stmts, scope, index + 1, last_expr);
-            println!("l:{} r:{} index:{index}", &left.arrow(), &right.arrow());
             ProgNode::comp(left, right)
         }
         Statement::WitnessDecl(witness_ident) => {
-            // let _witness = ProgNode::witness(node::NoWitness);
             scope.insert_witness(witness_ident.to_string());
             eval_blk(stmts, scope, index + 1, last_expr)
         }
@@ -83,9 +78,7 @@ impl FuncCall {
                     .args
                     .iter()
                     .map(|e| e.eval(scope, None)) // TODO: Pass the jet source type here.
-                    .reduce(|acc, e| {
-                        ProgNode::pair(acc, e)
-                    });
+                    .reduce(|acc, e| ProgNode::pair(acc, e));
                 let jet = Elements::from_str(&jet_name).expect("Invalid jet name");
                 let jet = ProgNode::jet(jet);
                 match args {
@@ -103,7 +96,7 @@ impl FuncCall {
                     panic!("Only unary builtins supported");
                 }
                 let left = self.args[0].eval(scope, None);
-                match f_name.as_str() {
+                match f_name.as_ref() {
                     "not" => {
                         todo!()
                         // let res = ProgNode::not(&left).expect("TYPECHECK: and typecheck");
@@ -149,26 +142,24 @@ impl FuncCall {
 
 impl Expression {
     pub fn eval(&self, scope: &mut GlobalScope, reqd_ty: Option<Type>) -> ProgNode {
-        match self {
-            Expression::BlockExpression(stmts, expr) => {
+        match &self.inner {
+            ExpressionInner::BlockExpression(stmts, expr) => {
                 scope.push_scope();
                 let res = eval_blk(stmts, scope, 0, Some(expr));
                 scope.pop_scope();
                 res
             }
-            Expression::Pair(e1, e2) => {
+            ExpressionInner::Pair(e1, e2) => {
                 ProgNode::pair(e1.eval(scope, None), e2.eval(scope, None))
             }
-            Expression::SingleExpression(e) => e.eval(scope, reqd_ty),
+            ExpressionInner::SingleExpression(e) => e.eval(scope, reqd_ty),
         }
     }
 }
 
 impl SingleExpression {
     pub fn eval(&self, scope: &mut GlobalScope, reqd_ty: Option<Type>) -> ProgNode {
-        let res = match self {
-            SingleExpression::Term(term) => term.eval(scope, reqd_ty),
-        };
+        let res = self.term.eval(scope, reqd_ty);
         if let Some(reqd_ty) = reqd_ty {
             res.arrow()
                 .target
@@ -195,20 +186,20 @@ fn assert_type(reqd_ty: Option<Type>, actual_ty: Type) {
 
 impl Term {
     pub fn eval(&self, scope: &mut GlobalScope, reqd_ty: Option<Type>) -> ProgNode {
-        let res = match self {
-            Term::Constants(constants) => match constants {
-                Constants::None => todo!("None type here"),
-                Constants::False => {
+        let res = match &self.inner {
+            TermInner::Constants(constants) => match &constants.inner {
+                ConstantsInner::None => todo!("None type here"),
+                ConstantsInner::False => {
                     let _false = Value::u1(0);
                     assert_type(reqd_ty, Type::U1);
                     ProgNode::const_word(_false)
                 }
-                Constants::True => {
+                ConstantsInner::True => {
                     let _true = Value::u1(1);
                     assert_type(reqd_ty, Type::U1);
                     ProgNode::const_word(_true)
                 }
-                Constants::Number(number) => {
+                ConstantsInner::Number(number) => {
                     let v = if let Some(ty) = reqd_ty {
                         ty.parse_num(number)
                     } else {
@@ -217,16 +208,16 @@ impl Term {
                     };
                     ProgNode::comp(ProgNode::unit(), ProgNode::const_word(v))
                 }
-                Constants::Unit => ProgNode::unit(),
+                ConstantsInner::Unit => ProgNode::unit(),
             },
-            Term::Witness(_witness) => ProgNode::witness(),
-            Term::FuncCall(func_call) => func_call.eval(scope, reqd_ty),
-            Term::Identifier(identifier) => {
+            TermInner::Witness(ident) => ProgNode::witness(Arc::clone(ident)),
+            TermInner::FuncCall(func_call) => func_call.eval(scope, reqd_ty),
+            TermInner::Identifier(identifier) => {
                 let res = scope.get(identifier);
                 println!("Identifier {}: {}", identifier, res.arrow());
                 res
             }
-            Term::Expression(expression) => expression.eval(scope, reqd_ty),
+            TermInner::Expression(expression) => expression.eval(scope, reqd_ty),
         };
         if let Some(reqd_ty) = reqd_ty {
             res.arrow()

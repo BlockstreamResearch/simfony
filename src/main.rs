@@ -1,16 +1,17 @@
 use std::sync::Arc;
 
 use pest::Parser;
-use simplicity::{node::SimpleFinalizer, BitMachine, BitWriter, Value, encode};
+use simplicity::{encode, node::SimpleFinalizer, BitMachine, BitWriter, Value};
 
 use base64::display::Base64Display;
 use base64::engine::general_purpose::STANDARD;
 
 use simp_lang::{
     dummy_env,
+    named::{ConstructExt, NamedExt},
     parse::{PestParse, Program, Statement},
     scope::GlobalScope,
-    IdentParser, Rule, named::{ConstructExt, NamedExt},
+    IdentParser, Rule,
 };
 
 fn main() {
@@ -37,7 +38,9 @@ fn main() {
     encode::encode_program(&simplicity_prog, &mut writer).unwrap();
     println!("{}", Base64Display::new(&vec, &STANDARD));
     dbg!(&simplicity_prog);
-    let commit_node = simplicity_prog.finalize_types_main().expect("Type check error");
+    let commit_node = simplicity_prog
+        .finalize_types_main()
+        .expect("Type check error");
     let commit_node = commit_node.to_commit_node();
     let simplicity_prog =
         Arc::<_>::try_unwrap(commit_node).expect("Only one reference to commit node");

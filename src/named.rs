@@ -1,13 +1,13 @@
 use simplicity::dag::{InternalSharing, MaxSharing, PostOrderIterItem};
-use simplicity::{encode, FailEntropy, Value};
 use simplicity::human_encoding::{ErrorSet, Position};
 use simplicity::jet::{Elements, Jet};
 use simplicity::node::{
     self, Commit, CommitData, CommitNode, Converter, Inner, NoDisconnect, NoWitness, Node,
 };
-use simplicity::node::{Construct, ConstructData};
+use simplicity::node::{Construct, ConstructData, Constructible};
 use simplicity::types;
 use simplicity::types::arrow::{Arrow, FinalArrow};
+use simplicity::{encode, FailEntropy, Value};
 use simplicity::{BitWriter, Cmr};
 
 use std::io;
@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use crate::ProgNode;
 
-pub type NamedCommitNode<J> = Node<Named<Commit<J>>>;
+pub type NamedCommitNode = Node<Named<Commit<Elements>>>;
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct Named<N> {
@@ -28,7 +28,7 @@ pub struct Named<N> {
 
 impl<J: Jet> node::Marker for Named<Commit<J>> {
     type CachedData = NamedCommitData<J>;
-    type Witness = Arc<str>;
+    type Witness = NoWitness;
     type Disconnect = <Commit<J> as node::Marker>::Disconnect;
     type SharingId = Arc<str>;
     type Jet = J;
@@ -46,9 +46,7 @@ pub struct NamedCommitData<J> {
     name: Arc<str>,
 }
 
-pub trait NamedExt<J: Jet> {
-    fn from_node(root: &CommitNode<J>) -> Arc<Self>;
-
+pub trait NamedExt {
     /// Accessor for the node's name
     fn name(&self) -> &Arc<str>;
 
@@ -56,7 +54,7 @@ pub trait NamedExt<J: Jet> {
     fn arrow(&self) -> &FinalArrow;
 
     /// Forget the names, yielding an ordinary [`CommitNode`].
-    fn to_commit_node(&self) -> Arc<CommitNode<J>>;
+    fn to_commit_node(&self) -> Arc<CommitNode<Elements>>;
 
     /// Encode a Simplicity expression to bits without any witness data
     fn encode<W: io::Write>(&self, w: &mut BitWriter<W>) -> io::Result<usize>;
@@ -65,13 +63,7 @@ pub trait NamedExt<J: Jet> {
     fn encode_to_vec(&self) -> Vec<u8>;
 }
 
-impl<J: Jet> NamedExt<J> for NamedCommitNode<J> {
-    fn from_node(root: &CommitNode<J>) -> Arc<Self> {
-        let mut namer = Namer::new_rooted(root.cmr());
-        root.convert::<MaxSharing<Commit<J>>, _, _>(&mut namer)
-            .unwrap()
-    }
-
+impl NamedExt for NamedCommitNode {
     /// Accessor for the node's name
     fn name(&self) -> &Arc<str> {
         &self.cached_data().name
@@ -83,23 +75,23 @@ impl<J: Jet> NamedExt<J> for NamedCommitNode<J> {
     }
 
     /// Forget the names, yielding an ordinary [`CommitNode`].
-    fn to_commit_node(&self) -> Arc<CommitNode<J>> {
-        struct Forgetter<J>(PhantomData<J>);
+    fn to_commit_node(&self) -> Arc<CommitNode<Elements>> {
+        struct Forgetter;
 
-        impl<J: Jet> Converter<Named<Commit<J>>, Commit<J>> for Forgetter<J> {
+        impl Converter<Named<Commit<Elements>>, Commit<Elements>> for Forgetter {
             type Error = ();
             fn convert_witness(
                 &mut self,
-                _: &PostOrderIterItem<&NamedCommitNode<J>>,
-                _: &Arc<str>,
+                _: &PostOrderIterItem<&NamedCommitNode>,
+                _: &NoWitness,
             ) -> Result<NoWitness, Self::Error> {
                 Ok(NoWitness)
             }
 
             fn convert_disconnect(
                 &mut self,
-                _: &PostOrderIterItem<&NamedCommitNode<J>>,
-                _: Option<&Arc<CommitNode<J>>>,
+                _: &PostOrderIterItem<&NamedCommitNode>,
+                _: Option<&Arc<CommitNode<Elements>>>,
                 _: &NoDisconnect,
             ) -> Result<NoDisconnect, Self::Error> {
                 Ok(NoDisconnect)
@@ -107,14 +99,14 @@ impl<J: Jet> NamedExt<J> for NamedCommitNode<J> {
 
             fn convert_data(
                 &mut self,
-                data: &PostOrderIterItem<&NamedCommitNode<J>>,
-                _: node::Inner<&Arc<CommitNode<J>>, J, &NoDisconnect, &NoWitness>,
-            ) -> Result<Arc<CommitData<J>>, Self::Error> {
+                data: &PostOrderIterItem<&NamedCommitNode>,
+                _: node::Inner<&Arc<CommitNode<Elements>>, Elements, &NoDisconnect, &NoWitness>,
+            ) -> Result<Arc<CommitData<Elements>>, Self::Error> {
                 Ok(Arc::clone(&data.node.cached_data().internal))
             }
         }
 
-        self.convert::<InternalSharing, _, _>(&mut Forgetter(PhantomData))
+        self.convert::<InternalSharing, _, _>(&mut Forgetter)
             .unwrap()
     }
 
@@ -141,7 +133,7 @@ pub type NamedConstructNode = Node<Named<Construct<Elements>>>;
 
 impl node::Marker for Named<Construct<Elements>> {
     type CachedData = NamedConstructData;
-    type Witness = Arc<str>;
+    type Witness = NoWitness;
     type Disconnect = NoDisconnect;
     type SharingId = Arc<str>;
     type Jet = Elements;
@@ -151,57 +143,36 @@ impl node::Marker for Named<Construct<Elements>> {
     }
 }
 
-pub trait ProgExt : Sized {
+pub trait ProgExt {
     fn unit() -> Self;
 
     fn iden() -> Self;
 
-    fn pair(a: &Self, b: &Self) -> Self;
+    fn pair(a: Self, b: Self) -> Self;
 
-    fn injl(a: &Self) -> Self;
+    fn injl(a: Self) -> Self;
 
-    fn injr(a: &Self) -> Self;
+    fn injr(a: Self) -> Self;
 
-    fn take(a: &Self) -> Self;
+    fn take(a: Self) -> Self;
 
-    fn drop_(a: &Self) -> Self;
+    fn drop_(a: Self) -> Self;
 
-    fn comp(a: &Self, b: &Self) -> Self;
+    fn comp(a: Self, b: Self) -> Self;
 
-    fn case(a: &Self, b: &Self) -> Self;
+    fn case(a: Self, b: Self) -> Self;
 
-    fn assertl(a: &Self, b: Cmr) -> Self;
+    fn assertl(a: Self, b: Cmr) -> Self;
 
-    fn assertr(a: Cmr, b: &Self) -> Self;
+    fn assertr(a: Cmr, b: Self) -> Self;
 
-    fn witness() -> Self;
+    fn witness(ident: Arc<str>) -> Self;
 
     fn fail(entropy: FailEntropy) -> Self;
 
     fn jet(jet: Elements) -> Self;
 
     fn const_word(v: Arc<Value>) -> Self;
-
-    fn from_inner(inner: Inner<&Self, Elements, &NoDisconnect, Arc<str>>) -> Result<Self, types::Error> {
-        match inner {
-            Inner::Iden => Ok(Self::iden()),
-            Inner::Unit => Ok(Self::unit()),
-            Inner::InjL(child) => Ok(Self::injl(child)),
-            Inner::InjR(child) => Ok(Self::injr(child)),
-            Inner::Take(child) => Ok(Self::take(child)),
-            Inner::Drop(child) => Ok(Self::drop_(child)),
-            Inner::Comp(left, right) => Ok(Self::comp(left, right)),
-            Inner::Case(left, right) => Ok(Self::case(left, right)),
-            Inner::AssertL(left, r_cmr) => Ok(Self::assertl(left, r_cmr)),
-            Inner::AssertR(l_cmr, right) => Ok(Self::assertr(l_cmr, right)),
-            Inner::Pair(left, right) => Ok(Self::pair(left, right)),
-            Inner::Disconnect(left, right) => todo!("Disconnect"),
-            Inner::Fail(entropy) => Ok(Self::fail(entropy)),
-            Inner::Word(ref w) => Ok(Self::const_word(Arc::clone(w))),
-            Inner::Jet(j) => Ok(Self::jet(j)),
-            Inner::Witness(w) => Ok(Self::witness()),
-        }
-    }
 }
 
 impl ProgExt for ProgNode {
@@ -249,8 +220,14 @@ impl ProgExt for ProgNode {
         Arc::new(NamedConstructNode::_new(Inner::AssertR(a, b)).unwrap())
     }
 
-    fn witness() -> Self {
-        Arc::new(NamedConstructNode::_new(Inner::Witness(Arc::from("data"))).unwrap())
+    fn witness(ident: Arc<str>) -> Self {
+        Arc::new(NamedConstructNode::new(
+                ident,
+                Position::default(),
+                Arc::new([]),
+                Arc::new([]),
+            Inner::Witness(NoWitness)
+        ).unwrap())
     }
 
     fn fail(entropy: FailEntropy) -> Self {
@@ -284,7 +261,7 @@ pub struct NamedConstructData {
 
 pub trait ConstructExt: Sized {
     fn _new(
-        inner: node::Inner<Arc<Self>, Elements, NoDisconnect, Arc<str>>,
+        inner: node::Inner<Arc<Self>, Elements, NoDisconnect, NoWitness>,
     ) -> Result<Self, types::Error>;
 
     /// Construct a named construct node from parts.
@@ -293,7 +270,7 @@ pub trait ConstructExt: Sized {
         position: Position,
         user_source_types: Arc<[types::Type]>,
         user_target_types: Arc<[types::Type]>,
-        inner: node::Inner<Arc<Self>, Elements, NoDisconnect, Arc<str>>,
+        inner: node::Inner<Arc<Self>, Elements, NoDisconnect, NoWitness>,
     ) -> Result<Self, types::Error>;
 
     /// Creates a copy of a node with a different name.
@@ -309,22 +286,19 @@ pub trait ConstructExt: Sized {
     fn arrow(&self) -> &Arrow;
 
     /// Finalizes the types of the underlying [`ConstructNode`].
-    fn finalize_types_main(&self) -> Result<Arc<NamedCommitNode<Elements>>, ErrorSet>;
+    fn finalize_types_main(&self) -> Result<Arc<NamedCommitNode>, ErrorSet>;
 
     /// Finalizes the types of the underlying [`ConstructNode`], without setting
     /// the root node's arrow to 1->1.
-    fn finalize_types_non_main(&self) -> Result<Arc<NamedCommitNode<Elements>>, ErrorSet>;
+    fn finalize_types_non_main(&self) -> Result<Arc<NamedCommitNode>, ErrorSet>;
 
-    fn finalize_types_inner(
-        &self,
-        for_main: bool,
-    ) -> Result<Arc<NamedCommitNode<Elements>>, ErrorSet>;
+    fn finalize_types_inner(&self, for_main: bool) -> Result<Arc<NamedCommitNode>, ErrorSet>;
 }
 
 impl ConstructExt for NamedConstructNode {
     /// Construct a named construct node from parts.
     fn _new(
-        inner: node::Inner<Arc<Self>, Elements, NoDisconnect, Arc<str>>,
+        inner: node::Inner<Arc<Self>, Elements, NoDisconnect, NoWitness>,
     ) -> Result<Self, types::Error> {
         let construct_data = ConstructData::from_inner(
             inner
@@ -349,7 +323,7 @@ impl ConstructExt for NamedConstructNode {
         position: Position,
         user_source_types: Arc<[types::Type]>,
         user_target_types: Arc<[types::Type]>,
-        inner: node::Inner<Arc<Self>, Elements, NoDisconnect, Arc<str>>,
+        inner: node::Inner<Arc<Self>, Elements, NoDisconnect, NoWitness>,
     ) -> Result<Self, types::Error> {
         let construct_data = ConstructData::from_inner(
             inner
@@ -396,20 +370,17 @@ impl ConstructExt for NamedConstructNode {
     }
 
     /// Finalizes the types of the underlying [`ConstructNode`].
-    fn finalize_types_main(&self) -> Result<Arc<NamedCommitNode<Elements>>, ErrorSet> {
+    fn finalize_types_main(&self) -> Result<Arc<NamedCommitNode>, ErrorSet> {
         self.finalize_types_inner(true)
     }
 
     /// Finalizes the types of the underlying [`ConstructNode`], without setting
     /// the root node's arrow to 1->1.
-    fn finalize_types_non_main(&self) -> Result<Arc<NamedCommitNode<Elements>>, ErrorSet> {
+    fn finalize_types_non_main(&self) -> Result<Arc<NamedCommitNode>, ErrorSet> {
         self.finalize_types_inner(false)
     }
 
-    fn finalize_types_inner(
-        &self,
-        for_main: bool,
-    ) -> Result<Arc<NamedCommitNode<Elements>>, ErrorSet> {
+    fn finalize_types_inner(&self, for_main: bool) -> Result<Arc<NamedCommitNode>, ErrorSet> {
         struct FinalizeTypes<J: Jet> {
             for_main: bool,
             errors: ErrorSet,
@@ -421,15 +392,15 @@ impl ConstructExt for NamedConstructNode {
             fn convert_witness(
                 &mut self,
                 _: &PostOrderIterItem<&NamedConstructNode>,
-                a: &Arc<str>,
-            ) -> Result<Arc<str>, Self::Error> {
-                Ok(Arc::clone(a))
+                _: &NoWitness,
+            ) -> Result<NoWitness, Self::Error> {
+                Ok(NoWitness)
             }
 
             fn convert_disconnect(
                 &mut self,
                 _: &PostOrderIterItem<&NamedConstructNode>,
-                _: Option<&Arc<NamedCommitNode<Elements>>>,
+                _: Option<&Arc<NamedCommitNode>>,
                 _: &NoDisconnect,
             ) -> Result<NoDisconnect, Self::Error> {
                 Ok(NoDisconnect)
@@ -438,12 +409,7 @@ impl ConstructExt for NamedConstructNode {
             fn convert_data(
                 &mut self,
                 data: &PostOrderIterItem<&NamedConstructNode>,
-                inner: node::Inner<
-                    &Arc<NamedCommitNode<Elements>>,
-                    Elements,
-                    &NoDisconnect,
-                    &Arc<str>,
-                >,
+                inner: node::Inner<&Arc<NamedCommitNode>, Elements, &NoDisconnect, &NoWitness>,
             ) -> Result<NamedCommitData<Elements>, Self::Error> {
                 let converted_data = inner
                     .as_ref()
@@ -536,102 +502,102 @@ impl ConstructExt for NamedConstructNode {
     }
 }
 
-pub struct Namer {
-    const_idx: usize,
-    wit_idx: usize,
-    other_idx: usize,
-    root_cmr: Option<Cmr>,
-}
+// pub struct Namer {
+//     const_idx: usize,
+//     wit_idx: usize,
+//     other_idx: usize,
+//     root_cmr: Option<Cmr>,
+// }
 
-impl Namer {
-    /// Costruct a new `Namer`. Will assign the name `main` to the node with
-    /// the given CMR.
-    pub fn new_rooted(root_cmr: Cmr) -> Self {
-        Namer {
-            const_idx: 0,
-            wit_idx: 0,
-            other_idx: 0,
-            root_cmr: Some(root_cmr),
-        }
-    }
+// impl Namer {
+//     /// Costruct a new `Namer`. Will assign the name `main` to the node with
+//     /// the given CMR.
+//     pub fn new_rooted(root_cmr: Cmr) -> Self {
+//         Namer {
+//             const_idx: 0,
+//             wit_idx: 0,
+//             other_idx: 0,
+//             root_cmr: Some(root_cmr),
+//         }
+//     }
 
-    /// Costruct a new `Namer`.
-    pub fn new() -> Self {
-        Namer {
-            const_idx: 0,
-            wit_idx: 0,
-            other_idx: 0,
-            root_cmr: None,
-        }
-    }
+//     /// Costruct a new `Namer`.
+//     pub fn new() -> Self {
+//         Namer {
+//             const_idx: 0,
+//             wit_idx: 0,
+//             other_idx: 0,
+//             root_cmr: None,
+//         }
+//     }
 
-    /// Generate a fresh name for the given node.
-    pub fn assign_name<C, J, X, W>(&mut self, inner: node::Inner<C, J, X, W>) -> String {
-        let prefix = match inner {
-            node::Inner::Iden => "id",
-            node::Inner::Unit => "ut",
-            node::Inner::InjL(..) => "jl",
-            node::Inner::InjR(..) => "jr",
-            node::Inner::Drop(..) => "dp",
-            node::Inner::Take(..) => "tk",
-            node::Inner::Comp(..) => "cp",
-            node::Inner::Case(..) => "cs",
-            node::Inner::AssertL(..) => "asstl",
-            node::Inner::AssertR(..) => "asstr",
-            node::Inner::Pair(..) => "pr",
-            node::Inner::Disconnect(..) => "disc",
-            node::Inner::Witness(..) => "wit",
-            node::Inner::Fail(..) => "FAIL",
-            node::Inner::Jet(..) => "jt",
-            node::Inner::Word(..) => "const",
-        };
-        let index = match inner {
-            node::Inner::Word(..) => &mut self.const_idx,
-            node::Inner::Witness(..) => &mut self.wit_idx,
-            _ => &mut self.other_idx,
-        };
-        *index += 1;
-        format!("{}{}", prefix, index)
-    }
-}
+//     /// Generate a fresh name for the given node.
+//     pub fn assign_name<C, J, X, W>(&mut self, inner: node::Inner<C, J, X, W>) -> String {
+//         let prefix = match inner {
+//             node::Inner::Iden => "id",
+//             node::Inner::Unit => "ut",
+//             node::Inner::InjL(..) => "jl",
+//             node::Inner::InjR(..) => "jr",
+//             node::Inner::Drop(..) => "dp",
+//             node::Inner::Take(..) => "tk",
+//             node::Inner::Comp(..) => "cp",
+//             node::Inner::Case(..) => "cs",
+//             node::Inner::AssertL(..) => "asstl",
+//             node::Inner::AssertR(..) => "asstr",
+//             node::Inner::Pair(..) => "pr",
+//             node::Inner::Disconnect(..) => "disc",
+//             node::Inner::Witness(..) => "wit",
+//             node::Inner::Fail(..) => "FAIL",
+//             node::Inner::Jet(..) => "jt",
+//             node::Inner::Word(..) => "const",
+//         };
+//         let index = match inner {
+//             node::Inner::Word(..) => &mut self.const_idx,
+//             node::Inner::Witness(..) => &mut self.wit_idx,
+//             _ => &mut self.other_idx,
+//         };
+//         *index += 1;
+//         format!("{}{}", prefix, index)
+//     }
+// }
 
-impl<J: Jet> Converter<Commit<J>, Named<Commit<J>>> for Namer {
-    type Error = ();
-    fn convert_witness(
-        &mut self,
-        _: &PostOrderIterItem<&CommitNode<J>>,
-        _: &NoWitness,
-    ) -> Result<Arc<str>, Self::Error> {
-        Ok(Arc::from(""))
-    }
+// impl Converter<Commit<Elements>, Named<Commit<Elements>>> for Namer {
+//     type Error = ();
+//     fn convert_witness(
+//         &mut self,
+//         _: &PostOrderIterItem<&CommitNode<Elements>>,
+//         _: &NoWitness,
+//     ) -> Result<NoWitness, Self::Error> {
+//         Ok(NoWitness)
+//     }
 
-    fn convert_disconnect(
-        &mut self,
-        _: &PostOrderIterItem<&CommitNode<J>>,
-        _: Option<&Arc<NamedCommitNode<J>>>,
-        _: &NoDisconnect,
-    ) -> Result<NoDisconnect, Self::Error> {
-        Ok(NoDisconnect)
-    }
+//     fn convert_disconnect(
+//         &mut self,
+//         _: &PostOrderIterItem<&CommitNode<Elements>>,
+//         _: Option<&Arc<NamedCommitNode>>,
+//         _: &NoDisconnect,
+//     ) -> Result<NoDisconnect, Self::Error> {
+//         Ok(NoDisconnect)
+//     }
 
-    fn convert_data(
-        &mut self,
-        data: &PostOrderIterItem<&CommitNode<J>>,
-        inner: node::Inner<&Arc<NamedCommitNode<J>>, J, &NoDisconnect, &Arc<str>>,
-    ) -> Result<NamedCommitData<J>, Self::Error> {
-        // Special-case the root node, which is always called main.
-        // The CMR of the root node, conveniently, is guaranteed to be
-        // unique, so we can key on the CMR to figure out which node to do.
-        if Some(data.node.cmr()) == self.root_cmr {
-            return Ok(NamedCommitData {
-                internal: Arc::clone(data.node.cached_data()),
-                name: Arc::from("main"),
-            });
-        }
+//     fn convert_data(
+//         &mut self,
+//         data: &PostOrderIterItem<&CommitNode<Elements>>,
+//         inner: node::Inner<&Arc<NamedCommitNode>, Elements, &NoDisconnect, &NoWitness>,
+//     ) -> Result<NamedCommitData<Elements>, Self::Error> {
+//         // Special-case the root node, which is always called main.
+//         // The CMR of the root node, conveniently, is guaranteed to be
+//         // unique, so we can key on the CMR to figure out which node to do.
+//         if Some(data.node.cmr()) == self.root_cmr {
+//             return Ok(NamedCommitData {
+//                 internal: Arc::clone(data.node.cached_data()),
+//                 name: Arc::from("main"),
+//             });
+//         }
 
-        Ok(NamedCommitData {
-            internal: Arc::clone(data.node.cached_data()),
-            name: Arc::from(self.assign_name(inner).as_str()),
-        })
-    }
-}
+//         Ok(NamedCommitData {
+//             internal: Arc::clone(data.node.cached_data()),
+//             name: Arc::from(self.assign_name(inner).as_str()),
+//         })
+//     }
+// }
