@@ -15,6 +15,12 @@ pub struct GlobalScope {
     witnesses: Vec<Vec<String>>,
 }
 
+impl Default for GlobalScope {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug)]
 pub enum Variable {
     /// Single variable. let a = [e]. Constructed by a single assignment.

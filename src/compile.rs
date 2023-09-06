@@ -18,7 +18,7 @@ fn eval_blk(
     stmts: &[Statement],
     scope: &mut GlobalScope,
     index: usize,
-    last_expr: Option<&Box<Expression>>,
+    last_expr: Option<&Expression>,
 ) -> ProgNode {
     if index >= stmts.len() {
         return match last_expr {
@@ -26,7 +26,7 @@ fn eval_blk(
             None => Arc::new(NamedConstructNode::_new(node::Inner::Unit).unwrap()),
         };
     }
-    let res = match &stmts[index] {
+    match &stmts[index] {
         Statement::Assignment(assignment) => {
             let expr = assignment.expression.eval(scope, assignment.ty);
             scope.insert(Variable::Single(Arc::clone(&assignment.identifier)));
@@ -54,8 +54,7 @@ fn eval_blk(
             let right = eval_blk(stmts, scope, index + 1, last_expr);
             ProgNode::comp(left, right)
         }
-    };
-    res
+    }
 }
 
 fn combine_seq(a: ProgNode, b: ProgNode) -> ProgNode {
@@ -78,13 +77,13 @@ impl FuncCall {
                     .args
                     .iter()
                     .map(|e| e.eval(scope, None)) // TODO: Pass the jet source type here.
-                    .reduce(|acc, e| ProgNode::pair(acc, e));
-                let jet = Elements::from_str(&jet_name).expect("Invalid jet name");
+                    .reduce(ProgNode::pair);
+                let jet = Elements::from_str(jet_name).expect("Invalid jet name");
                 let jet = ProgNode::jet(jet);
                 match args {
                     Some(param) => {
-                        println!("param: {}", param.arrow());
-                        println!("jet: {}", jet.arrow());
+                        // println!("param: {}", param.arrow());
+                        // println!("jet: {}", jet.arrow());
                         ProgNode::comp(param, jet)
                     }
                     None => ProgNode::comp(ProgNode::unit(), jet),
@@ -97,15 +96,13 @@ impl FuncCall {
                 debug_assert!(self.args.len() == 1);
                 let e1 = self.args[0].eval(scope, None);
                 let fail_entropy = FailEntropy::from_byte_array([0; 64]);
-                println!("left: {}", e1.arrow());
+                // println!("left: {}", e1.arrow());
                 let e1 = ProgNode::pair(e1, ProgNode::unit());
                 let res = ProgNode::case(ProgNode::iden(), ProgNode::fail(fail_entropy));
-                println!("assert_l: {} target {:?}", res.arrow(), res.arrow().target);
+                // println!("assert_l: {} target {:?}", res.arrow(), res.arrow().target);
                 let res = ProgNode::comp(e1, res);
-                println!("assert_l: {}", res.arrow());
-                let res = ProgNode::comp(res, ProgNode::take(ProgNode::iden()));
-                println!("assert_l: {}", res.arrow());
-                res
+                // println!("assert_l: {}", res.arrow());
+                ProgNode::comp(res, ProgNode::take(ProgNode::iden()))
             }
             FuncType::AssertR => {
                 // comp (assertr cmrFail0 (pair ⟦e1⟧Ξ iden))
@@ -114,14 +111,12 @@ impl FuncCall {
                 // let pair_e1_iden = ProgNode::pair(&e1, &ProgNode::iden()).unwrap();
                 let fail_entropy = FailEntropy::from_byte_array([0; 64]);
                 let e1 = ProgNode::pair(e1, ProgNode::unit());
-                println!("e1: {}", e1.arrow());
+                // println!("e1: {}", e1.arrow());
                 let res = ProgNode::case(ProgNode::fail(fail_entropy), ProgNode::iden());
-                println!("assert_r: {}", res.arrow());
+                // println!("assert_r: {}", res.arrow());
                 let res = ProgNode::comp(e1, res);
-                println!("assert_r: {}", res.arrow());
-                let res = ProgNode::comp(res, ProgNode::take(ProgNode::iden()));
-                println!("assert_r: {}", res.arrow());
-                res
+                // println!("assert_r: {}", res.arrow());
+                ProgNode::comp(res, ProgNode::take(ProgNode::iden()))
             }
         }
     }
@@ -132,7 +127,7 @@ impl Expression {
         match &self.inner {
             ExpressionInner::BlockExpression(stmts, expr) => {
                 scope.push_scope();
-                let res = eval_blk(stmts, scope, 0, Some(expr));
+                let res = eval_blk(stmts, scope, 0, Some(expr.as_ref()));
                 scope.pop_scope();
                 res
             }

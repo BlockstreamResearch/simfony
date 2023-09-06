@@ -47,10 +47,9 @@ pub fn _compile(file: &Path) -> Arc<Node<Named<Commit<Elements>>>> {
 
     let mut scope = GlobalScope::new();
     let simplicity_prog = prog.eval(&mut scope);
-    let commit_node = simplicity_prog
+    simplicity_prog
         .finalize_types_main()
-        .expect("Type check error");
-    commit_node
+        .expect("Type check error")
 }
 
 pub fn compile(file: &Path) -> CommitNode<Elements> {
@@ -80,7 +79,7 @@ pub fn satisfy(prog: &Path, wit_file: &Path) -> RedeemNode<Elements> {
             let ty = &data.node.arrow().target;
             match self.map.get(key.as_ref()) {
                 Some(wit) => {
-                    let bytes: Vec<u8> = hex_conservative::FromHex::from_hex(&wit).unwrap();
+                    let bytes: Vec<u8> = hex_conservative::FromHex::from_hex(wit).unwrap();
                     let total_bit_len = bytes.len() * 8;
                     let mut bit_iter = BitIter::new(bytes.into_iter());
                     let value = bit_iter.read_value(&data.node.arrow().target);
@@ -93,7 +92,7 @@ pub fn satisfy(prog: &Path, wit_file: &Path) -> RedeemNode<Elements> {
                     let remaining = total_bit_len - bit_len;
                     assert!(remaining < 8);
                     for _ in 0..remaining {
-                        assert!(bit_iter.next().unwrap() == false);
+                        assert!(!bit_iter.next().unwrap());
                     }
                     assert!(bit_iter.next().is_none());
                     Ok(v)
