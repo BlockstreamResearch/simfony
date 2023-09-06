@@ -92,20 +92,6 @@ impl FuncCall {
             }
             FuncType::BuiltIn(_f_name) => {
                 todo!("Builtins not supported yet")
-                // binary builtins
-                // if self.args.len() != 1 {
-                //     panic!("Only unary builtins supported");
-                // }
-                // let left = self.args[0].eval(scope, None);
-                // match f_name.as_ref() {
-                //     "not" => {
-                //         todo!()
-                //         // let res = ProgNode::not(&left).expect("TYPECHECK: and typecheck");
-                //         // println!("not: {}", res.arrow());
-                //         // res
-                //     }
-                //     _ => panic!("Unknown builtin function"),
-                // }
             }
             FuncType::AssertL => {
                 debug_assert!(self.args.len() == 1);

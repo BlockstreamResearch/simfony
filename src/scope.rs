@@ -89,7 +89,6 @@ impl GlobalScope {
                 pos += v.len();
             }
         }
-        println!("Fetching variable {:?} at position {}", var, pos);
         match var {
             Some(v) => {
                 let mut child = ProgNode::iden();
@@ -100,7 +99,6 @@ impl GlobalScope {
                             ProgNode::take(child)
                         } else if s2.as_ref() == key {
                             child = ProgNode::drop_(child);
-                            println!("Child: {:?}", child);
                             child
                         } else {
                             panic!("Variable {} not found", key);
