@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use simplicity::node::CoreConstructible;
-
 use crate::{named::ProgExt, ProgNode};
 
 /// A global scope is a stack of scopes.

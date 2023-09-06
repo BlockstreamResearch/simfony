@@ -1,4 +1,4 @@
-use simplicity::dag::{InternalSharing, MaxSharing, PostOrderIterItem};
+use simplicity::dag::{InternalSharing, PostOrderIterItem};
 use simplicity::human_encoding::{ErrorSet, Position};
 use simplicity::jet::{Elements, Jet};
 use simplicity::node::{
@@ -221,13 +221,16 @@ impl ProgExt for ProgNode {
     }
 
     fn witness(ident: Arc<str>) -> Self {
-        Arc::new(NamedConstructNode::new(
+        Arc::new(
+            NamedConstructNode::new(
                 ident,
                 Position::default(),
                 Arc::new([]),
                 Arc::new([]),
-            Inner::Witness(NoWitness)
-        ).unwrap())
+                Inner::Witness(NoWitness),
+            )
+            .unwrap(),
+        )
     }
 
     fn fail(entropy: FailEntropy) -> Self {

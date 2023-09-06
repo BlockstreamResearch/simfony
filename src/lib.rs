@@ -8,18 +8,26 @@ pub mod named;
 pub mod parse;
 pub mod scope;
 
-use std::{sync::Arc, path::Path, collections::HashMap};
+use std::{collections::HashMap, path::Path, sync::Arc};
 
-use hex_conservative::DisplayHex;
-use named::{Named, ConstructExt};
+use named::{ConstructExt, Named};
 use pest::Parser;
 use pest_derive::Parser;
-use simplicity::{jet::Elements, ConstructNode, CommitNode, node::{Commit, Node, Converter, Redeem, Inner, RedeemData}, dag::{PostOrderIterItem, NoSharing}, Value, BitMachine, elements::hex::ToHex, BitIter, RedeemNode};
+use simplicity::{
+    dag::{NoSharing, PostOrderIterItem},
+    jet::Elements,
+    node::{Commit, Converter, Inner, Node, Redeem, RedeemData},
+    BitIter, CommitNode, RedeemNode,
+};
 
 pub extern crate simplicity;
 pub use simplicity::elements;
 
-use crate::{parse::{Program, PestParse}, scope::GlobalScope, named::{NamedCommitNode, NamedExt}};
+use crate::{
+    named::{NamedCommitNode, NamedExt},
+    parse::{PestParse, Program},
+    scope::GlobalScope,
+};
 
 #[derive(Parser)]
 #[grammar = "minimal.pest"]
@@ -57,7 +65,8 @@ pub fn satisfy(prog: &Path, wit_file: &Path) -> RedeemNode<Elements> {
 
     let file = std::fs::File::open(wit_file).expect("Error opening witness file");
     let rdr = std::io::BufReader::new(file);
-    let mut wit_data : WitFileData = serde_json::from_reader(rdr).expect("Error reading witness file");
+    let mut wit_data: WitFileData =
+        serde_json::from_reader(rdr).expect("Error reading witness file");
 
     impl Converter<Named<Commit<Elements>>, Redeem<Elements>> for WitFileData {
         type Error = ();
@@ -66,13 +75,12 @@ pub fn satisfy(prog: &Path, wit_file: &Path) -> RedeemNode<Elements> {
             &mut self,
             data: &PostOrderIterItem<&NamedCommitNode>,
             _witness: &<Named<Commit<Elements>> as simplicity::node::Marker>::Witness,
-        ) -> Result<<Redeem<Elements> as simplicity::node::Marker>::Witness, Self::Error>
-        {
+        ) -> Result<<Redeem<Elements> as simplicity::node::Marker>::Witness, Self::Error> {
             let key = data.node.name();
             let ty = &data.node.arrow().target;
             match self.map.get(key.as_ref()) {
                 Some(wit) => {
-                    let bytes : Vec<u8> = hex_conservative::FromHex::from_hex(&wit).unwrap();
+                    let bytes: Vec<u8> = hex_conservative::FromHex::from_hex(&wit).unwrap();
                     let total_bit_len = bytes.len() * 8;
                     let mut bit_iter = BitIter::new(bytes.into_iter());
                     let value = bit_iter.read_value(&data.node.arrow().target);
@@ -89,16 +97,16 @@ pub fn satisfy(prog: &Path, wit_file: &Path) -> RedeemNode<Elements> {
                     }
                     assert!(bit_iter.next().is_none());
                     Ok(v)
-                },
+                }
                 None => panic!("Value not found{}", key),
             }
         }
 
         fn convert_disconnect(
             &mut self,
-            data: &PostOrderIterItem<&NamedCommitNode>,
-            maybe_converted: Option<&Arc<simplicity::node::Node<Redeem<Elements>>>>,
-            disconnect: &<Named<Commit<Elements>> as simplicity::node::Marker>::Disconnect,
+            _data: &PostOrderIterItem<&NamedCommitNode>,
+            _maybe_converted: Option<&Arc<simplicity::node::Node<Redeem<Elements>>>>,
+            _disconnect: &<Named<Commit<Elements>> as simplicity::node::Marker>::Disconnect,
         ) -> Result<<Redeem<Elements> as simplicity::node::Marker>::Disconnect, Self::Error>
         {
             todo!()
@@ -140,10 +148,8 @@ mod tests {
     use simplicity::{
         dag::{NoSharing, PostOrderIterItem},
         encode,
-        node::{
-            Commit, Converter, Inner, NoDisconnect, NoWitness, Redeem, RedeemData, SimpleFinalizer,
-        },
-        BitMachine, BitWriter, Cmr, CommitNode, RedeemNode, Value,
+        node::{Commit, Converter, Inner, Redeem, RedeemData},
+        BitMachine, BitWriter, Cmr, Value,
     };
 
     use crate::{
@@ -196,7 +202,6 @@ mod tests {
         let mut writer = BitWriter::new(&mut vec);
         let _encoded = encode::encode_program(&simplicity_prog, &mut writer).unwrap();
         println!("{}", Base64Display::new(&vec, &STANDARD));
-        let v: Vec<Arc<Value>> = vec![];
 
         struct MyConverter;
 
@@ -205,8 +210,8 @@ mod tests {
 
             fn convert_witness(
                 &mut self,
-                data: &PostOrderIterItem<&NamedCommitNode>,
-                witness: &<Named<Commit<Elements>> as simplicity::node::Marker>::Witness,
+                _data: &PostOrderIterItem<&NamedCommitNode>,
+                _witness: &<Named<Commit<Elements>> as simplicity::node::Marker>::Witness,
             ) -> Result<<Redeem<Elements> as simplicity::node::Marker>::Witness, Self::Error>
             {
                 Ok(Value::u32(20))
@@ -214,9 +219,9 @@ mod tests {
 
             fn convert_disconnect(
                 &mut self,
-                data: &PostOrderIterItem<&NamedCommitNode>,
-                maybe_converted: Option<&Arc<simplicity::node::Node<Redeem<Elements>>>>,
-                disconnect: &<Named<Commit<Elements>> as simplicity::node::Marker>::Disconnect,
+                _data: &PostOrderIterItem<&NamedCommitNode>,
+                _maybe_converted: Option<&Arc<simplicity::node::Node<Redeem<Elements>>>>,
+                _disconnect: &<Named<Commit<Elements>> as simplicity::node::Marker>::Disconnect,
             ) -> Result<<Redeem<Elements> as simplicity::node::Marker>::Disconnect, Self::Error>
             {
                 todo!()
