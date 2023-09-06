@@ -23,4 +23,4 @@ pest_derive = "2.7.1"
 serde = { version = "1.0.188", features = ["derive"] }
 serde_json = "1.0.105"
 
-simplicity = {path = "../rust-simplicity"}
+simplicity = {git = "https://github.com/BlockstreamResearch/rust-simplicity", rev = "8ed4d4e0caf550148f1e17784af7665bad74b384"}

@@ -130,3 +130,61 @@ let pk : u256 = <pk>;
 let msg: u256 = <msg>;
 jet_bip0340_verify(pk, msg, wit_sig);
 ```
+
+## Jets:
+
+All supported jets in simp-lang can be found in documentation. The documentation can be generated using the following command.
+
+```bash
+cargo doc --open
+```
+The catalogue of jets can be found in
+target/doc/simplicity/jet/enum.Elements.html.
+
+## Examples
+
+Scoped variables work like in regular programming languages.
+
+```rust
+let v1 = {
+    let v2 = {
+        let v7 : u32 = 10;
+        let v3 = {
+            let v4 : u32 = 2;
+            let v5 : u32 = 3;
+            jet_verify(jet_eq_32(v7, 10)); /* Can use upper scope variables here.*/
+            let v7 : u32 = 7; /* Can also shadow the upper scope here.*/
+            jet_max_32(jet_max_32(v4, v5),v7) /* Rust like, missing ; here is the return type of expression.*/
+        };
+        jet_verify(jet_eq_32(v7, 10)); /* Upper scope is same just like regular Programming languages*/
+        jet_min_32(v7, v3) /*Return value of v2 block*/
+    };
+    v2
+};
+jet_verify(jet_eq_32(7, v1));
+```
+
+
+
+An emulation of CTV in simplicity.
+
+```rust
+/* This program is an emulation of CTV using simplicity */
+/* Instead of specifying the template hash as in BIP CTV,
+we require the user to specify all the components of the sighash
+that they want to commit.*/
+/* Supporting scriptsighash requires conditional that we don't yet support.*/
+
+let sha2_ctx = jet_sha_256_ctx_8_init();
+let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_version());
+let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_lock_time());
+let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_num_inputs());
+let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_input_sequences_hash());
+let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_num_outputs());
+let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_outputs_hash());
+let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_current_index());
+let ctv_hash : u256 = jet_sha_256_ctx_8_finalize(sha2_ctx);
+
+let expected_hash : u256 = 0x126a5c6e2d95fdf8fa0ac2927803de62fbca645527f514e523ac1d3d39afcc68;
+assert(jet_eq_256(ctv_hash, expected_hash));
+```

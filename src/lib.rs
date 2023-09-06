@@ -160,12 +160,12 @@ mod tests {
 
     #[test]
     fn test_progs() {
-        _test_progs("./test.txt");
-        _test_progs("./assertr.txt");
-        _test_progs("./scopes.txt");
-        _test_progs("./nesting.txt");
-        _test_progs("./add.txt");
-        // _test_progs("./add_with_builtins.txt");
+        _test_progs("./example_progs/test.simpl");
+        _test_progs("./example_progs/assertr.simpl");
+        _test_progs("./example_progs/scopes.simpl");
+        _test_progs("./example_progs/nesting.simpl");
+        _test_progs("./example_progs/add.simpl");
+        // _test_progs("./add_with_builtins.simpl");
     }
 
     fn _test_progs(file: &str) {
@@ -246,43 +246,6 @@ mod tests {
                     converted_data,
                 )))
             }
-
-            // fn convert_witness(
-            //     &mut self,
-            //     _: &PostOrderIterItem<&CommitNode<Elements>>,
-            //     _: &NoWitness,
-            // ) -> Result<Arc<Value>, Self::Error> {
-            //     Ok(Value::u32(20))
-            // }
-
-            // fn convert_disconnect(
-            //     &mut self,
-            //     _: &PostOrderIterItem<&CommitNode<Elements>>,
-            //     _: Option<&Arc<RedeemNode<Elements>>>,
-            //     _: &NoDisconnect,
-            // ) -> Result<Arc<RedeemNode<Elements>>, Self::Error> {
-            //     Err(())
-            // }
-
-            // fn convert_data(
-            //     &mut self,
-            //     data: &PostOrderIterItem<&CommitNode<Elements>>,
-            //     inner: Inner<
-            //         &Arc<RedeemNode<Elements>>,
-            //         Elements,
-            //         &Arc<RedeemNode<Elements>>,
-            //         &Arc<Value>,
-            //     >,
-            // ) -> Result<Arc<RedeemData<Elements>>, Self::Error> {
-            //     let converted_data = inner
-            //         .map(|node| node.cached_data())
-            //         .map_disconnect(|node| node.cached_data())
-            //         .map_witness(Arc::clone);
-            //     Ok(Arc::new(RedeemData::new(
-            //         data.node.arrow().shallow_clone(),
-            //         converted_data,
-            //     )))
-            // }
         }
 
         let redeem_prog = simplicity_prog

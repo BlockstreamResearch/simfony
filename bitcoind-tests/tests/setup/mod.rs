@@ -11,8 +11,6 @@ use elementsd::bitcoind::bitcoincore_rpc::RpcApi;
 use elementsd::bitcoind::{self, BitcoinD};
 use elementsd::ElementsD;
 
-pub mod test_util;
-
 // We are not using pegins right now, but it might be required in case in future
 // if we extend the tests to check pegins etc.
 pub fn setup(validate_pegin: bool) -> (ElementsD, Option<BitcoinD>, elements::BlockHash) {
