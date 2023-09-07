@@ -28,7 +28,7 @@ The compiler is written in rust and can be installed using cargo.
 git clone https://github.com/sanket1729/simp-lang.git
 cd simp-lang
 cargo build
-./target/debug/simp-lang <prog.simpl> <sig.wit>
+./target/debug/simpc <prog.simpl> <sig.wit>
 ```
 
 Optionally, you can also install the compiler using cargo.
