@@ -1,11 +1,11 @@
 [package]
-name = "simp-lang"
+name = "s-lang"
 version = "0.1.0"
 authors = ["sanket1729 <sanket1729@gmail.com>"]
 edition = "2018"
 
 [lib]
-name = "simp_lang"
+name = "s_lang"
 path = "src/lib.rs"
 
 [[bin]]

@@ -1,6 +1,6 @@
-pub extern crate simp_lang;
+pub extern crate s_lang;
 
-pub use simp_lang::elements;
+pub use s_lang::elements;
 use std::str::FromStr;
 
 use elements::encode::{deserialize, serialize_hex};

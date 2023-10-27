@@ -1,4 +1,4 @@
-/// Library for parsing and compiling simp-lang
+/// Library for parsing and compiling s-lang
 
 pub type ProgNode = Arc<named::NamedConstructNode>;
 

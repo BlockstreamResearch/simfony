@@ -1,7 +1,7 @@
 use base64::display::Base64Display;
 use base64::engine::general_purpose::STANDARD;
 
-use simp_lang::{compile, satisfy};
+use s_lang::{compile, satisfy};
 
 use std::env;
 

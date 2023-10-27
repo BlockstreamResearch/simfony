@@ -12,9 +12,9 @@ The distinguishing aspects that set Simplicity apart from conventional programmi
 - **Exceptional Low-Level Nature**: Unlike high-level languages such as JavaScript or Python, Simplicity operates at an extremely low level, resembling assembly languages. This design choice enables easier reasoning about the formal semantics of programs, but is really work on directly.
 
 
-## Simp-lang
+## s-lang
 
-Simp-lang is a high level DSL that compiles to Simplicity. It is designed to be a simple, easy to use language that is familiar to developers. It is a work in progress and is not yet ready for production use.
+s-lang is a high level DSL that compiles to Simplicity. It is designed to be a simple, easy to use language that is familiar to developers. It is a work in progress and is not yet ready for production use.
 
 **Please do note that the new language is under active development, which implies the existence of bugs and several incomplete features.**
 
@@ -25,8 +25,8 @@ The DSL's purpose is to make programming in Simplicity accessible even to develo
 The compiler is written in rust and can be installed using cargo.
 
 ```bash
-git clone https://github.com/sanket1729/simp-lang.git
-cd simp-lang
+git clone https://github.com/sanket1729/s-lang.git
+cd s-lang
 cargo build
 ./target/debug/simpc <prog.simpl> <sig.wit>
 ```
@@ -39,11 +39,11 @@ cargo install --path .
 
 ## Usage
 
-The compiler takes two arguments, the first is the path to the simp-lang program, and the second is the path to the witness json file. The compiler outputs the Simplicity program to stdout.
+The compiler takes two arguments, the first is the path to the s-lang program, and the second is the path to the witness json file. The compiler outputs the Simplicity program to stdout.
 
 Test out your installation by running the following command.
 ```bash
-./target/debug/simp-lang examples/program.simpl examples/witness.json
+./target/debug/s-lang examples/program.simpl examples/witness.json
 ```
 
 ## Language Syntax
@@ -137,7 +137,7 @@ jet_bip0340_verify(pk, msg, wit_sig);
 
 ## Jets:
 
-All supported jets in simp-lang can be found in documentation. The documentation can be generated using the following command.
+All supported jets in s-lang can be found in documentation. The documentation can be generated using the following command.
 
 ```bash
 cargo doc --open
