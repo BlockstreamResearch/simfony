@@ -1,12 +1,15 @@
-/* This program is an emulation of CTV using simplicity */
-/* Instead of specifying the template hash as in BIP CTV,
-we require the user to specify all the components of the sighash
-that they want to commit.*/
-/* Supporting scriptsighash requires conditional that we don't yet support.*/
+/*
+ * This program is an emulation of CTV using simplicity
+ *
+ * Instead of specifying the template hash as in BIP CTV,
+ * we require the user to specify all the components of the sighash
+ * that they want to commit.
+ */
 
 let sha2_ctx = jet_sha_256_ctx_8_init();
 let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_version());
 let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_lock_time());
+let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_input_script_sigs_hash());
 let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_num_inputs());
 let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_input_sequences_hash());
 let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_num_outputs());
