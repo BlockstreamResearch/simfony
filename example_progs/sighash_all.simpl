@@ -1,0 +1,49 @@
+/*
+ * This program shows all details of computing SIGHASH_ALL.
+ *
+ * The manually computed sighash is compared with the output of the SIGHASH_ALL jet.
+ * The program succeeds if the manual sighash is correct (equal).
+ * In this case, the program is an ANYONECANSPEND.
+ * Otherwise, the program fails and it is a NOONECANSPEND.
+ */
+
+let sha2_ctx = jet_sha_256_ctx_8_init();
+/* jet_sig_all_hash { */
+    let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_genesis_block_hash());
+    let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_genesis_block_hash());
+    /* jet_tx_hash { */
+        let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_version());
+        let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_lock_time());
+        /* jet_inputs_hash { */
+            let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_input_outpoints_hash());
+            let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_input_sequences_hash());
+            let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_input_annexes_hash());
+        /* } */
+        /* jet_outputs_hash { */
+            let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_output_amounts_hash());
+            let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_output_nonces_hash());
+            let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_output_scripts_hash());
+            let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_output_range_proofs_hash());
+        /* } */
+        /* jet_issuances_hash { */
+            let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_issuance_asset_amounts_hash());
+            let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_issuance_token_amounts_hash());
+            let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_issuance_range_proofs_hash());
+            let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_issuance_blinding_entropy_hash());
+        /* } */
+        let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_output_surjection_proofs_hash());
+        /* jet_input_utxos_hash { */
+            let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_input_amounts_hash());
+            let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_input_scripts_hash());
+        /* } */
+    /* } */
+    /* jet_tap_env_hash { */
+        let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_tapleaf_hash());
+        let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_tappath_hash());
+        let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_internal_key());
+    /* } */
+    let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_current_index());
+/* } */
+let manual_sighash = jet_sha_256_ctx_8_finalize(sha2_ctx);
+let automatic_sighash = jet_sig_all_hash();
+jet_verify(jet_eq_256(manual_sighash, automatic_sighash));
