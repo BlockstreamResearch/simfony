@@ -5,31 +5,14 @@ use std::str::FromStr;
 
 use elements::encode::{deserialize, serialize_hex};
 use elements::hex::FromHex;
-use elements::BlockHash;
 use elementsd::bitcoincore_rpc::jsonrpc::serde_json::{json, Value};
 use elementsd::bitcoind::bitcoincore_rpc::RpcApi;
-use elementsd::bitcoind::{self, BitcoinD};
 use elementsd::ElementsD;
 
 // We are not using pegins right now, but it might be required in case in future
 // if we extend the tests to check pegins etc.
-pub fn setup(validate_pegin: bool) -> (ElementsD, Option<BitcoinD>, elements::BlockHash) {
-    // Lookup bitcoind binary path
-    let curr_dir = std::env::current_dir().unwrap();
-    let bitcoind_path = curr_dir.join("bin/bitcoind");
-    let elementsd_path = curr_dir.join("bin/elementsd");
-
-    std::env::set_var("BITCOIND_EXE", bitcoind_path);
-    std::env::set_var("ELEMENTSD_EXE", elementsd_path);
-
-    let mut bitcoind = None;
-    if validate_pegin {
-        let bitcoind_exe = bitcoind::exe_path().unwrap();
-        let bitcoind_conf = bitcoind::Conf::default();
-        bitcoind = Some(bitcoind::BitcoinD::with_conf(bitcoind_exe, &bitcoind_conf).unwrap());
-    }
-
-    let mut conf = elementsd::Conf::new(bitcoind.as_ref());
+pub fn setup() -> (ElementsD, elements::BlockHash) {
+    let mut conf = elementsd::Conf::new(None);
 
     // HACK: Upstream has issued only 21 million sats intially, but our hard coded tests
     // consume more coins. In order to avoid further conflicts, mutate the default arg here.
@@ -60,9 +43,9 @@ pub fn setup(validate_pegin: bool) -> (ElementsD, Option<BitcoinD>, elements::Bl
 
     let genesis_str = elementsd.call("getblockhash", &[0u32.into()]);
     let genesis_str = genesis_str.as_str().unwrap();
-    let genesis_hash = BlockHash::from_str(genesis_str).unwrap();
+    let genesis_hash = elements::BlockHash::from_str(genesis_str).unwrap();
 
-    (elementsd, bitcoind, genesis_hash)
+    (elementsd, genesis_hash)
 }
 // Upstream all common methods later
 pub trait Call {
