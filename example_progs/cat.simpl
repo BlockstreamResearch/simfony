@@ -1,0 +1,5 @@
+let a : u8 = 16; /* 0x10 */
+let b : u8 = 1;  /* 0x01 */
+let c = 4097;    /* 0x1001 */
+let ab : u16 = (a, b);
+jet_verify(jet_eq_16(ab, c));
