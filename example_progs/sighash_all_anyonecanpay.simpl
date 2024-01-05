@@ -1,0 +1,33 @@
+/*
+ * This program verifies a Schnorr signature based on
+ * SIGHASH_ALL | SIGHASH_ANYONECANPAY.
+ */
+
+let sha2_ctx = jet_sha_256_ctx_8_init();
+/* jet_sig_all_anyonecanpay_hash { */
+    let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_genesis_block_hash());
+    let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_genesis_block_hash());
+
+    let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_version());
+    let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_lock_time());
+    /* jet_current_input_hash { */
+        /* FIXME Missing syntax `None`
+        let sha2_ctx = jet_outpoint_hash(sha2_ctx, (None, jet_current_prev_outpoint()));
+        */
+        let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_current_sequence());
+        let sha2_ctx = jet_annex_hash(sha2_ctx, jet_current_annex_hash());
+    /* } */
+    let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_outputs_hash());
+    let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_issuances_hash());
+    let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_output_surjection_proofs_hash());
+    /* jet_current_input_utxo_hash { */
+        let sha2_ctx = jet_asset_amount_hash(sha2_ctx, jet_current_amount());
+        let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_current_script_hash());
+    /* } */
+
+    let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_tap_env_hash());
+/* } */
+let pk : pubkey = 0xf57f15937068d3054a4f437ac95cba65bae3c1b0529a84caa29d40200bf49c85;
+let wit_sig;
+let msg = jet_sha_256_ctx_8_finalize(sha2_ctx);
+jet_bip_0340_verify(pk, msg, wit_sig);
