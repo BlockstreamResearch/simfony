@@ -87,7 +87,7 @@ pub fn test_simplicity(cl: &ElementsD, prog: &str, witness_file: &str) {
 
 #[test]
 fn test_arith() {
-    let (cl, _, _genesis_hash) = &setup::setup(false);
+    let (cl, _genesis_hash) = &setup::setup();
     // let testdata = TestData::new_fixed_data(50, *genesis_hash);
     println!("{}", cl.get_new_address());
 
