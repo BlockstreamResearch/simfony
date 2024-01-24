@@ -1,0 +1,59 @@
+/*
+ * This program emulates OP_DETERMINISTICRANDOM.
+ *
+ * The program is a showcase of what could be possible.
+ * It does not compile because of missing syntax.
+ */
+
+// Witness values with explicit types for sanity checking
+let wit_bn_min: u64;
+let wit_bn_max: u64;
+let wit_seed: u256;
+
+// Implicit use of arithmetic jets via type inference
+// These jets fail if there is any overflow
+if wit_bn_max < wit_bn_min {
+    // It would be useful to encode error messages somehow
+    // They would live on the blockchain in form of hashes
+    fail("bn_min must be smaller equal bn_max");
+}
+
+let ret = if wit_bn_min == wit_bn_max {
+    wit_bn_min
+} else {
+    let n_max: u64 = wit_bn_max - wit_bn_min;
+    // u64::MAX constant
+    // integer division which fails upon zero
+    let n_range: u64 = (u64::MAX / n_max) * n_max;
+
+    let ctx = jet_sha_256_ctx_8_init();
+    let i: u64 = 0;
+
+    // FIXME Clumsy syntax
+    // Simplicity loops can return values
+    let e: u64 = do {
+        let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, i);
+        let i = i + 1;
+        // Deep pattern matching
+        let ((a, b), (c, d)): u256 = jet_sha_256_ctx_8_finalize(ctx);
+        let e: u64 = if a <= n_range {
+            a
+        } else if b <= n_range {
+            b
+        } else if c <= n_range {
+            c
+        } else {
+            d
+        }
+    } while (n_range < e)
+    return (e);
+
+    let bn_rand: u64 = (n_rand % n_max) + wit_bn_min;
+    // Compile-time assertions (debug only)
+    assert(bn_min <= bn_rand && bn_rand < bn_max);
+
+    bn_rand
+}
+
+// TODO Do something with the generated value
+jet_verify(ret == 0xdeadbeefcafeb0ba);
