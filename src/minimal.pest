@@ -1,4 +1,4 @@
-WHITESPACE = _{ " " | "\n" | "\t" }
+WHITESPACE = _{ " " | "\t" | "\n" | "\r" }
 
 COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
 
