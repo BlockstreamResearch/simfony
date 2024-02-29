@@ -16,9 +16,12 @@ single_expression = {term}
 block_expression = { "{" ~ (statement ~ ";")* ~ expression ~ "}" }
 pair = {"(" ~ expression ~ "," ~ expression  ~ ")"}
 
-ty = { unsigned_types | x_only_key_hex }
-unsigned_types = { "u1"| "u2"| "u4"|"u8" | "u16" | "u32" | "u64" | "u256" }
-x_only_key_hex = { "pubkey"}
+unit_type         =  { "()" }
+sum_type          =  { "Either<" ~ ty ~ "," ~ ty ~ ">" }
+product_type      =  { "(" ~ ty ~ "," ~ ty ~ ")" }
+option_type       =  { "Option<" ~ ty ~ ">" }
+unsigned_type     =  { "u128" | "u256" | "u16" | "u32" | "u64" | "u1" | "u2" | "u4" | "u8" }
+ty                =  { unit_type | sum_type | product_type | option_type | unsigned_type }
 
 term = { func_call | constants | witness | identifier| "(" ~ expression ~ ")"}
 

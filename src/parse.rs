@@ -1,10 +1,13 @@
 //! This module contains the parsing code to convert the
 //! tokens into an AST.
 
-use core::fmt;
-use std::{str::FromStr, sync::Arc};
+use std::collections::HashMap;
+use std::fmt;
+use std::sync::Arc;
 
-use simplicity::{hex::FromHex, types, Value};
+use miniscript::iter::{Tree, TreeLike};
+use simplicity::types::Type as SimType;
+use simplicity::Value;
 
 use crate::Rule;
 
@@ -176,10 +179,20 @@ pub enum ConstantsInner {
     Number(Arc<str>),
 }
 
-/// The type of a value being parsed.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+/// A Simphony type.
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 #[non_exhaustive]
 pub enum Type {
+    Unit,
+    Either(Arc<Self>, Arc<Self>),
+    Product(Arc<Self>, Arc<Self>),
+    Option(Arc<Self>),
+    UInt(UIntType),
+}
+
+/// Normalized unsigned integer type.
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+pub enum UIntType {
     U1,
     U2,
     U4,
@@ -187,78 +200,184 @@ pub enum Type {
     U16,
     U32,
     U64,
-    U256, // Same as pubkey for now. But we can add EC point checks on (Xonly)pubkey later
-    Pubkey,
+    U128,
+    U256,
+}
+
+impl<'a> TreeLike for &'a Type {
+    fn as_node(&self) -> Tree<Self> {
+        match self {
+            Type::Unit | Type::UInt(..) => Tree::Nullary,
+            Type::Option(r) => Tree::Unary(r),
+            Type::Either(l, r) | Type::Product(l, r) => Tree::Binary(l, r),
+        }
+    }
 }
 
 impl Type {
-    /// Parse a number from a string for the given type
-    /// and return the corresponding value.
-    pub fn parse_num(&self, s: &str) -> Arc<Value> {
-        match self {
-            Type::U1 => Value::u1(s.parse::<u8>().unwrap()),
-            Type::U2 => Value::u2(s.parse::<u8>().unwrap()),
-            Type::U4 => Value::u4(s.parse::<u8>().unwrap()),
-            Type::U8 => Value::u8(s.parse::<u8>().unwrap()),
-            Type::U16 => Value::u16(s.parse::<u16>().unwrap()),
-            Type::U32 => Value::u32(s.parse::<u32>().unwrap()),
-            Type::U64 => Value::u64(s.parse::<u64>().unwrap()),
-            Type::Pubkey | Type::U256 => {
-                let hex_decoded = Vec::<u8>::from_hex(&s[2..]).unwrap();
-                Value::u256_from_slice(&hex_decoded)
-            } // x => panic!("Unsupported type for number parsing {}", x),
+    /// Convert the type into a normalized unsigned integer type.
+    /// Return the empty value if the conversion failed.
+    pub fn to_uint(&self) -> Option<UIntType> {
+        let mut integer_type = HashMap::<&Type, UIntType>::new();
+        for data in self.post_order_iter() {
+            match data.node {
+                Type::Unit => {}
+                Type::Either(l, r) => match (l.as_ref(), r.as_ref()) {
+                    (Type::Unit, Type::Unit) => {
+                        integer_type.insert(data.node, UIntType::U1);
+                    }
+                    _ => return None,
+                },
+                Type::Product(l, r) => {
+                    let uint_l = integer_type.get(l.as_ref())?;
+                    let uint_r = integer_type.get(r.as_ref())?;
+                    if uint_l != uint_r {
+                        return None;
+                    }
+                    let uint_ty = uint_l.double()?;
+                    integer_type.insert(data.node, uint_ty);
+                }
+                Type::Option(r) => match r.as_ref() {
+                    Type::Unit => {
+                        integer_type.insert(data.node, UIntType::U1);
+                    }
+                    _ => return None,
+                },
+                Type::UInt(ty) => {
+                    integer_type.insert(data.node, *ty);
+                }
+            }
         }
+
+        integer_type.remove(self)
     }
 
-    /// Convert to a Simplicity type
-    pub fn to_simplicity_type(&self) -> types::Type {
-        // TODO: Support specifying more types similar to andrew's code
-        match self {
-            Type::U1 => types::Type::two_two_n(0),
-            Type::U2 => types::Type::two_two_n(1),
-            Type::U4 => types::Type::two_two_n(2),
-            Type::U8 => types::Type::two_two_n(3),
-            Type::U16 => types::Type::two_two_n(4),
-            Type::U32 => types::Type::two_two_n(5),
-            Type::U64 => types::Type::two_two_n(6),
-            Type::Pubkey | Type::U256 => types::Type::two_two_n(8), // cast OK as we are only using tiny numbers
+    /// Convert the type into a Simplicity type.
+    pub fn to_simplicity(&self) -> SimType {
+        let mut output = vec![];
+
+        for data in self.post_order_iter() {
+            match data.node {
+                Type::Unit => output.push(SimType::unit()),
+                Type::Either(_, _) => {
+                    let r = output.pop().unwrap();
+                    let l = output.pop().unwrap();
+                    output.push(SimType::sum(l, r));
+                }
+                Type::Product(_, _) => {
+                    let r = output.pop().unwrap();
+                    let l = output.pop().unwrap();
+                    output.push(SimType::product(l, r));
+                }
+                Type::Option(_) => {
+                    let r = output.pop().unwrap();
+                    output.push(SimType::sum(SimType::unit(), r));
+                }
+                Type::UInt(ty) => output.push(ty.to_simplicity()),
+            }
         }
+
+        debug_assert!(output.len() == 1);
+        output.pop().unwrap()
     }
 }
 
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for data in self.verbose_pre_order_iter() {
+            match data.node {
+                Type::Unit => f.write_str("1")?,
+                Type::Either(_, _) => match data.n_children_yielded {
+                    0 => f.write_str("Either<")?,
+                    1 => f.write_str(",")?,
+                    n => {
+                        debug_assert!(n == 2);
+                        f.write_str(">")?;
+                    }
+                },
+                Type::Product(_, _) => match data.n_children_yielded {
+                    0 => f.write_str("(")?,
+                    1 => f.write_str(",")?,
+                    n => {
+                        debug_assert!(n == 2);
+                        f.write_str(")")?;
+                    }
+                },
+                Type::Option(_) => match data.n_children_yielded {
+                    0 => f.write_str("Option<")?,
+                    n => {
+                        debug_assert!(n == 1);
+                        f.write_str(">")?;
+                    }
+                },
+                Type::UInt(ty) => write!(f, "{ty}")?,
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl UIntType {
+    /// Double the bit width of the type.
+    /// Return the empty value upon overflow.
+    pub fn double(&self) -> Option<Self> {
         match self {
-            Type::U1 => write!(f, "u1"),
-            Type::U2 => write!(f, "u2"),
-            Type::U4 => write!(f, "u4"),
-            Type::U8 => write!(f, "u8"),
-            Type::U16 => write!(f, "u16"),
-            Type::U32 => write!(f, "u32"),
-            Type::U64 => write!(f, "u64"),
-            Type::U256 => write!(f, "u256"),
-            Type::Pubkey => write!(f, "pubkey"),
+            UIntType::U1 => Some(UIntType::U2),
+            UIntType::U2 => Some(UIntType::U4),
+            UIntType::U4 => Some(UIntType::U8),
+            UIntType::U8 => Some(UIntType::U16),
+            UIntType::U16 => Some(UIntType::U32),
+            UIntType::U32 => Some(UIntType::U64),
+            UIntType::U64 => Some(UIntType::U128),
+            UIntType::U128 => Some(UIntType::U256),
+            UIntType::U256 => None,
+        }
+    }
+
+    /// Parse a decimal string for the type.
+    pub fn parse_decimal(&self, literal: &str) -> Arc<Value> {
+        match self {
+            UIntType::U1 => Value::u1(literal.parse::<u8>().unwrap()),
+            UIntType::U2 => Value::u2(literal.parse::<u8>().unwrap()),
+            UIntType::U4 => Value::u4(literal.parse::<u8>().unwrap()),
+            UIntType::U8 => Value::u8(literal.parse::<u8>().unwrap()),
+            UIntType::U16 => Value::u16(literal.parse::<u16>().unwrap()),
+            UIntType::U32 => Value::u32(literal.parse::<u32>().unwrap()),
+            UIntType::U64 => Value::u64(literal.parse::<u64>().unwrap()),
+            UIntType::U128 => panic!("Use bit or hex strings for u128"),
+            UIntType::U256 => panic!("Use bit or hex strings for u256"),
+        }
+    }
+
+    /// Convert the type into a Simplicity type.
+    pub fn to_simplicity(&self) -> SimType {
+        match self {
+            UIntType::U1 => SimType::two_two_n(0),
+            UIntType::U2 => SimType::two_two_n(1),
+            UIntType::U4 => SimType::two_two_n(2),
+            UIntType::U8 => SimType::two_two_n(3),
+            UIntType::U16 => SimType::two_two_n(4),
+            UIntType::U32 => SimType::two_two_n(5),
+            UIntType::U64 => SimType::two_two_n(6),
+            UIntType::U128 => SimType::two_two_n(7),
+            UIntType::U256 => SimType::two_two_n(8),
         }
     }
 }
 
-impl FromStr for Type {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "u1" => Ok(Type::U1),
-            "u2" => Ok(Type::U2),
-            "u4" => Ok(Type::U4),
-            "u8" => Ok(Type::U8),
-            "u16" => Ok(Type::U16),
-            "u32" => Ok(Type::U32),
-            "u64" => Ok(Type::U64),
-            "u256" => Ok(Type::U256),
-            "pubkey" => Ok(Type::Pubkey),
-            _ => {
-                panic!("Invalid type: {}", s);
-            }
+impl fmt::Display for UIntType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UIntType::U1 => f.write_str("u1"),
+            UIntType::U2 => f.write_str("u2"),
+            UIntType::U4 => f.write_str("u4"),
+            UIntType::U8 => f.write_str("u8"),
+            UIntType::U16 => f.write_str("u16"),
+            UIntType::U32 => f.write_str("u32"),
+            UIntType::U64 => f.write_str("u64"),
+            UIntType::U128 => f.write_str("u128"),
+            UIntType::U256 => f.write_str("u256"),
         }
     }
 }
@@ -305,8 +424,7 @@ impl PestParse for DestructPair {
         let r_ident = inner_pair.next().unwrap().as_str();
 
         let reqd_ty = if let Rule::ty = inner_pair.peek().unwrap().as_rule() {
-            let ty = inner_pair.next().unwrap().as_str().parse::<Type>().unwrap();
-            Some(ty)
+            Some(Type::parse(inner_pair.next().unwrap()))
         } else {
             None
         };
@@ -330,8 +448,7 @@ impl PestParse for Assignment {
         let mut inner_pair = pair.into_inner();
         let ident = inner_pair.next().unwrap().as_str();
         let reqd_ty = if let Rule::ty = inner_pair.peek().unwrap().as_rule() {
-            let ty = inner_pair.next().unwrap().as_str().parse::<Type>().unwrap();
-            Some(ty)
+            Some(Type::parse(inner_pair.next().unwrap()))
         } else {
             None
         };
@@ -455,6 +572,84 @@ impl PestParse for Constants {
             inner,
             source_text,
             position,
+        }
+    }
+}
+
+impl PestParse for Type {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::ty));
+        let pair = TyPair(pair);
+        let mut output = vec![];
+
+        for data in pair.post_order_iter() {
+            match data.node.0.as_rule() {
+                Rule::unit_type => output.push(Type::Unit),
+                Rule::unsigned_type => {
+                    let uint_ty = UIntType::parse(data.node.0);
+                    output.push(Type::UInt(uint_ty));
+                }
+                Rule::sum_type => {
+                    let r = output.pop().unwrap();
+                    let l = output.pop().unwrap();
+                    output.push(Type::Either(Arc::new(l), Arc::new(r)));
+                }
+                Rule::product_type => {
+                    let r = output.pop().unwrap();
+                    let l = output.pop().unwrap();
+                    output.push(Type::Product(Arc::new(l), Arc::new(r)));
+                }
+                Rule::option_type => {
+                    let r = output.pop().unwrap();
+                    output.push(Type::Option(Arc::new(r)));
+                }
+                Rule::ty => {}
+                _ => unreachable!("Corrupt grammar"),
+            }
+        }
+
+        debug_assert!(output.len() == 1);
+        output.pop().unwrap()
+    }
+}
+
+impl PestParse for UIntType {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::unsigned_type));
+        match pair.as_str() {
+            "u1" => UIntType::U1,
+            "u2" => UIntType::U2,
+            "u4" => UIntType::U4,
+            "u8" => UIntType::U8,
+            "u16" => UIntType::U16,
+            "u32" => UIntType::U32,
+            "u64" => UIntType::U64,
+            "u128" => UIntType::U128,
+            "u256" => UIntType::U256,
+            _ => unreachable!("Corrupt grammar"),
+        }
+    }
+}
+
+/// Pair of tokens from the 'ty' rule.
+#[derive(Clone, Debug)]
+struct TyPair<'a>(pest::iterators::Pair<'a, Rule>);
+
+impl<'a> TreeLike for TyPair<'a> {
+    fn as_node(&self) -> Tree<Self> {
+        let mut it = self.0.clone().into_inner();
+        match self.0.as_rule() {
+            Rule::unit_type | Rule::unsigned_type => Tree::Nullary,
+            Rule::ty | Rule::option_type => {
+                let l = it.next().unwrap();
+                Tree::Unary(TyPair(l))
+            }
+            Rule::sum_type | Rule::product_type => {
+                let l = it.next().unwrap();
+                let r = it.next().unwrap();
+                Tree::Binary(TyPair(l), TyPair(r))
+            }
+            _ => unreachable!("Corrupt grammar"),
         }
     }
 }

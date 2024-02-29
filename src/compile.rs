@@ -4,6 +4,7 @@ use std::{str::FromStr, sync::Arc};
 
 use simplicity::{jet::Elements, node, FailEntropy, Value};
 
+use crate::parse::UIntType;
 use crate::{
     named::{ConstructExt, NamedConstructNode, ProgExt},
     parse::{
@@ -28,7 +29,7 @@ fn eval_blk(
     }
     match &stmts[index] {
         Statement::Assignment(assignment) => {
-            let expr = assignment.expression.eval(scope, assignment.ty);
+            let expr = assignment.expression.eval(scope, assignment.ty.as_ref());
             scope.insert(Variable::Single(Arc::clone(&assignment.identifier)));
             let left = ProgNode::pair(expr, ProgNode::iden());
             let right = eval_blk(stmts, scope, index + 1, last_expr);
@@ -44,7 +45,7 @@ fn eval_blk(
             combine_seq(left, right)
         }
         Statement::DestructTuple(tuple) => {
-            let expr = tuple.expression.eval(scope, tuple.ty);
+            let expr = tuple.expression.eval(scope, tuple.ty.as_ref());
             scope.insert(Variable::Tuple(
                 tuple.l_ident.clone(),
                 tuple.r_ident.clone(),
@@ -70,7 +71,7 @@ impl Program {
 }
 
 impl FuncCall {
-    pub fn eval(&self, scope: &mut GlobalScope, _reqd_ty: Option<Type>) -> ProgNode {
+    pub fn eval(&self, scope: &mut GlobalScope, _reqd_ty: Option<&Type>) -> ProgNode {
         match &self.func_name {
             FuncType::Jet(jet_name) => {
                 let args = self
@@ -123,7 +124,7 @@ impl FuncCall {
 }
 
 impl Expression {
-    pub fn eval(&self, scope: &mut GlobalScope, reqd_ty: Option<Type>) -> ProgNode {
+    pub fn eval(&self, scope: &mut GlobalScope, reqd_ty: Option<&Type>) -> ProgNode {
         match &self.inner {
             ExpressionInner::BlockExpression(stmts, expr) => {
                 scope.push_scope();
@@ -140,13 +141,13 @@ impl Expression {
 }
 
 impl SingleExpression {
-    pub fn eval(&self, scope: &mut GlobalScope, reqd_ty: Option<Type>) -> ProgNode {
+    pub fn eval(&self, scope: &mut GlobalScope, reqd_ty: Option<&Type>) -> ProgNode {
         let res = self.term.eval(scope, reqd_ty);
         if let Some(reqd_ty) = reqd_ty {
             res.arrow()
                 .target
                 .unify(
-                    &reqd_ty.to_simplicity_type(),
+                    &reqd_ty.to_simplicity(),
                     "Type mismatch for user provided type",
                 )
                 .unwrap();
@@ -155,7 +156,7 @@ impl SingleExpression {
     }
 }
 
-fn assert_type(reqd_ty: Option<Type>, actual_ty: Type) {
+fn assert_type(reqd_ty: Option<&Type>, actual_ty: &Type) {
     if let Some(reqd_ty) = reqd_ty {
         if reqd_ty != actual_ty {
             panic!(
@@ -167,28 +168,27 @@ fn assert_type(reqd_ty: Option<Type>, actual_ty: Type) {
 }
 
 impl Term {
-    pub fn eval(&self, scope: &mut GlobalScope, reqd_ty: Option<Type>) -> ProgNode {
+    pub fn eval(&self, scope: &mut GlobalScope, reqd_ty: Option<&Type>) -> ProgNode {
         let res = match &self.inner {
             TermInner::Constants(constants) => match &constants.inner {
                 ConstantsInner::None => todo!("None type here"),
                 ConstantsInner::False => {
                     let _false = Value::u1(0);
-                    assert_type(reqd_ty, Type::U1);
+                    assert_type(reqd_ty, &Type::UInt(UIntType::U1));
                     ProgNode::const_word(_false)
                 }
                 ConstantsInner::True => {
                     let _true = Value::u1(1);
-                    assert_type(reqd_ty, Type::U1);
+                    assert_type(reqd_ty, &Type::UInt(UIntType::U1));
                     ProgNode::const_word(_true)
                 }
                 ConstantsInner::Number(number) => {
-                    let v = if let Some(ty) = reqd_ty {
-                        ty.parse_num(number)
-                    } else {
-                        let num = number.parse::<u32>().unwrap();
-                        Value::u32(num)
-                    };
-                    ProgNode::comp(ProgNode::unit(), ProgNode::const_word(v))
+                    let ty = reqd_ty
+                        .unwrap_or(&Type::UInt(UIntType::U32))
+                        .to_uint()
+                        .expect("Not an integer type");
+                    let value = ty.parse_decimal(number.as_ref());
+                    ProgNode::comp(ProgNode::unit(), ProgNode::const_word(value))
                 }
                 ConstantsInner::Unit => ProgNode::unit(),
             },
@@ -205,7 +205,7 @@ impl Term {
             res.arrow()
                 .target
                 .unify(
-                    &reqd_ty.to_simplicity_type(),
+                    &reqd_ty.to_simplicity(),
                     "Type mismatch for user provided type",
                 )
                 .unwrap();
