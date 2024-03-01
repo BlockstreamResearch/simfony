@@ -44,17 +44,6 @@ fn eval_blk(
             let right = eval_blk(stmts, scope, index + 1, last_expr);
             combine_seq(left, right)
         }
-        Statement::DestructTuple(tuple) => {
-            let expr = tuple.expression.eval(scope, tuple.ty.as_ref());
-            scope.insert(Pattern::Product(
-                Arc::new(Pattern::Identifier(tuple.l_ident.clone())),
-                Arc::new(Pattern::Identifier(tuple.r_ident.clone())),
-            ));
-            let left = ProgNode::pair(expr, ProgNode::iden());
-
-            let right = eval_blk(stmts, scope, index + 1, last_expr);
-            ProgNode::comp(left, right)
-        }
     }
 }
 

@@ -6,7 +6,7 @@ program = {
     (statement ~ ";")* ~
     EOI
 }
-statement = { assignment | destruct_pair| witness_decl |  func_call }
+statement = { assignment | witness_decl | func_call }
 witness_decl = _{ "let" ~ witness}
 
 identifier        = @{ !(reserved) ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
@@ -15,8 +15,6 @@ ignore_pattern    =  { "_" }
 product_pattern   =  { "(" ~ pattern ~ "," ~ pattern ~ ")" }
 pattern           =  { variable_pattern | ignore_pattern | product_pattern }
 assignment        =  { "let" ~ pattern ~ (":" ~ ty)? ~ "=" ~ expression }
-
-destruct_pair = { "let" ~ "(" ~ identifier ~ ("," ~ identifier) ~ ")" ~ (":" ~ ty)? ~ "=" ~ expression }
 
 expression = { block_expression | pair | single_expression }
 single_expression = {term}

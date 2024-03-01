@@ -21,30 +21,12 @@ pub struct Program {
 /// A statement in a simplicity program.
 #[derive(Debug)]
 pub enum Statement {
-    /// Destruct an assignment
-    DestructTuple(DestructPair),
-    /// A declaration of a variable.
+    /// A declaration of variables inside a pattern.
     Assignment(Assignment),
     /// A declaration of a witness.
     WitnessDecl(Arc<str>),
     /// A function call.
     FuncCall(FuncCall),
-}
-
-#[derive(Debug)]
-pub struct DestructPair {
-    /// The name of the left variable.
-    pub l_ident: Arc<str>,
-    /// The name of the right variable.
-    pub r_ident: Arc<str>,
-    /// The type of the variable.
-    pub ty: Option<Type>,
-    /// The expression that the variable is assigned to.
-    pub expression: Expression,
-    /// The source text associated with this expression
-    pub source_text: Arc<str>,
-    /// The position of this expression in the source file. (row, col)
-    pub position: (usize, usize),
 }
 
 /// Pattern for binding values to variables.
@@ -426,36 +408,10 @@ impl PestParse for Statement {
         assert!(matches!(pair.as_rule(), Rule::statement));
         let inner_pair = pair.into_inner().next().unwrap();
         match inner_pair.as_rule() {
-            Rule::destruct_pair => Statement::DestructTuple(DestructPair::parse(inner_pair)),
             Rule::assignment => Statement::Assignment(Assignment::parse(inner_pair)),
             Rule::witness => Statement::WitnessDecl(parse_witness(inner_pair)),
             Rule::func_call => Statement::FuncCall(FuncCall::parse(inner_pair)),
             x => panic!("{:?}", x),
-        }
-    }
-}
-
-impl PestParse for DestructPair {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
-        let source_text = Arc::from(pair.as_str());
-        let position = pair.line_col();
-        let mut inner_pair = pair.into_inner();
-        let l_ident = inner_pair.next().unwrap().as_str();
-        let r_ident = inner_pair.next().unwrap().as_str();
-
-        let reqd_ty = if let Rule::ty = inner_pair.peek().unwrap().as_rule() {
-            Some(Type::parse(inner_pair.next().unwrap()))
-        } else {
-            None
-        };
-        let expression = Expression::parse(inner_pair.next().unwrap());
-        DestructPair {
-            l_ident: Arc::from(l_ident),
-            r_ident: Arc::from(r_ident),
-            ty: reqd_ty,
-            expression,
-            source_text,
-            position,
         }
     }
 }
