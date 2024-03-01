@@ -8,7 +8,14 @@ program = {
 }
 statement = { assignment | destruct_pair| witness_decl |  func_call }
 witness_decl = _{ "let" ~ witness}
-assignment = { "let" ~ identifier ~ (":" ~ ty)? ~ "=" ~ expression }
+
+identifier        = @{ !(reserved) ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+variable_pattern  =  { identifier }
+ignore_pattern    =  { "_" }
+product_pattern   =  { "(" ~ pattern ~ "," ~ pattern ~ ")" }
+pattern           =  { variable_pattern | ignore_pattern | product_pattern }
+assignment        =  { "let" ~ pattern ~ (":" ~ ty)? ~ "=" ~ expression }
+
 destruct_pair = { "let" ~ "(" ~ identifier ~ ("," ~ identifier) ~ ")" ~ (":" ~ ty)? ~ "=" ~ expression }
 
 expression = { block_expression | pair | single_expression }
@@ -23,7 +30,7 @@ option_type       =  { "Option<" ~ ty ~ ">" }
 unsigned_type     =  { "u128" | "u256" | "u16" | "u32" | "u64" | "u1" | "u2" | "u4" | "u8" }
 ty                =  { unit_type | sum_type | product_type | option_type | unsigned_type }
 
-term = { func_call | constants | witness | identifier| "(" ~ expression ~ ")"}
+term = { func_call | constants | witness | identifier | "(" ~ expression ~ ")" }
 
 jet = @{"jet_" ~ (ASCII_ALPHANUMERIC | "_")+}
 builtin = @{"builtin_" ~ (ASCII_ALPHANUMERIC | "_")+}
@@ -32,8 +39,6 @@ assertl = @{"assertl"}
 assertr = @{"assertr"}
 witness = @{"wit_" ~ (ASCII_ALPHANUMERIC | "_")+}
 reserved = _{ jet | witness | builtin | asserts }
-
-identifier = @{ !(reserved) ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 
 constants = { unit | none | false_ | true_ | number }
 unit = { "()" }

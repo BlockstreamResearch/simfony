@@ -1,5 +1,6 @@
-use std::sync::Arc;
+use miniscript::iter::TreeLike;
 
+use crate::parse::Pattern;
 use crate::{named::ProgExt, ProgNode};
 
 /// A global scope is a stack of scopes.
@@ -11,30 +12,13 @@ use crate::{named::ProgExt, ProgNode};
 /// position in the environment.
 #[derive(Debug)]
 pub struct GlobalScope {
-    variables: Vec<Vec<Variable>>,
+    variables: Vec<Vec<Pattern>>,
     witnesses: Vec<Vec<String>>,
 }
 
 impl Default for GlobalScope {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[derive(Debug)]
-pub enum Variable {
-    /// Single variable. let a = [e]. Constructed by a single assignment.
-    Single(Arc<str>),
-    /// Tuple variable. let (a, b) = [e]. Constructed by a tuple assignment.
-    Tuple(Arc<str>, Arc<str>),
-}
-
-impl Variable {
-    fn contains(&self, key: &str) -> bool {
-        match self {
-            Variable::Single(s) => s.as_ref() == key,
-            Variable::Tuple(s1, s2) => s1.as_ref() == key || s2.as_ref() == key,
-        }
     }
 }
 
@@ -64,8 +48,8 @@ impl GlobalScope {
     }
 
     /// Pushes a new variable to the latest scope.
-    pub fn insert(&mut self, key: Variable) {
-        self.variables.last_mut().unwrap().push(key);
+    pub fn insert(&mut self, pattern: Pattern) {
+        self.variables.last_mut().unwrap().push(pattern);
     }
 
     /// Pushes a new witness to the latest scope.
@@ -96,21 +80,8 @@ impl GlobalScope {
             }
         }
         match var {
-            Some(v) => {
-                let mut child = ProgNode::iden();
-                child = match v {
-                    Variable::Single(_s) => child,
-                    Variable::Tuple(s1, s2) => {
-                        if s1.as_ref() == key {
-                            ProgNode::take(child)
-                        } else if s2.as_ref() == key {
-                            child = ProgNode::drop_(child);
-                            child
-                        } else {
-                            panic!("Variable {} not found", key);
-                        }
-                    }
-                };
+            Some(pattern) => {
+                let mut child = pattern.get_program(key).unwrap();
                 child = ProgNode::take(child);
                 for _ in 0..pos {
                     child = ProgNode::drop_(child);
@@ -119,5 +90,67 @@ impl GlobalScope {
             }
             None => panic!("Variable {} not found", key),
         }
+    }
+}
+
+impl Pattern {
+    pub fn get_identifier(&self) -> Option<&str> {
+        match self {
+            Pattern::Identifier(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    pub fn contains(&self, identifier: &str) -> bool {
+        self.pre_order_iter().any(|pattern| {
+            pattern
+                .get_identifier()
+                .map(|i| i == identifier)
+                .unwrap_or(false)
+        })
+    }
+
+    pub fn get_program(&self, identifier: &str) -> Option<ProgNode> {
+        enum Direction {
+            Left,
+            Right,
+        }
+
+        let mut pattern = self;
+        let mut path = vec![];
+
+        loop {
+            match pattern {
+                Pattern::Identifier(i) => {
+                    if i.as_ref() == identifier {
+                        break;
+                    } else {
+                        return None;
+                    }
+                }
+                Pattern::Ignore => return None,
+                Pattern::Product(l, r) => {
+                    if l.contains(identifier) {
+                        path.push(Direction::Left);
+                        pattern = l;
+                    } else {
+                        // Avoid checking if right branch contains identifier
+                        // We will find out once we reach the leaf
+                        path.push(Direction::Right);
+                        pattern = r;
+                    }
+                }
+            }
+        }
+
+        let mut output = ProgNode::iden();
+        while let Some(direction) = path.pop() {
+            match direction {
+                Direction::Left => output = ProgNode::take(output),
+                Direction::Right => output = ProgNode::drop_(output),
+            }
+        }
+
+        Some(output)
     }
 }

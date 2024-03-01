@@ -4,14 +4,14 @@ use std::{str::FromStr, sync::Arc};
 
 use simplicity::{jet::Elements, node, FailEntropy, Value};
 
-use crate::parse::UIntType;
+use crate::parse::{Pattern, UIntType};
 use crate::{
     named::{ConstructExt, NamedConstructNode, ProgExt},
     parse::{
         ConstantsInner, Expression, ExpressionInner, FuncCall, FuncType, Program, SingleExpression,
         Statement, Term, TermInner, Type,
     },
-    scope::{GlobalScope, Variable},
+    scope::GlobalScope,
     ProgNode,
 };
 
@@ -30,7 +30,7 @@ fn eval_blk(
     match &stmts[index] {
         Statement::Assignment(assignment) => {
             let expr = assignment.expression.eval(scope, assignment.ty.as_ref());
-            scope.insert(Variable::Single(Arc::clone(&assignment.identifier)));
+            scope.insert(assignment.pattern.clone());
             let left = ProgNode::pair(expr, ProgNode::iden());
             let right = eval_blk(stmts, scope, index + 1, last_expr);
             ProgNode::comp(left, right)
@@ -46,9 +46,9 @@ fn eval_blk(
         }
         Statement::DestructTuple(tuple) => {
             let expr = tuple.expression.eval(scope, tuple.ty.as_ref());
-            scope.insert(Variable::Tuple(
-                tuple.l_ident.clone(),
-                tuple.r_ident.clone(),
+            scope.insert(Pattern::Product(
+                Arc::new(Pattern::Identifier(tuple.l_ident.clone())),
+                Arc::new(Pattern::Identifier(tuple.r_ident.clone())),
             ));
             let left = ProgNode::pair(expr, ProgNode::iden());
 

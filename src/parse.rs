@@ -47,18 +47,38 @@ pub struct DestructPair {
     pub position: (usize, usize),
 }
 
-/// A variable declaration.
+/// Pattern for binding values to variables.
+#[derive(Debug, Clone)]
+pub enum Pattern {
+    /// Bind value to variable name.
+    Identifier(Arc<str>),
+    /// Do not bind.
+    Ignore,
+    /// Split product value. Bind components to first and second pattern, respectively.
+    Product(Arc<Self>, Arc<Self>),
+}
+
+impl<'a> TreeLike for &'a Pattern {
+    fn as_node(&self) -> Tree<Self> {
+        match self {
+            Pattern::Identifier(_) | Pattern::Ignore => Tree::Nullary,
+            Pattern::Product(l, r) => Tree::Binary(l, r),
+        }
+    }
+}
+
+/// The output of an expression is assigned to a pattern.
 #[derive(Debug)]
 pub struct Assignment {
-    /// The name of the variable.
-    pub identifier: Arc<str>,
-    /// The type of the variable.
+    /// The pattern.
+    pub pattern: Pattern,
+    /// The return type of the expression.
     pub ty: Option<Type>,
-    /// The expression that the variable is assigned to.
+    /// The expression.
     pub expression: Expression,
-    /// The source text associated with this expression
+    /// The source text associated with this assignment.
     pub source_text: Arc<str>,
-    /// The position of this expression in the source file. (row, col)
+    /// The position of this assignment in the source file. (row, col)
     pub position: (usize, usize),
 }
 
@@ -440,13 +460,43 @@ impl PestParse for DestructPair {
     }
 }
 
+impl PestParse for Pattern {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::pattern));
+        let pair = PatternPair(pair);
+        let mut output = vec![];
+
+        for data in pair.post_order_iter() {
+            match data.node.0.as_rule() {
+                Rule::pattern => {}
+                Rule::variable_pattern => {
+                    let identifier = data.node.0.as_str();
+                    output.push(Pattern::Identifier(Arc::from(identifier)));
+                }
+                Rule::ignore_pattern => {
+                    output.push(Pattern::Ignore);
+                }
+                Rule::product_pattern => {
+                    let r = output.pop().unwrap();
+                    let l = output.pop().unwrap();
+                    output.push(Pattern::Product(Arc::new(l), Arc::new(r)));
+                }
+                _ => unreachable!("Corrupt grammar"),
+            }
+        }
+
+        debug_assert!(output.len() == 1);
+        output.pop().unwrap()
+    }
+}
+
 impl PestParse for Assignment {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
         assert!(matches!(pair.as_rule(), Rule::assignment));
         let source_text = Arc::from(pair.as_str());
         let position = pair.line_col();
         let mut inner_pair = pair.into_inner();
-        let ident = inner_pair.next().unwrap().as_str();
+        let pattern = Pattern::parse(inner_pair.next().unwrap());
         let reqd_ty = if let Rule::ty = inner_pair.peek().unwrap().as_rule() {
             Some(Type::parse(inner_pair.next().unwrap()))
         } else {
@@ -454,7 +504,7 @@ impl PestParse for Assignment {
         };
         let expression = Expression::parse(inner_pair.next().unwrap());
         Assignment {
-            identifier: Arc::from(ident),
+            pattern,
             ty: reqd_ty,
             expression,
             source_text,
@@ -626,6 +676,29 @@ impl PestParse for UIntType {
             "u64" => UIntType::U64,
             "u128" => UIntType::U128,
             "u256" => UIntType::U256,
+            _ => unreachable!("Corrupt grammar"),
+        }
+    }
+}
+
+/// Pair of tokens from the 'pattern' rule.
+#[derive(Clone, Debug)]
+struct PatternPair<'a>(pest::iterators::Pair<'a, Rule>);
+
+impl<'a> TreeLike for PatternPair<'a> {
+    fn as_node(&self) -> Tree<Self> {
+        let mut it = self.0.clone().into_inner();
+        match self.0.as_rule() {
+            Rule::variable_pattern | Rule::ignore_pattern => Tree::Nullary,
+            Rule::pattern => {
+                let l = it.next().unwrap();
+                Tree::Unary(PatternPair(l))
+            }
+            Rule::product_pattern => {
+                let l = it.next().unwrap();
+                let r = it.next().unwrap();
+                Tree::Binary(PatternPair(l), PatternPair(r))
+            }
             _ => unreachable!("Corrupt grammar"),
         }
     }
