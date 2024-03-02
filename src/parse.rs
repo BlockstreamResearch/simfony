@@ -96,10 +96,10 @@ pub enum FuncType {
     BuiltIn(Arc<str>),
 }
 
-/// An expression.
+/// An expression is something that returns a value.
 #[derive(Debug)]
 pub struct Expression {
-    /// The inner expression.
+    /// The kind of expression
     pub inner: ExpressionInner,
     /// The source text associated with this expression
     pub source_text: Arc<str>,
@@ -107,78 +107,56 @@ pub struct Expression {
     pub position: (usize, usize),
 }
 
-/// An expression inner.
+/// The kind of expression.
 #[derive(Debug)]
 pub enum ExpressionInner {
-    /// A block expression.
-    BlockExpression(Vec<Statement>, Box<Expression>),
-    /// A pair expression.
-    Pair(Box<Expression>, Box<Expression>),
-    /// A single expression.
-    SingleExpression(Box<SingleExpression>),
+    /// A block expression executes a series of statements
+    /// and returns the value of the final expression.
+    BlockExpression(Vec<Statement>, Arc<Expression>),
+    /// A single expression directly returns a value.
+    SingleExpression(SingleExpression),
 }
 
-/// A single without any blocks or pairs
+/// A single expression directly returns a value.
 #[derive(Debug)]
 pub struct SingleExpression {
-    /// A term.
-    pub term: Box<Term>,
+    /// The kind of single expression
+    pub inner: SingleExpressionInner,
     /// The source text associated with this expression
     pub source_text: Arc<str>,
     /// The position of this expression in the source file. (row, col)
     pub position: (usize, usize),
 }
 
-/// A terminal.
+/// The kind of single expression.
 #[derive(Debug)]
-pub struct Term {
-    /// The inner terminal.
-    pub inner: TermInner,
-    /// The source text associated with this expression
-    pub source_text: Arc<str>,
-    /// The position of this expression in the source file. (row, col)
-    pub position: (usize, usize),
-}
-
-/// A terminal.
-#[derive(Debug)]
-pub enum TermInner {
-    /// Constant
-    Constants(Constants),
-    /// A witness identifier
-    Witness(Arc<str>),
-    /// A (jet)function call
-    FuncCall(FuncCall),
-    /// A variable identifier
-    Identifier(Arc<str>),
-    /// An expression in parentheses.
-    Expression(Expression),
-}
-
-/// A constant.
-#[derive(Debug)]
-pub struct Constants {
-    /// The constant.
-    pub inner: ConstantsInner,
-    /// The source text associated with this expression
-    pub source_text: Arc<str>,
-    /// The position of this expression in the source file. (row, col)
-    pub position: (usize, usize),
-}
-
-/// A constant inner.
-#[derive(Debug)]
-pub enum ConstantsInner {
-    /// unit
+pub enum SingleExpressionInner {
+    /// Unit literal expression
     Unit,
-    /// none
+    /// Left wrapper expression
+    Left(Arc<Expression>),
+    /// Right wrapper expression
+    Right(Arc<Expression>),
+    /// Product wrapper expression
+    Product(Arc<Expression>, Arc<Expression>),
+    /// None literal expression
     None,
-    /// false
-    False,
-    /// true
-    True,
-    /// A number
-    Number(Arc<str>),
+    /// Some wrapper expression
+    Some(Arc<Expression>),
+    /// Unsigned integer literal expression
+    UnsignedInteger(Arc<str>),
+    /// Bit string literal expression
+    BitString(Vec<u8>),
+    /// Byte string literal expression
+    ByteString(Vec<u8>),
+    /// Witness identifier expression
+    Witness(Arc<str>),
+    /// Variable identifier expression
+    Variable(Arc<str>),
+    /// Function call
+    FuncCall(FuncCall),
+    /// Expression in parentheses
+    Expression(Arc<Expression>),
 }
 
 /// A Simphony type.
@@ -494,9 +472,12 @@ impl PestParse for FuncCall {
 
 impl PestParse for Expression {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::expression));
+
         let source_text = Arc::from(pair.as_str());
         let position = pair.line_col();
         let pair = pair.into_inner().next().unwrap();
+
         let inner = match pair.as_rule() {
             Rule::block_expression => {
                 let mut stmts = Vec::new();
@@ -505,19 +486,14 @@ impl PestParse for Expression {
                     stmts.push(Statement::parse(inner_pair.next().unwrap()));
                 }
                 let expr = Expression::parse(inner_pair.next().unwrap());
-                ExpressionInner::BlockExpression(stmts, Box::new(expr))
-            }
-            Rule::pair => {
-                let mut inner_pair = pair.into_inner();
-                let lhs = Expression::parse(inner_pair.next().unwrap());
-                let rhs = Expression::parse(inner_pair.next().unwrap());
-                ExpressionInner::Pair(Box::new(lhs), Box::new(rhs))
+                ExpressionInner::BlockExpression(stmts, Arc::new(expr))
             }
             Rule::single_expression => {
-                ExpressionInner::SingleExpression(Box::new(SingleExpression::parse(pair)))
+                ExpressionInner::SingleExpression(SingleExpression::parse(pair))
             }
-            x => panic!("{:?}", x),
+            _ => unreachable!("Corrupt grammar"),
         };
+
         Expression {
             inner,
             source_text,
@@ -528,53 +504,57 @@ impl PestParse for Expression {
 
 impl PestParse for SingleExpression {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
-        let source_text = Arc::from(pair.as_str());
+        assert!(matches!(pair.as_rule(), Rule::single_expression));
+
+        let source_text: Arc<str> = Arc::from(pair.as_str());
         let position = pair.line_col();
-        let mut pairs = pair.into_inner();
-        let pair = pairs.next().unwrap();
+        let inner_pair = pair.into_inner().next().unwrap();
+
+        let inner = match inner_pair.as_rule() {
+            Rule::unit_expr => SingleExpressionInner::Unit,
+            Rule::left_expr => {
+                let l = inner_pair.into_inner().next().unwrap();
+                SingleExpressionInner::Left(Arc::new(Expression::parse(l)))
+            }
+            Rule::right_expr => {
+                let r = inner_pair.into_inner().next().unwrap();
+                SingleExpressionInner::Right(Arc::new(Expression::parse(r)))
+            }
+            Rule::product_expr => {
+                let mut product_pair = inner_pair.into_inner();
+                let l = product_pair.next().unwrap();
+                let r = product_pair.next().unwrap();
+                SingleExpressionInner::Product(
+                    Arc::new(Expression::parse(l)),
+                    Arc::new(Expression::parse(r)),
+                )
+            }
+            Rule::none_expr => SingleExpressionInner::None,
+            Rule::some_expr => {
+                let r = inner_pair.into_inner().next().unwrap();
+                SingleExpressionInner::Some(Arc::new(Expression::parse(r)))
+            }
+            Rule::func_call => SingleExpressionInner::FuncCall(FuncCall::parse(inner_pair)),
+            Rule::bit_string => unimplemented!(),
+            Rule::byte_string => unimplemented!(),
+            Rule::unsigned_integer => SingleExpressionInner::UnsignedInteger(source_text.clone()),
+            Rule::witness_expr => {
+                let witness_pair = inner_pair.into_inner().next().unwrap();
+                let witness = parse_witness(witness_pair);
+                SingleExpressionInner::Witness(witness)
+            }
+            Rule::variable_expr => {
+                let identifier_pair = inner_pair.into_inner().next().unwrap();
+                let identifier = parse_identifier(identifier_pair);
+                SingleExpressionInner::Variable(identifier)
+            }
+            Rule::expression => {
+                SingleExpressionInner::Expression(Arc::new(Expression::parse(inner_pair)))
+            }
+            _ => unreachable!("Corrupt grammar"),
+        };
+
         SingleExpression {
-            term: Box::new(Term::parse(pair)),
-            source_text,
-            position,
-        }
-    }
-}
-
-impl PestParse for Term {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
-        let source_text = Arc::from(pair.as_str());
-        let position = pair.line_col();
-        let pair = pair.into_inner().next().unwrap();
-        let inner = match pair.as_rule() {
-            Rule::constants => TermInner::Constants(Constants::parse(pair)),
-            Rule::witness => TermInner::Witness(parse_witness(pair)),
-            Rule::func_call => TermInner::FuncCall(FuncCall::parse(pair)),
-            Rule::identifier => TermInner::Identifier(parse_identifier(pair)),
-            Rule::expression => TermInner::Expression(Expression::parse(pair)),
-            _x => panic!("{:?}", pair),
-        };
-        Term {
-            inner,
-            source_text,
-            position,
-        }
-    }
-}
-
-impl PestParse for Constants {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
-        let source_text = Arc::from(pair.as_str());
-        let position = pair.line_col();
-        let pair = pair.into_inner().next().unwrap();
-        let inner = match pair.as_rule() {
-            Rule::unit => ConstantsInner::Unit,
-            Rule::none => ConstantsInner::None,
-            Rule::false_ => ConstantsInner::False,
-            Rule::true_ => ConstantsInner::True,
-            Rule::number => ConstantsInner::Number(Arc::from(pair.as_str())),
-            x => unreachable!("expected constant {:?}, found", x),
-        };
-        Constants {
             inner,
             source_text,
             position,

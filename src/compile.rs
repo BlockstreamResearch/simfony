@@ -2,14 +2,13 @@
 
 use std::{str::FromStr, sync::Arc};
 
-use simplicity::{jet::Elements, node, FailEntropy, Value};
+use simplicity::{jet::Elements, node, FailEntropy};
 
-use crate::parse::{Pattern, UIntType};
+use crate::parse::{SingleExpressionInner, UIntType};
 use crate::{
     named::{ConstructExt, NamedConstructNode, ProgExt},
     parse::{
-        ConstantsInner, Expression, ExpressionInner, FuncCall, FuncType, Program, SingleExpression,
-        Statement, Term, TermInner, Type,
+        Expression, ExpressionInner, FuncCall, FuncType, Program, SingleExpression, Statement, Type,
     },
     scope::GlobalScope,
     ProgNode,
@@ -121,9 +120,6 @@ impl Expression {
                 scope.pop_scope();
                 res
             }
-            ExpressionInner::Pair(e1, e2) => {
-                ProgNode::pair(e1.eval(scope, None), e2.eval(scope, None))
-            }
             ExpressionInner::SingleExpression(e) => e.eval(scope, reqd_ty),
         }
     }
@@ -131,64 +127,40 @@ impl Expression {
 
 impl SingleExpression {
     pub fn eval(&self, scope: &mut GlobalScope, reqd_ty: Option<&Type>) -> ProgNode {
-        let res = self.term.eval(scope, reqd_ty);
-        if let Some(reqd_ty) = reqd_ty {
-            res.arrow()
-                .target
-                .unify(
-                    &reqd_ty.to_simplicity(),
-                    "Type mismatch for user provided type",
-                )
-                .unwrap();
-        }
-        res
-    }
-}
-
-fn assert_type(reqd_ty: Option<&Type>, actual_ty: &Type) {
-    if let Some(reqd_ty) = reqd_ty {
-        if reqd_ty != actual_ty {
-            panic!(
-                "Type mismatch. Expected {:?} but got {:?}",
-                reqd_ty, actual_ty
-            );
-        }
-    }
-}
-
-impl Term {
-    pub fn eval(&self, scope: &mut GlobalScope, reqd_ty: Option<&Type>) -> ProgNode {
         let res = match &self.inner {
-            TermInner::Constants(constants) => match &constants.inner {
-                ConstantsInner::None => todo!("None type here"),
-                ConstantsInner::False => {
-                    let _false = Value::u1(0);
-                    assert_type(reqd_ty, &Type::UInt(UIntType::U1));
-                    ProgNode::const_word(_false)
-                }
-                ConstantsInner::True => {
-                    let _true = Value::u1(1);
-                    assert_type(reqd_ty, &Type::UInt(UIntType::U1));
-                    ProgNode::const_word(_true)
-                }
-                ConstantsInner::Number(number) => {
-                    let ty = reqd_ty
-                        .unwrap_or(&Type::UInt(UIntType::U32))
-                        .to_uint()
-                        .expect("Not an integer type");
-                    let value = ty.parse_decimal(number.as_ref());
-                    ProgNode::comp(ProgNode::unit(), ProgNode::const_word(value))
-                }
-                ConstantsInner::Unit => ProgNode::unit(),
-            },
-            TermInner::Witness(ident) => ProgNode::witness(Arc::clone(ident)),
-            TermInner::FuncCall(func_call) => func_call.eval(scope, reqd_ty),
-            TermInner::Identifier(identifier) => {
+            SingleExpressionInner::Unit => ProgNode::unit(),
+            SingleExpressionInner::Left(l) => {
+                let l = l.eval(scope, None);
+                ProgNode::injl(l)
+            }
+            SingleExpressionInner::None => ProgNode::injl(ProgNode::unit()),
+            SingleExpressionInner::Right(r) | SingleExpressionInner::Some(r) => {
+                let r = r.eval(scope, None);
+                ProgNode::injr(r)
+            }
+            SingleExpressionInner::Product(l, r) => {
+                let l = l.eval(scope, None);
+                let r = r.eval(scope, None);
+                ProgNode::pair(l, r)
+            }
+            SingleExpressionInner::UnsignedInteger(decimal) => {
+                let ty = reqd_ty
+                    .unwrap_or(&Type::UInt(UIntType::U32))
+                    .to_uint()
+                    .expect("Not an integer type");
+                let value = ty.parse_decimal(decimal);
+                ProgNode::comp(ProgNode::unit(), ProgNode::const_word(value))
+            }
+            SingleExpressionInner::BitString(_) => unimplemented!(),
+            SingleExpressionInner::ByteString(_) => unimplemented!(),
+            SingleExpressionInner::Witness(identifier) => ProgNode::witness(identifier.clone()),
+            SingleExpressionInner::Variable(identifier) => {
                 let res = scope.get(identifier);
                 println!("Identifier {}: {}", identifier, res.arrow());
                 res
             }
-            TermInner::Expression(expression) => expression.eval(scope, reqd_ty),
+            SingleExpressionInner::FuncCall(call) => call.eval(scope, reqd_ty),
+            SingleExpressionInner::Expression(expression) => expression.eval(scope, reqd_ty),
         };
         if let Some(reqd_ty) = reqd_ty {
             res.arrow()
