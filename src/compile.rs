@@ -151,7 +151,10 @@ impl SingleExpression {
                 let value = ty.parse_decimal(decimal);
                 ProgNode::comp(ProgNode::unit(), ProgNode::const_word(value))
             }
-            SingleExpressionInner::BitString(_) => unimplemented!(),
+            SingleExpressionInner::BitString(bits) => {
+                let value = bits.to_simplicity();
+                ProgNode::comp(ProgNode::unit(), ProgNode::const_word(value))
+            }
             SingleExpressionInner::ByteString(bytes) => {
                 let value = bytes.to_simplicity();
                 ProgNode::comp(ProgNode::unit(), ProgNode::const_word(value))

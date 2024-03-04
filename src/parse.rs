@@ -147,7 +147,7 @@ pub enum SingleExpressionInner {
     /// Unsigned integer literal expression
     UnsignedInteger(Arc<str>),
     /// Bit string literal expression
-    BitString(Vec<u8>),
+    BitString(Bits),
     /// Byte string literal expression
     ByteString(Bytes),
     /// Witness identifier expression
@@ -158,6 +158,31 @@ pub enum SingleExpressionInner {
     FuncCall(FuncCall),
     /// Expression in parentheses
     Expression(Arc<Expression>),
+}
+
+/// Bit string whose length is a power of two.
+#[derive(Clone, Debug)]
+pub enum Bits {
+    /// Least significant bit of byte
+    U1(u8),
+    /// Two least significant bits of byte
+    U2(u8),
+    /// Four least significant bits of byte
+    U4(u8),
+    /// All bits from byte string
+    Long(Vec<u8>),
+}
+
+impl Bits {
+    /// Convert the bit string into a Simplicity type.
+    pub fn to_simplicity(&self) -> Arc<Value> {
+        match self {
+            Bits::U1(byte) => Value::u1(*byte),
+            Bits::U2(byte) => Value::u2(*byte),
+            Bits::U4(byte) => Value::u4(*byte),
+            Bits::Long(bytes) => Value::power_of_two(bytes),
+        }
+    }
 }
 
 /// Byte string whose length is a power of two.
@@ -547,7 +572,7 @@ impl PestParse for SingleExpression {
                 SingleExpressionInner::Some(Arc::new(Expression::parse(r)))
             }
             Rule::func_call => SingleExpressionInner::FuncCall(FuncCall::parse(inner_pair)),
-            Rule::bit_string => unimplemented!(),
+            Rule::bit_string => SingleExpressionInner::BitString(Bits::parse(inner_pair)),
             Rule::byte_string => SingleExpressionInner::ByteString(Bytes::parse(inner_pair)),
             Rule::unsigned_integer => SingleExpressionInner::UnsignedInteger(source_text.clone()),
             Rule::witness_expr => {
@@ -570,6 +595,50 @@ impl PestParse for SingleExpression {
             inner,
             source_text,
             position,
+        }
+    }
+}
+
+impl PestParse for Bits {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::bit_string));
+        let bit_string = pair.as_str();
+        assert_eq!(&bit_string[0..2], "0b");
+
+        let bits = &bit_string[2..];
+        if !bits.len().is_power_of_two() {
+            panic!("Length of bit strings must be a power of two");
+        }
+
+        let byte_len = (bits.len() + 7) / 8;
+        let mut bytes = Vec::with_capacity(byte_len);
+        let padding_len = 8usize.saturating_sub(bits.len());
+        let padding = std::iter::repeat('0').take(padding_len);
+        let mut padded_bits = padding.chain(bits.chars());
+
+        for _ in 0..byte_len {
+            let mut byte = 0u8;
+            for _ in 0..8 {
+                let bit = padded_bits.next().unwrap();
+                byte = byte << 1 | if bit == '1' { 1 } else { 0 };
+            }
+            bytes.push(byte);
+        }
+
+        match bits.len() {
+            1 => {
+                debug_assert!(bytes[0] < 2);
+                Bits::U1(bytes[0])
+            }
+            2 => {
+                debug_assert!(bytes[0] < 4);
+                Bits::U2(bytes[0])
+            }
+            4 => {
+                debug_assert!(bytes[0] < 16);
+                Bits::U4(bytes[0])
+            }
+            _ => Bits::Long(bytes),
         }
     }
 }
