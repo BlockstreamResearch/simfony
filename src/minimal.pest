@@ -1,6 +1,5 @@
 WHITESPACE = _{ " " | "\t" | "\n" | "\r" }
-
-COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+COMMENT = _{ ("/*" ~ (!"*/" ~ ANY)* ~ "*/") | ("//" ~ (!"\n" ~ ANY)*) }
 
 program = {
     SOI ~
