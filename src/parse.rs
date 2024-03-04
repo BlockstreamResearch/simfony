@@ -6,6 +6,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use miniscript::iter::{Tree, TreeLike};
+use simplicity::elements::hex::FromHex;
 use simplicity::types::Type as SimType;
 use simplicity::Value;
 
@@ -148,7 +149,7 @@ pub enum SingleExpressionInner {
     /// Bit string literal expression
     BitString(Vec<u8>),
     /// Byte string literal expression
-    ByteString(Vec<u8>),
+    ByteString(Bytes),
     /// Witness identifier expression
     Witness(Arc<str>),
     /// Variable identifier expression
@@ -157,6 +158,17 @@ pub enum SingleExpressionInner {
     FuncCall(FuncCall),
     /// Expression in parentheses
     Expression(Arc<Expression>),
+}
+
+/// Byte string whose length is a power of two.
+#[derive(Clone, Debug)]
+pub struct Bytes(pub Vec<u8>);
+
+impl Bytes {
+    /// Convert the byte string into a Simplicity value.
+    pub fn to_simplicity(&self) -> Arc<Value> {
+        Value::power_of_two(self.0.as_ref())
+    }
 }
 
 /// A Simphony type.
@@ -536,7 +548,7 @@ impl PestParse for SingleExpression {
             }
             Rule::func_call => SingleExpressionInner::FuncCall(FuncCall::parse(inner_pair)),
             Rule::bit_string => unimplemented!(),
-            Rule::byte_string => unimplemented!(),
+            Rule::byte_string => SingleExpressionInner::ByteString(Bytes::parse(inner_pair)),
             Rule::unsigned_integer => SingleExpressionInner::UnsignedInteger(source_text.clone()),
             Rule::witness_expr => {
                 let witness_pair = inner_pair.into_inner().next().unwrap();
@@ -559,6 +571,22 @@ impl PestParse for SingleExpression {
             source_text,
             position,
         }
+    }
+}
+
+impl PestParse for Bytes {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::byte_string));
+        let hex_string = pair.as_str();
+        assert_eq!(&hex_string[0..2], "0x");
+
+        let hex_digits = &hex_string[2..];
+        if !hex_digits.len().is_power_of_two() {
+            panic!("Length of hex strings must be a power of two");
+        }
+
+        let bytes = Vec::<u8>::from_hex(hex_digits).unwrap();
+        Bytes(bytes)
     }
 }
 

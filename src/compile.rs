@@ -152,7 +152,10 @@ impl SingleExpression {
                 ProgNode::comp(ProgNode::unit(), ProgNode::const_word(value))
             }
             SingleExpressionInner::BitString(_) => unimplemented!(),
-            SingleExpressionInner::ByteString(_) => unimplemented!(),
+            SingleExpressionInner::ByteString(bytes) => {
+                let value = bytes.to_simplicity();
+                ProgNode::comp(ProgNode::unit(), ProgNode::const_word(value))
+            }
             SingleExpressionInner::Witness(identifier) => ProgNode::witness(identifier.clone()),
             SingleExpressionInner::Variable(identifier) => {
                 let res = scope.get(identifier);
