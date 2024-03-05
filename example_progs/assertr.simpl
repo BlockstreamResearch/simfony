@@ -1,6 +1,8 @@
-let res = jet_parse_lock(10);
-let res2 = res;
-let res3 = assertl(res);
-jet_verify(jet_eq_32(assertl(res), 10));
-jet_verify(jet_eq_32(assertl(res2), 10));
-jet_verify(jet_eq_32(res3, 10));
+let l_or_r: Either<u32, u32> = jet_parse_lock(10);
+let l: u32 = unwrap_left(l_or_r);
+jet_verify(jet_eq_32(unwrap_left(l_or_r), 10));
+jet_verify(jet_eq_32(l, 10));
+let l_or_r = Right(11);
+let r = unwrap_right(l_or_r);
+jet_verify(jet_eq_32(unwrap_right(l_or_r), 11));
+jet_verify(jet_eq_32(r, 11));

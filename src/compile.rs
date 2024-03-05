@@ -2,7 +2,7 @@
 
 use std::{str::FromStr, sync::Arc};
 
-use simplicity::{jet::Elements, node, FailEntropy};
+use simplicity::{jet::Elements, node, Cmr, FailEntropy};
 
 use crate::parse::{SingleExpressionInner, UIntType};
 use crate::{
@@ -60,7 +60,7 @@ impl Program {
 
 impl FuncCall {
     pub fn eval(&self, scope: &mut GlobalScope, _reqd_ty: Option<&Type>) -> ProgNode {
-        match &self.func_name {
+        match &self.func_type {
             FuncType::Jet(jet_name) => {
                 let args = self
                     .args
@@ -78,34 +78,24 @@ impl FuncCall {
                     None => ProgNode::comp(ProgNode::unit(), jet),
                 }
             }
-            FuncType::BuiltIn(_f_name) => {
-                todo!("Builtins not supported yet")
-            }
-            FuncType::AssertL => {
+            FuncType::BuiltIn(..) => unimplemented!("Builtins are not supported yet"),
+            FuncType::UnwrapLeft => {
                 debug_assert!(self.args.len() == 1);
-                let e1 = self.args[0].eval(scope, None);
-                let fail_entropy = FailEntropy::from_byte_array([0; 64]);
-                // println!("left: {}", e1.arrow());
-                let e1 = ProgNode::pair(e1, ProgNode::unit());
-                let res = ProgNode::case(ProgNode::iden(), ProgNode::fail(fail_entropy));
-                // println!("assert_l: {} target {:?}", res.arrow(), res.arrow().target);
-                let res = ProgNode::comp(e1, res);
-                // println!("assert_l: {}", res.arrow());
-                ProgNode::comp(res, ProgNode::take(ProgNode::iden()))
+                let b = self.args[0].eval(scope, None);
+                let left_and_unit = ProgNode::pair(b, ProgNode::unit());
+                let fail_cmr = Cmr::fail(FailEntropy::ZERO);
+                let take_iden = ProgNode::take(ProgNode::iden());
+                let get_inner = ProgNode::assertl(take_iden, fail_cmr);
+                ProgNode::comp(left_and_unit, get_inner)
             }
-            FuncType::AssertR => {
-                // comp (assertr cmrFail0 (pair ⟦e1⟧Ξ iden))
+            FuncType::UnwrapRight | FuncType::Unwrap => {
                 debug_assert!(self.args.len() == 1);
-                let e1 = self.args[0].eval(scope, None);
-                // let pair_e1_iden = ProgNode::pair(&e1, &ProgNode::iden()).unwrap();
-                let fail_entropy = FailEntropy::from_byte_array([0; 64]);
-                let e1 = ProgNode::pair(e1, ProgNode::unit());
-                // println!("e1: {}", e1.arrow());
-                let res = ProgNode::case(ProgNode::fail(fail_entropy), ProgNode::iden());
-                // println!("assert_r: {}", res.arrow());
-                let res = ProgNode::comp(e1, res);
-                // println!("assert_r: {}", res.arrow());
-                ProgNode::comp(res, ProgNode::take(ProgNode::iden()))
+                let c = self.args[0].eval(scope, None);
+                let right_and_unit = ProgNode::pair(c, ProgNode::unit());
+                let fail_cmr = Cmr::fail(FailEntropy::ZERO);
+                let take_iden = ProgNode::take(ProgNode::iden());
+                let get_inner = ProgNode::assertr(fail_cmr, take_iden);
+                ProgNode::comp(right_and_unit, get_inner)
             }
         }
     }
