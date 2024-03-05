@@ -269,6 +269,7 @@ pub trait PestParse {
 
 impl PestParse for Program {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::program));
         let mut stmts = Vec::new();
         for inner_pair in pair.into_inner() {
             match inner_pair.as_rule() {
@@ -283,6 +284,7 @@ impl PestParse for Program {
 
 impl PestParse for Statement {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::statement));
         let inner_pair = pair.into_inner().next().unwrap();
         match inner_pair.as_rule() {
             Rule::destruct_pair => Statement::DestructTuple(DestructPair::parse(inner_pair)),
@@ -322,6 +324,7 @@ impl PestParse for DestructPair {
 
 impl PestParse for Assignment {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::assignment));
         let source_text = Arc::from(pair.as_str());
         let position = pair.line_col();
         let mut inner_pair = pair.into_inner();
