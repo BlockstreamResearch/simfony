@@ -168,6 +168,15 @@ pub enum SingleExpressionInner {
     FuncCall(FuncCall),
     /// Expression in parentheses
     Expression(Arc<Expression>),
+    /// Match expression over a sum type
+    Match {
+        /// Expression whose output is matched
+        scrutinee: Arc<Expression>,
+        /// Arm for left sum values
+        left: MatchArm,
+        /// Arm for right sum values
+        right: MatchArm,
+    },
 }
 
 /// Bit string whose length is a power of two.
@@ -220,6 +229,33 @@ impl WitnessName {
 impl fmt::Display for WitnessName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+/// Arm of a match expression.
+#[derive(Clone, Debug)]
+pub struct MatchArm {
+    /// Matched pattern
+    pub pattern: MatchPattern,
+    /// Executed expression
+    pub expression: Arc<Expression>,
+}
+
+/// Pattern of a match arm.
+#[derive(Clone, Debug)]
+pub enum MatchPattern {
+    /// Bind inner value of left value to variable name.
+    Left(Identifier),
+    /// Bind inner value of right value to variable name.
+    Right(Identifier),
+}
+
+impl MatchPattern {
+    /// Get the variable identifier bound in the pattern.
+    pub fn get_identifier(&self) -> Option<&Identifier> {
+        match self {
+            MatchPattern::Left(i) | MatchPattern::Right(i) => Some(i),
+        }
     }
 }
 
@@ -563,11 +599,13 @@ impl PestParse for FuncType {
 
 impl PestParse for Expression {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
-        assert!(matches!(pair.as_rule(), Rule::expression));
-
         let source_text = Arc::from(pair.as_str());
         let position = pair.line_col();
-        let pair = pair.into_inner().next().unwrap();
+        let pair = match pair.as_rule() {
+            Rule::expression => pair.into_inner().next().unwrap(),
+            Rule::block_expression | Rule::single_expression => pair,
+            rule => panic!("Cannot parse rule: {:?}", rule),
+        };
 
         let inner = match pair.as_rule() {
             Rule::block_expression => {
@@ -639,6 +677,24 @@ impl PestParse for SingleExpression {
             }
             Rule::expression => {
                 SingleExpressionInner::Expression(Arc::new(Expression::parse(inner_pair)))
+            }
+            Rule::match_expr => {
+                let mut it = inner_pair.into_inner();
+                let scrutinee = Arc::new(Expression::parse(it.next().unwrap()));
+                let first_arm = MatchArm::parse(it.next().unwrap());
+                let second_arm = MatchArm::parse(it.next().unwrap());
+
+                let (left, right) = match (&first_arm.pattern, &second_arm.pattern) {
+                    (MatchPattern::Left(..), MatchPattern::Right(..)) => (first_arm, second_arm),
+                    (MatchPattern::Right(..), MatchPattern::Left(..)) => (second_arm, first_arm),
+                    _ => panic!("Non-exhaustive match expression"),
+                };
+
+                SingleExpressionInner::Match {
+                    scrutinee,
+                    left,
+                    right,
+                }
             }
             _ => unreachable!("Corrupt grammar"),
         };
@@ -716,6 +772,40 @@ impl PestParse for WitnessName {
         assert!(matches!(pair.as_rule(), Rule::witness_name));
         let name = Arc::from(pair.as_str());
         WitnessName(name)
+    }
+}
+
+impl PestParse for MatchArm {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::match_arm));
+        let mut it = pair.into_inner();
+        let pattern = MatchPattern::parse(it.next().unwrap());
+        let expression = Arc::new(Expression::parse(it.next().unwrap()));
+        MatchArm {
+            pattern,
+            expression,
+        }
+    }
+}
+
+impl PestParse for MatchPattern {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::match_pattern));
+        let inner_pair = pair.into_inner().next().unwrap();
+        let rule = inner_pair.as_rule();
+        match rule {
+            Rule::left_pattern | Rule::right_pattern => {
+                let identifier_pair = inner_pair.into_inner().next().unwrap();
+                let identifier = Identifier::parse(identifier_pair);
+
+                match rule {
+                    Rule::left_pattern => MatchPattern::Left(identifier),
+                    Rule::right_pattern => MatchPattern::Right(identifier),
+                    _ => unreachable!("Covered by outer match"),
+                }
+            }
+            _ => unreachable!("Corrupt grammar"),
+        }
     }
 }
 

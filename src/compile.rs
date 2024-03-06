@@ -4,7 +4,7 @@ use std::{str::FromStr, sync::Arc};
 
 use simplicity::{jet::Elements, node, Cmr, FailEntropy};
 
-use crate::parse::{SingleExpressionInner, UIntType};
+use crate::parse::{Pattern, SingleExpressionInner, UIntType};
 use crate::{
     named::{ConstructExt, NamedConstructNode, ProgExt},
     parse::{
@@ -156,6 +156,29 @@ impl SingleExpression {
             }
             SingleExpressionInner::FuncCall(call) => call.eval(scope, reqd_ty),
             SingleExpressionInner::Expression(expression) => expression.eval(scope, reqd_ty),
+            SingleExpressionInner::Match {
+                scrutinee,
+                left,
+                right,
+            } => {
+                let mut l_scope = scope.clone();
+                if let Some(x) = left.pattern.get_identifier() {
+                    l_scope.insert(Pattern::Identifier(x.clone()));
+                }
+                let l_compiled = left.expression.eval(&mut l_scope, reqd_ty);
+
+                let mut r_scope = scope.clone();
+                if let Some(y) = right.pattern.get_identifier() {
+                    r_scope.insert(Pattern::Identifier(y.clone()));
+                }
+                let r_compiled = right.expression.eval(&mut r_scope, reqd_ty);
+
+                // TODO: Enforce target type A + B for m_expr
+                let scrutinized_input = scrutinee.eval(scope, None);
+                let input = ProgNode::pair(scrutinized_input, ProgNode::iden());
+                let output = ProgNode::case(l_compiled, r_compiled);
+                ProgNode::comp(input, output)
+            }
         };
         if let Some(reqd_ty) = reqd_ty {
             res.arrow()

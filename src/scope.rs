@@ -10,7 +10,7 @@ use crate::{named::ProgExt, ProgNode};
 /// Our simplicity translation looks at the index
 /// of the variable from the end of stack to figure it's
 /// position in the environment.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GlobalScope {
     variables: Vec<Vec<Pattern>>,
     witnesses: Vec<Vec<WitnessName>>,
