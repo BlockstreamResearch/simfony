@@ -1,0 +1,5 @@
+let bit: u1 = match Left(11) {
+    Left(x) => jet_le_32(10, x),
+    Right(y) => jet_le_32(y, 10),
+};
+jet_verify(bit);

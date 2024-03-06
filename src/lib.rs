@@ -166,6 +166,7 @@ mod tests {
         _test_progs("./example_progs/nesting.simpl");
         _test_progs("./example_progs/add.simpl");
         _test_progs("./example_progs/cat.simpl");
+        _test_progs("./example_progs/match.simpl");
         // _test_progs("./add_with_builtins.simpl");
     }
 
