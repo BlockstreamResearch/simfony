@@ -353,6 +353,7 @@ dependencies = [
  "base64",
  "hex-conservative",
  "lazy_static",
+ "miniscript",
  "pest",
  "pest_derive",
  "serde",
