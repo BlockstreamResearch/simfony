@@ -34,10 +34,6 @@ fn eval_blk(
             let right = eval_blk(stmts, scope, index + 1, last_expr);
             ProgNode::comp(left, right)
         }
-        Statement::WitnessDecl(name) => {
-            scope.insert_witness(name.clone());
-            eval_blk(stmts, scope, index + 1, last_expr)
-        }
         Statement::FuncCall(func_call) => {
             let left = func_call.eval(scope, None);
             let right = eval_blk(stmts, scope, index + 1, last_expr);

@@ -24,8 +24,6 @@ pub struct Program {
 pub enum Statement {
     /// A declaration of variables inside a pattern.
     Assignment(Assignment),
-    /// A declaration of a witness.
-    WitnessDecl(WitnessName),
     /// A function call.
     FuncCall(FuncCall),
 }
@@ -453,7 +451,6 @@ impl PestParse for Statement {
         let inner_pair = pair.into_inner().next().unwrap();
         match inner_pair.as_rule() {
             Rule::assignment => Statement::Assignment(Assignment::parse(inner_pair)),
-            Rule::witness => Statement::WitnessDecl(WitnessName::parse(inner_pair)),
             Rule::func_call => Statement::FuncCall(FuncCall::parse(inner_pair)),
             x => panic!("{:?}", x),
         }
@@ -716,7 +713,7 @@ impl PestParse for Bytes {
 
 impl PestParse for WitnessName {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
-        assert!(matches!(pair.as_rule(), Rule::witness));
+        assert!(matches!(pair.as_rule(), Rule::witness_name));
         let name = Arc::from(pair.as_str());
         WitnessName(name)
     }
