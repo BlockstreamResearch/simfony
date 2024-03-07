@@ -248,13 +248,18 @@ pub enum MatchPattern {
     Left(Identifier),
     /// Bind inner value of right value to variable name.
     Right(Identifier),
+    /// Match none value (no binding).
+    None,
+    /// Bind inner value of some value to variable name.
+    Some(Identifier),
 }
 
 impl MatchPattern {
     /// Get the variable identifier bound in the pattern.
     pub fn get_identifier(&self) -> Option<&Identifier> {
         match self {
-            MatchPattern::Left(i) | MatchPattern::Right(i) => Some(i),
+            MatchPattern::Left(i) | MatchPattern::Right(i) | MatchPattern::Some(i) => Some(i),
+            MatchPattern::None => None,
         }
     }
 }
@@ -687,6 +692,8 @@ impl PestParse for SingleExpression {
                 let (left, right) = match (&first_arm.pattern, &second_arm.pattern) {
                     (MatchPattern::Left(..), MatchPattern::Right(..)) => (first_arm, second_arm),
                     (MatchPattern::Right(..), MatchPattern::Left(..)) => (second_arm, first_arm),
+                    (MatchPattern::None, MatchPattern::Some(..)) => (first_arm, second_arm),
+                    (MatchPattern::Some(..), MatchPattern::None) => (second_arm, first_arm),
                     _ => panic!("Non-exhaustive match expression"),
                 };
 
@@ -794,16 +801,18 @@ impl PestParse for MatchPattern {
         let inner_pair = pair.into_inner().next().unwrap();
         let rule = inner_pair.as_rule();
         match rule {
-            Rule::left_pattern | Rule::right_pattern => {
+            Rule::left_pattern | Rule::right_pattern | Rule::some_pattern => {
                 let identifier_pair = inner_pair.into_inner().next().unwrap();
                 let identifier = Identifier::parse(identifier_pair);
 
                 match rule {
                     Rule::left_pattern => MatchPattern::Left(identifier),
                     Rule::right_pattern => MatchPattern::Right(identifier),
+                    Rule::some_pattern => MatchPattern::Some(identifier),
                     _ => unreachable!("Covered by outer match"),
                 }
             }
+            Rule::none_pattern => MatchPattern::None,
             _ => unreachable!("Corrupt grammar"),
         }
     }

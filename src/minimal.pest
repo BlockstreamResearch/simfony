@@ -22,7 +22,9 @@ assignment        =  { "let" ~ pattern ~ (":" ~ ty)? ~ "=" ~ expression }
 
 left_pattern      =  { "Left(" ~ identifier ~ ")" }
 right_pattern     =  { "Right(" ~ identifier ~ ")" }
-match_pattern     =  { left_pattern | right_pattern }
+none_pattern      =  { "None" }
+some_pattern      =  { "Some(" ~ identifier ~ ")" }
+match_pattern     =  { left_pattern | right_pattern | none_pattern | some_pattern }
 
 unit_type         =  { "()" }
 sum_type          =  { "Either<" ~ ty ~ "," ~ ty ~ ">" }

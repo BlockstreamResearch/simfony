@@ -3,3 +3,8 @@ let bit: u1 = match Left(11) {
     Right(y) => jet_le_32(y, 10),
 };
 jet_verify(bit);
+let bit: u1 = match Some(11) {
+    Some(x) => jet_le_32(10, x),
+    None => 0,
+};
+jet_verify(bit);
