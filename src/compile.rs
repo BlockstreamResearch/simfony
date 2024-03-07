@@ -124,6 +124,8 @@ impl SingleExpression {
                 let r = r.eval(scope, None);
                 ProgNode::injr(r)
             }
+            SingleExpressionInner::False => ProgNode::injl(ProgNode::unit()),
+            SingleExpressionInner::True => ProgNode::injr(ProgNode::unit()),
             SingleExpressionInner::Product(l, r) => {
                 let l = l.eval(scope, None);
                 let r = r.eval(scope, None);

@@ -154,6 +154,10 @@ pub enum SingleExpressionInner {
     None,
     /// Some wrapper expression
     Some(Arc<Expression>),
+    /// False literal expression
+    False,
+    /// True literal expression
+    True,
     /// Unsigned integer literal expression
     UnsignedInteger(Arc<str>),
     /// Bit string literal expression
@@ -252,6 +256,10 @@ pub enum MatchPattern {
     None,
     /// Bind inner value of some value to variable name.
     Some(Identifier),
+    /// Match false value (no binding).
+    False,
+    /// Match true value (no binding).
+    True,
 }
 
 impl MatchPattern {
@@ -259,7 +267,7 @@ impl MatchPattern {
     pub fn get_identifier(&self) -> Option<&Identifier> {
         match self {
             MatchPattern::Left(i) | MatchPattern::Right(i) | MatchPattern::Some(i) => Some(i),
-            MatchPattern::None => None,
+            MatchPattern::None | MatchPattern::False | MatchPattern::True => None,
         }
     }
 }
@@ -272,6 +280,7 @@ pub enum Type {
     Either(Arc<Self>, Arc<Self>),
     Product(Arc<Self>, Arc<Self>),
     Option(Arc<Self>),
+    Boolean,
     UInt(UIntType),
 }
 
@@ -292,7 +301,7 @@ pub enum UIntType {
 impl<'a> TreeLike for &'a Type {
     fn as_node(&self) -> Tree<Self> {
         match self {
-            Type::Unit | Type::UInt(..) => Tree::Nullary,
+            Type::Unit | Type::Boolean | Type::UInt(..) => Tree::Nullary,
             Type::Option(r) => Tree::Unary(r),
             Type::Either(l, r) | Type::Product(l, r) => Tree::Binary(l, r),
         }
@@ -328,6 +337,9 @@ impl Type {
                     }
                     _ => return None,
                 },
+                Type::Boolean => {
+                    integer_type.insert(data.node, UIntType::U1);
+                }
                 Type::UInt(ty) => {
                     integer_type.insert(data.node, *ty);
                 }
@@ -357,6 +369,9 @@ impl Type {
                 Type::Option(_) => {
                     let r = output.pop().unwrap();
                     output.push(SimType::sum(SimType::unit(), r));
+                }
+                Type::Boolean => {
+                    output.push(SimType::two_two_n(0));
                 }
                 Type::UInt(ty) => output.push(ty.to_simplicity()),
             }
@@ -395,6 +410,7 @@ impl fmt::Display for Type {
                         f.write_str(">")?;
                     }
                 },
+                Type::Boolean => f.write_str("bool")?,
                 Type::UInt(ty) => write!(f, "{ty}")?,
             }
         }
@@ -668,6 +684,8 @@ impl PestParse for SingleExpression {
                 let r = inner_pair.into_inner().next().unwrap();
                 SingleExpressionInner::Some(Arc::new(Expression::parse(r)))
             }
+            Rule::false_expr => SingleExpressionInner::False,
+            Rule::true_expr => SingleExpressionInner::True,
             Rule::func_call => SingleExpressionInner::FuncCall(FuncCall::parse(inner_pair)),
             Rule::bit_string => SingleExpressionInner::BitString(Bits::parse(inner_pair)),
             Rule::byte_string => SingleExpressionInner::ByteString(Bytes::parse(inner_pair)),
@@ -694,6 +712,8 @@ impl PestParse for SingleExpression {
                     (MatchPattern::Right(..), MatchPattern::Left(..)) => (second_arm, first_arm),
                     (MatchPattern::None, MatchPattern::Some(..)) => (first_arm, second_arm),
                     (MatchPattern::Some(..), MatchPattern::None) => (second_arm, first_arm),
+                    (MatchPattern::False, MatchPattern::True) => (first_arm, second_arm),
+                    (MatchPattern::True, MatchPattern::False) => (second_arm, first_arm),
                     _ => panic!("Non-exhaustive match expression"),
                 };
 
@@ -813,6 +833,8 @@ impl PestParse for MatchPattern {
                 }
             }
             Rule::none_pattern => MatchPattern::None,
+            Rule::false_pattern => MatchPattern::False,
+            Rule::true_pattern => MatchPattern::True,
             _ => unreachable!("Corrupt grammar"),
         }
     }
@@ -844,6 +866,9 @@ impl PestParse for Type {
                 Rule::option_type => {
                     let r = output.pop().unwrap();
                     output.push(Type::Option(Arc::new(r)));
+                }
+                Rule::boolean_type => {
+                    output.push(Type::Boolean);
                 }
                 Rule::ty => {}
                 _ => unreachable!("Corrupt grammar"),
@@ -904,7 +929,7 @@ impl<'a> TreeLike for TyPair<'a> {
     fn as_node(&self) -> Tree<Self> {
         let mut it = self.0.clone().into_inner();
         match self.0.as_rule() {
-            Rule::unit_type | Rule::unsigned_type => Tree::Nullary,
+            Rule::unit_type | Rule::boolean_type | Rule::unsigned_type => Tree::Nullary,
             Rule::ty | Rule::option_type => {
                 let l = it.next().unwrap();
                 Tree::Unary(TyPair(l))
