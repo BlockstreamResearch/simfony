@@ -34,7 +34,7 @@ pub enum Statement {
 #[derive(Debug, Clone)]
 pub enum Pattern {
     /// Bind value to variable name.
-    Identifier(Arc<str>),
+    Identifier(Identifier),
     /// Do not bind.
     Ignore,
     /// Split product value. Bind components to first and second pattern, respectively.
@@ -47,6 +47,16 @@ impl<'a> TreeLike for &'a Pattern {
             Pattern::Identifier(_) | Pattern::Ignore => Tree::Nullary,
             Pattern::Product(l, r) => Tree::Binary(l, r),
         }
+    }
+}
+
+/// Identifier of a variable.
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
+pub struct Identifier(Arc<str>);
+
+impl fmt::Display for Identifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -155,7 +165,7 @@ pub enum SingleExpressionInner {
     /// Witness identifier expression
     Witness(Arc<str>),
     /// Variable identifier expression
-    Variable(Arc<str>),
+    Variable(Identifier),
     /// Function call
     FuncCall(FuncCall),
     /// Expression in parentheses
@@ -443,8 +453,8 @@ impl PestParse for Pattern {
             match data.node.0.as_rule() {
                 Rule::pattern => {}
                 Rule::variable_pattern => {
-                    let identifier = data.node.0.as_str();
-                    output.push(Pattern::Identifier(Arc::from(identifier)));
+                    let identifier = Identifier::parse(data.node.0.into_inner().next().unwrap());
+                    output.push(Pattern::Identifier(identifier));
                 }
                 Rule::ignore_pattern => {
                     output.push(Pattern::Ignore);
@@ -460,6 +470,14 @@ impl PestParse for Pattern {
 
         debug_assert!(output.len() == 1);
         output.pop().unwrap()
+    }
+}
+
+impl PestParse for Identifier {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::identifier));
+        let identifier = Arc::from(pair.as_str());
+        Identifier(identifier)
     }
 }
 
@@ -604,8 +622,7 @@ impl PestParse for SingleExpression {
             }
             Rule::variable_expr => {
                 let identifier_pair = inner_pair.into_inner().next().unwrap();
-                let identifier = parse_identifier(identifier_pair);
-                SingleExpressionInner::Variable(identifier)
+                SingleExpressionInner::Variable(Identifier::parse(identifier_pair))
             }
             Rule::expression => {
                 SingleExpressionInner::Expression(Arc::new(Expression::parse(inner_pair)))
@@ -778,16 +795,6 @@ impl<'a> TreeLike for TyPair<'a> {
                 Tree::Binary(TyPair(l), TyPair(r))
             }
             _ => unreachable!("Corrupt grammar"),
-        }
-    }
-}
-
-// identifier = @{ !(reserved) ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC)* }
-pub fn parse_identifier(pair: pest::iterators::Pair<Rule>) -> Arc<str> {
-    match pair.as_rule() {
-        Rule::identifier => Arc::from(pair.as_str()),
-        x => {
-            unreachable!("expected identifier found {:?}", x);
         }
     }
 }

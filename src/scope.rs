@@ -1,6 +1,6 @@
 use miniscript::iter::TreeLike;
 
-use crate::parse::Pattern;
+use crate::parse::{Identifier, Pattern};
 use crate::{named::ProgExt, ProgNode};
 
 /// A global scope is a stack of scopes.
@@ -66,7 +66,7 @@ impl GlobalScope {
     /// # Panics
     ///
     /// Panics if the variable is not found.
-    pub fn get(&self, key: &str) -> ProgNode {
+    pub fn get(&self, key: &Identifier) -> ProgNode {
         // search in the vector of vectors from the end
         let mut pos = 0;
         let mut var = None;
@@ -94,14 +94,14 @@ impl GlobalScope {
 }
 
 impl Pattern {
-    pub fn get_identifier(&self) -> Option<&str> {
+    pub fn get_identifier(&self) -> Option<&Identifier> {
         match self {
-            Pattern::Identifier(s) => Some(s),
+            Pattern::Identifier(i) => Some(i),
             _ => None,
         }
     }
 
-    pub fn contains(&self, identifier: &str) -> bool {
+    pub fn contains(&self, identifier: &Identifier) -> bool {
         self.pre_order_iter().any(|pattern| {
             pattern
                 .get_identifier()
@@ -110,7 +110,7 @@ impl Pattern {
         })
     }
 
-    pub fn get_program(&self, identifier: &str) -> Option<ProgNode> {
+    pub fn get_program(&self, identifier: &Identifier) -> Option<ProgNode> {
         enum Direction {
             Left,
             Right,
@@ -122,7 +122,7 @@ impl Pattern {
         loop {
             match pattern {
                 Pattern::Identifier(i) => {
-                    if i.as_ref() == identifier {
+                    if i == identifier {
                         break;
                     } else {
                         return None;
