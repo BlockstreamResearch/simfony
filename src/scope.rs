@@ -1,6 +1,6 @@
 use miniscript::iter::TreeLike;
 
-use crate::parse::{Identifier, Pattern};
+use crate::parse::{Identifier, Pattern, WitnessName};
 use crate::{named::ProgExt, ProgNode};
 
 /// A global scope is a stack of scopes.
@@ -13,7 +13,7 @@ use crate::{named::ProgExt, ProgNode};
 #[derive(Debug)]
 pub struct GlobalScope {
     variables: Vec<Vec<Pattern>>,
-    witnesses: Vec<Vec<String>>,
+    witnesses: Vec<Vec<WitnessName>>,
 }
 
 impl Default for GlobalScope {
@@ -53,7 +53,7 @@ impl GlobalScope {
     }
 
     /// Pushes a new witness to the latest scope.
-    pub fn insert_witness(&mut self, key: String) {
+    pub fn insert_witness(&mut self, key: WitnessName) {
         self.witnesses.last_mut().unwrap().push(key);
     }
 

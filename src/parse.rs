@@ -25,7 +25,7 @@ pub enum Statement {
     /// A declaration of variables inside a pattern.
     Assignment(Assignment),
     /// A declaration of a witness.
-    WitnessDecl(Arc<str>),
+    WitnessDecl(WitnessName),
     /// A function call.
     FuncCall(FuncCall),
 }
@@ -163,7 +163,7 @@ pub enum SingleExpressionInner {
     /// Byte string literal expression
     ByteString(Bytes),
     /// Witness identifier expression
-    Witness(Arc<str>),
+    Witness(WitnessName),
     /// Variable identifier expression
     Variable(Identifier),
     /// Function call
@@ -205,6 +205,23 @@ impl Bytes {
     /// Convert the byte string into a Simplicity value.
     pub fn to_simplicity(&self) -> Arc<Value> {
         Value::power_of_two(self.0.as_ref())
+    }
+}
+
+/// String that is a witness name.
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct WitnessName(Arc<str>);
+
+impl WitnessName {
+    /// Access the inner witness name.
+    pub fn as_inner(&self) -> &Arc<str> {
+        &self.0
+    }
+}
+
+impl fmt::Display for WitnessName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -436,7 +453,7 @@ impl PestParse for Statement {
         let inner_pair = pair.into_inner().next().unwrap();
         match inner_pair.as_rule() {
             Rule::assignment => Statement::Assignment(Assignment::parse(inner_pair)),
-            Rule::witness => Statement::WitnessDecl(parse_witness(inner_pair)),
+            Rule::witness => Statement::WitnessDecl(WitnessName::parse(inner_pair)),
             Rule::func_call => Statement::FuncCall(FuncCall::parse(inner_pair)),
             x => panic!("{:?}", x),
         }
@@ -617,8 +634,7 @@ impl PestParse for SingleExpression {
             Rule::unsigned_integer => SingleExpressionInner::UnsignedInteger(source_text.clone()),
             Rule::witness_expr => {
                 let witness_pair = inner_pair.into_inner().next().unwrap();
-                let witness = parse_witness(witness_pair);
-                SingleExpressionInner::Witness(witness)
+                SingleExpressionInner::Witness(WitnessName::parse(witness_pair))
             }
             Rule::variable_expr => {
                 let identifier_pair = inner_pair.into_inner().next().unwrap();
@@ -695,6 +711,14 @@ impl PestParse for Bytes {
 
         let bytes = Vec::<u8>::from_hex(hex_digits).unwrap();
         Bytes(bytes)
+    }
+}
+
+impl PestParse for WitnessName {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::witness));
+        let name = Arc::from(pair.as_str());
+        WitnessName(name)
     }
 }
 
@@ -795,16 +819,6 @@ impl<'a> TreeLike for TyPair<'a> {
                 Tree::Binary(TyPair(l), TyPair(r))
             }
             _ => unreachable!("Corrupt grammar"),
-        }
-    }
-}
-
-/// Parse a witness ident
-pub fn parse_witness(pair: pest::iterators::Pair<Rule>) -> Arc<str> {
-    match pair.as_rule() {
-        Rule::witness => Arc::from(pair.as_str().strip_prefix("wit_").unwrap()),
-        x => {
-            panic!("expected witness found: {:?}", x);
         }
     }
 }

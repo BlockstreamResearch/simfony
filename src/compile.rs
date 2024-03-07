@@ -34,8 +34,8 @@ fn eval_blk(
             let right = eval_blk(stmts, scope, index + 1, last_expr);
             ProgNode::comp(left, right)
         }
-        Statement::WitnessDecl(witness_ident) => {
-            scope.insert_witness(witness_ident.to_string());
+        Statement::WitnessDecl(name) => {
+            scope.insert_witness(name.clone());
             eval_blk(stmts, scope, index + 1, last_expr)
         }
         Statement::FuncCall(func_call) => {
@@ -149,7 +149,10 @@ impl SingleExpression {
                 let value = bytes.to_simplicity();
                 ProgNode::comp(ProgNode::unit(), ProgNode::const_word(value))
             }
-            SingleExpressionInner::Witness(identifier) => ProgNode::witness(identifier.clone()),
+            SingleExpressionInner::Witness(name) => {
+                scope.insert_witness(name.clone());
+                ProgNode::witness(name.as_inner().clone())
+            }
             SingleExpressionInner::Variable(identifier) => {
                 let res = scope.get(identifier);
                 println!("Identifier {}: {}", identifier, res.arrow());
