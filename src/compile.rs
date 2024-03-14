@@ -2,15 +2,15 @@
 
 use std::{str::FromStr, sync::Arc};
 
-use simplicity::{jet::Elements, node, FailEntropy, Value};
+use simplicity::{jet::Elements, node, Cmr, FailEntropy};
 
+use crate::parse::{Pattern, SingleExpressionInner, UIntType};
 use crate::{
     named::{ConstructExt, NamedConstructNode, ProgExt},
     parse::{
-        ConstantsInner, Expression, ExpressionInner, FuncCall, FuncType, Program, SingleExpression,
-        Statement, Term, TermInner, Type,
+        Expression, ExpressionInner, FuncCall, FuncType, Program, SingleExpression, Statement, Type,
     },
-    scope::{GlobalScope, Variable},
+    scope::GlobalScope,
     ProgNode,
 };
 
@@ -28,31 +28,16 @@ fn eval_blk(
     }
     match &stmts[index] {
         Statement::Assignment(assignment) => {
-            let expr = assignment.expression.eval(scope, assignment.ty);
-            scope.insert(Variable::Single(Arc::clone(&assignment.identifier)));
+            let expr = assignment.expression.eval(scope, assignment.ty.as_ref());
+            scope.insert(assignment.pattern.clone());
             let left = ProgNode::pair(expr, ProgNode::iden());
             let right = eval_blk(stmts, scope, index + 1, last_expr);
             ProgNode::comp(left, right)
-        }
-        Statement::WitnessDecl(witness_ident) => {
-            scope.insert_witness(witness_ident.to_string());
-            eval_blk(stmts, scope, index + 1, last_expr)
         }
         Statement::FuncCall(func_call) => {
             let left = func_call.eval(scope, None);
             let right = eval_blk(stmts, scope, index + 1, last_expr);
             combine_seq(left, right)
-        }
-        Statement::DestructTuple(tuple) => {
-            let expr = tuple.expression.eval(scope, tuple.ty);
-            scope.insert(Variable::Tuple(
-                tuple.l_ident.clone(),
-                tuple.r_ident.clone(),
-            ));
-            let left = ProgNode::pair(expr, ProgNode::iden());
-
-            let right = eval_blk(stmts, scope, index + 1, last_expr);
-            ProgNode::comp(left, right)
         }
     }
 }
@@ -70,8 +55,8 @@ impl Program {
 }
 
 impl FuncCall {
-    pub fn eval(&self, scope: &mut GlobalScope, _reqd_ty: Option<Type>) -> ProgNode {
-        match &self.func_name {
+    pub fn eval(&self, scope: &mut GlobalScope, _reqd_ty: Option<&Type>) -> ProgNode {
+        match &self.func_type {
             FuncType::Jet(jet_name) => {
                 let args = self
                     .args
@@ -89,41 +74,31 @@ impl FuncCall {
                     None => ProgNode::comp(ProgNode::unit(), jet),
                 }
             }
-            FuncType::BuiltIn(_f_name) => {
-                todo!("Builtins not supported yet")
-            }
-            FuncType::AssertL => {
+            FuncType::BuiltIn(..) => unimplemented!("Builtins are not supported yet"),
+            FuncType::UnwrapLeft => {
                 debug_assert!(self.args.len() == 1);
-                let e1 = self.args[0].eval(scope, None);
-                let fail_entropy = FailEntropy::from_byte_array([0; 64]);
-                // println!("left: {}", e1.arrow());
-                let e1 = ProgNode::pair(e1, ProgNode::unit());
-                let res = ProgNode::case(ProgNode::iden(), ProgNode::fail(fail_entropy));
-                // println!("assert_l: {} target {:?}", res.arrow(), res.arrow().target);
-                let res = ProgNode::comp(e1, res);
-                // println!("assert_l: {}", res.arrow());
-                ProgNode::comp(res, ProgNode::take(ProgNode::iden()))
+                let b = self.args[0].eval(scope, None);
+                let left_and_unit = ProgNode::pair(b, ProgNode::unit());
+                let fail_cmr = Cmr::fail(FailEntropy::ZERO);
+                let take_iden = ProgNode::take(ProgNode::iden());
+                let get_inner = ProgNode::assertl(take_iden, fail_cmr);
+                ProgNode::comp(left_and_unit, get_inner)
             }
-            FuncType::AssertR => {
-                // comp (assertr cmrFail0 (pair ⟦e1⟧Ξ iden))
+            FuncType::UnwrapRight | FuncType::Unwrap => {
                 debug_assert!(self.args.len() == 1);
-                let e1 = self.args[0].eval(scope, None);
-                // let pair_e1_iden = ProgNode::pair(&e1, &ProgNode::iden()).unwrap();
-                let fail_entropy = FailEntropy::from_byte_array([0; 64]);
-                let e1 = ProgNode::pair(e1, ProgNode::unit());
-                // println!("e1: {}", e1.arrow());
-                let res = ProgNode::case(ProgNode::fail(fail_entropy), ProgNode::iden());
-                // println!("assert_r: {}", res.arrow());
-                let res = ProgNode::comp(e1, res);
-                // println!("assert_r: {}", res.arrow());
-                ProgNode::comp(res, ProgNode::take(ProgNode::iden()))
+                let c = self.args[0].eval(scope, None);
+                let right_and_unit = ProgNode::pair(c, ProgNode::unit());
+                let fail_cmr = Cmr::fail(FailEntropy::ZERO);
+                let take_iden = ProgNode::take(ProgNode::iden());
+                let get_inner = ProgNode::assertr(fail_cmr, take_iden);
+                ProgNode::comp(right_and_unit, get_inner)
             }
         }
     }
 }
 
 impl Expression {
-    pub fn eval(&self, scope: &mut GlobalScope, reqd_ty: Option<Type>) -> ProgNode {
+    pub fn eval(&self, scope: &mut GlobalScope, reqd_ty: Option<&Type>) -> ProgNode {
         match &self.inner {
             ExpressionInner::BlockExpression(stmts, expr) => {
                 scope.push_scope();
@@ -131,81 +106,87 @@ impl Expression {
                 scope.pop_scope();
                 res
             }
-            ExpressionInner::Pair(e1, e2) => {
-                ProgNode::pair(e1.eval(scope, None), e2.eval(scope, None))
-            }
             ExpressionInner::SingleExpression(e) => e.eval(scope, reqd_ty),
         }
     }
 }
 
 impl SingleExpression {
-    pub fn eval(&self, scope: &mut GlobalScope, reqd_ty: Option<Type>) -> ProgNode {
-        let res = self.term.eval(scope, reqd_ty);
-        if let Some(reqd_ty) = reqd_ty {
-            res.arrow()
-                .target
-                .unify(
-                    &reqd_ty.to_simplicity_type(),
-                    "Type mismatch for user provided type",
-                )
-                .unwrap();
-        }
-        res
-    }
-}
-
-fn assert_type(reqd_ty: Option<Type>, actual_ty: Type) {
-    if let Some(reqd_ty) = reqd_ty {
-        if reqd_ty != actual_ty {
-            panic!(
-                "Type mismatch. Expected {:?} but got {:?}",
-                reqd_ty, actual_ty
-            );
-        }
-    }
-}
-
-impl Term {
-    pub fn eval(&self, scope: &mut GlobalScope, reqd_ty: Option<Type>) -> ProgNode {
+    pub fn eval(&self, scope: &mut GlobalScope, reqd_ty: Option<&Type>) -> ProgNode {
         let res = match &self.inner {
-            TermInner::Constants(constants) => match &constants.inner {
-                ConstantsInner::None => todo!("None type here"),
-                ConstantsInner::False => {
-                    let _false = Value::u1(0);
-                    assert_type(reqd_ty, Type::U1);
-                    ProgNode::const_word(_false)
-                }
-                ConstantsInner::True => {
-                    let _true = Value::u1(1);
-                    assert_type(reqd_ty, Type::U1);
-                    ProgNode::const_word(_true)
-                }
-                ConstantsInner::Number(number) => {
-                    let v = if let Some(ty) = reqd_ty {
-                        ty.parse_num(number)
-                    } else {
-                        let num = number.parse::<u32>().unwrap();
-                        Value::u32(num)
-                    };
-                    ProgNode::comp(ProgNode::unit(), ProgNode::const_word(v))
-                }
-                ConstantsInner::Unit => ProgNode::unit(),
-            },
-            TermInner::Witness(ident) => ProgNode::witness(Arc::clone(ident)),
-            TermInner::FuncCall(func_call) => func_call.eval(scope, reqd_ty),
-            TermInner::Identifier(identifier) => {
+            SingleExpressionInner::Unit => ProgNode::unit(),
+            SingleExpressionInner::Left(l) => {
+                let l = l.eval(scope, None);
+                ProgNode::injl(l)
+            }
+            SingleExpressionInner::None => ProgNode::injl(ProgNode::unit()),
+            SingleExpressionInner::Right(r) | SingleExpressionInner::Some(r) => {
+                let r = r.eval(scope, None);
+                ProgNode::injr(r)
+            }
+            SingleExpressionInner::False => ProgNode::injl(ProgNode::unit()),
+            SingleExpressionInner::True => ProgNode::injr(ProgNode::unit()),
+            SingleExpressionInner::Product(l, r) => {
+                let l = l.eval(scope, None);
+                let r = r.eval(scope, None);
+                ProgNode::pair(l, r)
+            }
+            SingleExpressionInner::UnsignedInteger(decimal) => {
+                let ty = reqd_ty
+                    .unwrap_or(&Type::UInt(UIntType::U32))
+                    .to_uint()
+                    .expect("Not an integer type");
+                let value = ty.parse_decimal(decimal);
+                ProgNode::comp(ProgNode::unit(), ProgNode::const_word(value))
+            }
+            SingleExpressionInner::BitString(bits) => {
+                let value = bits.to_simplicity();
+                ProgNode::comp(ProgNode::unit(), ProgNode::const_word(value))
+            }
+            SingleExpressionInner::ByteString(bytes) => {
+                let value = bytes.to_simplicity();
+                ProgNode::comp(ProgNode::unit(), ProgNode::const_word(value))
+            }
+            SingleExpressionInner::Witness(name) => {
+                scope.insert_witness(name.clone());
+                ProgNode::witness(name.as_inner().clone())
+            }
+            SingleExpressionInner::Variable(identifier) => {
                 let res = scope.get(identifier);
                 println!("Identifier {}: {}", identifier, res.arrow());
                 res
             }
-            TermInner::Expression(expression) => expression.eval(scope, reqd_ty),
+            SingleExpressionInner::FuncCall(call) => call.eval(scope, reqd_ty),
+            SingleExpressionInner::Expression(expression) => expression.eval(scope, reqd_ty),
+            SingleExpressionInner::Match {
+                scrutinee,
+                left,
+                right,
+            } => {
+                let mut l_scope = scope.clone();
+                if let Some(x) = left.pattern.get_identifier() {
+                    l_scope.insert(Pattern::Identifier(x.clone()));
+                }
+                let l_compiled = left.expression.eval(&mut l_scope, reqd_ty);
+
+                let mut r_scope = scope.clone();
+                if let Some(y) = right.pattern.get_identifier() {
+                    r_scope.insert(Pattern::Identifier(y.clone()));
+                }
+                let r_compiled = right.expression.eval(&mut r_scope, reqd_ty);
+
+                // TODO: Enforce target type A + B for m_expr
+                let scrutinized_input = scrutinee.eval(scope, None);
+                let input = ProgNode::pair(scrutinized_input, ProgNode::iden());
+                let output = ProgNode::case(l_compiled, r_compiled);
+                ProgNode::comp(input, output)
+            }
         };
         if let Some(reqd_ty) = reqd_ty {
             res.arrow()
                 .target
                 .unify(
-                    &reqd_ty.to_simplicity_type(),
+                    &reqd_ty.to_simplicity(),
                     "Type mismatch for user provided type",
                 )
                 .unwrap();
