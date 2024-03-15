@@ -4,19 +4,22 @@
  */
 
 let sha2_ctx = jet_sha_256_ctx_8_init();
-/* jet_sig_none_hash { */
-    let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_genesis_block_hash());
-    let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_genesis_block_hash());
-
-    let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_version());
-    let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_lock_time());
-    let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_inputs_hash());
-    let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_input_utxos_hash());
-
-    let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_tap_env_hash());
-    let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_current_index());
-/* } */
-let pk : pubkey = 0xf57f15937068d3054a4f437ac95cba65bae3c1b0529a84caa29d40200bf49c85;
-let wit_sig;
+// Blockchain
+let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_genesis_block_hash());
+let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_genesis_block_hash());
+// Transaction
+let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_version());
+let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_lock_time());
+let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_tap_env_hash());
+// All inputs
+let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_inputs_hash());
+let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_input_utxos_hash());
+// No outputs
+// Current index
+let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_current_index());
+// Message
 let msg = jet_sha_256_ctx_8_finalize(sha2_ctx);
-jet_bip_0340_verify(pk, msg, wit_sig);
+
+let pk: u256 = 0xf57f15937068d3054a4f437ac95cba65bae3c1b0529a84caa29d40200bf49c85;
+let sig: (u256, u256) = witness("sig");
+jet_bip_0340_verify(pk, msg, sig);

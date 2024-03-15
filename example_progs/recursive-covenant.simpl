@@ -4,8 +4,6 @@
  * in the first output of the spending transaction.
  */
 
-let this_hash: u256 = jet_current_script_hash();
-/* FIXME Missing jet_unwrap */
-/* This jet converts Some(x) to x and fails on None */
-let spend_hash: u256 = jet_unwrap(jet_output_script_hash(0));
+let this_hash:  u256 = jet_current_script_hash();
+let spend_hash: u256 = unwrap(jet_output_script_hash(0));
 jet_verify(jet_eq_256(this_hash, spend_hash));

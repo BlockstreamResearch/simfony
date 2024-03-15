@@ -4,7 +4,8 @@
  * It verifies that a provided message and signature match a hardcoded public key.
  */
 
-let wit_msg; /* In the future, we could use jets to compute a custom sighash */
-let wit_sig;
-let pk : pubkey = 0xf57f15937068d3054a4f437ac95cba65bae3c1b0529a84caa29d40200bf49c85;
-jet_bip_0340_verify(pk, wit_msg, wit_sig);
+// In the future, we could use jets to compute a custom sighash
+let msg: u256 = witness("msg");
+let sig: (u256, u256) = witness("sig");
+let pk: u256 = 0xf57f15937068d3054a4f437ac95cba65bae3c1b0529a84caa29d40200bf49c85;
+jet_bip_0340_verify(pk, msg, sig);
