@@ -4,96 +4,25 @@
  */
 
 let sha2_ctx = jet_sha_256_ctx_8_init();
-/* jet_sig_single_hash { */
-    let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_genesis_block_hash());
-    let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_genesis_block_hash());
+// Blockchain
+let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_genesis_block_hash());
+let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_genesis_block_hash());
+// Transaction
+let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_version());
+let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_lock_time());
+let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_tap_env_hash());
+// All inputs
+let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_inputs_hash());
+let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_input_utxos_hash());
+// Current output
+let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, unwrap(jet_output_hash(jet_current_index())));
+let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, unwrap(jet_issuance_hash(jet_current_index())));
+let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, unwrap(jet_output_surjection_proof_hash(jet_current_index())));
+// Current index
+let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_current_index());
+// Message
+let msg: u256 = jet_sha_256_ctx_8_finalize(sha2_ctx);
 
-    let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_version());
-    let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_lock_time());
-    let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_inputs_hash());
-    let index = jet_current_index();
-    /* jet_output_hash { */
-        let sha2_ctx = jet_asset_amount_hash(sha2_ctx, jet_current_amount());
-        /* FIXME Missing syntax `if let { } else { }`
-        let sha2_ctx = if let Some(nonce) = jet_output_nonce(index) {
-            jet_nonce_hash(sha2_ctx, nonce)
-        } else {
-            sha2_ctx
-        };
-        */
-        let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_current_script_hash());
-        /* FIXME Missing syntax `if let { } else { }`
-        let sha2_ctx = if let Some(script_hash) = jet_output_range_proof(index) {
-            jet_sha_256_ctx_8_add_32(sha2_ctx, script_hash)
-        } else {
-            sha2_ctx
-        };
-        */
-    /* } */
-    /* jet_issuance_hash { */
-        /* jet_issuance_amount_hash { */
-            /* FIXME Missing syntax `if let { } else { }`
-            let sha2_ctx = if let (Some(Some(explicit_asset)), Some(Some(amount))) = (jet_issuance_asset(index), jet_issuance_asset_amount(index)) {
-                let sha2_ctx = jet_sha256_ctx_8_add_1(sha2_ctx, 0x01);
-                // FIXME Missing syntax Right( )
-                // let asset = Right(explicit_asset);
-                jet_asset_amount_hash(sha2_ctx, (asset, amount))
-            } else {
-                jet_sha256_ctx_8_add_1(sha2_ctx, 0x00)
-            };
-            */
-        /* } */
-        /* jet_issuance_token_hash { */
-            /* FIXME Missing syntax `if let { } else { }`
-            let sha2_ctx = if let (Some(Some(explicit_asset)), Some(Some(amount))) = (jet_issuance_token(index), jet_issuance_token_amount(index)) {
-                let sha2_ctx = jet_sha256_ctx_8_add_1(sha2_ctx, 0x01);
-                // FIXME Missing syntax Right( )
-                // let asset = Right(explicit_asset);
-                jet_asset_amount_hash(sha2_ctx, (asset, amount))
-            } else {
-                jet_sha256_ctx_8_add_1(sha2_ctx, 0x00)
-            };
-            */
-        /* } */
-        /* jet_current_issuance_range_proof_hash { */
-            let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_current_issuance_asset_proof());
-            let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_current_issuance_token_proof());
-        /* } */
-        /* jet_current_issuance_blinding_entropy_hash { */
-            /* FIXME Missing syntax `if let { } else { }`
-            let sha2_ctx = if let (Some(explicit_nonce), Some(entropy)) = (jet_current_reissuance_blinding(), jet_current_reissuance_entropy()) {
-                // Reissuance
-                let sha2_ctx = jet_sha256_ctx_8_add_1(sha2_ctx, 0x01);
-                let sha2_ctx = jet_sha256_ctx_8_add_32(sha2_ctx, explicit_nonce);
-                jet_sha2_ctx_8_add_32(sha2_ctx, entropy)
-            } else {
-                if let Some(contract) = jet_current_new_issuance_contract() {
-                    // New issuance
-                    let sha2_ctx = jet_sha256_ctx_8_add_1(sha2_ctx, 0x01);
-                    // FIXME Missing syntax [X; N]
-                    // let sha2_ctx = jet_sha256_ctx_8_add_32(sha2_ctx, [0x00; 32]);
-                    let sha2_ctx = jet_sha256_ctx_8_add_32(sha2_ctx, contract);
-                } else {
-                    // No issuance
-                    jet_sha256_ctx_8_add_1(sha2_ctx, 0x00)
-                }
-            };
-            */
-        /* } */
-    /* } */
-    /* FIXME Missing syntax `if let { } else { }`
-    let sha2_ctx = if let Some(proof) = jet_output_surjection_proof(index) {
-        jet_sha_256_ctx_8_add_32(sha2_ctx, proof);
-    } else {
-        sha2_ctx
-    };
-    */
-
-    let sha2_ctx = jet_sha_256_ctx_8_add_32(sha2_ctx, jet_tap_env_hash());
-    let sha2_ctx = jet_sha_256_ctx_8_add_4(sha2_ctx, jet_current_index());
-/* } */
-
-let pk : pubkey = 0xf57f15937068d3054a4f437ac95cba65bae3c1b0529a84caa29d40200bf49c85;
-let wit_sig;
-let msg = jet_sha_256_ctx_8_finalize(sha2_ctx);
-jet_bip_0340_verify(pk, msg, wit_sig);
+let pk: u256 = 0xf57f15937068d3054a4f437ac95cba65bae3c1b0529a84caa29d40200bf49c85;
+let sig: (u256, u256) = witness("sig");
+jet_bip_0340_verify(pk, msg, sig);
