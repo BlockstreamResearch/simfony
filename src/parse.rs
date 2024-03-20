@@ -184,6 +184,10 @@ pub enum SingleExpressionInner {
     },
     /// Array wrapper expression
     Array(Vec<Expression>),
+    /// List wrapper expression
+    ///
+    /// The exclusive upper bound on the list size is not known at this point
+    List(Vec<Expression>),
 }
 
 /// Bit string whose length is a power of two.
@@ -794,6 +798,13 @@ impl PestParse for SingleExpression {
                     .collect();
                 assert!(!elements.is_empty(), "Array must be nonempty");
                 SingleExpressionInner::Array(elements)
+            }
+            Rule::list_expr => {
+                let elements: Vec<_> = inner_pair
+                    .into_inner()
+                    .map(|inner| Expression::parse(inner))
+                    .collect();
+                SingleExpressionInner::List(elements)
             }
             _ => unreachable!("Corrupt grammar"),
         };
