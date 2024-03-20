@@ -182,6 +182,8 @@ pub enum SingleExpressionInner {
         /// Arm for right sum values
         right: MatchArm,
     },
+    /// Array wrapper expression
+    Array(Vec<Expression>),
 }
 
 /// Bit string whose length is a power of two.
@@ -752,6 +754,14 @@ impl PestParse for SingleExpression {
                     left,
                     right,
                 }
+            }
+            Rule::array_expr => {
+                let elements: Vec<_> = inner_pair
+                    .into_inner()
+                    .map(|inner| Expression::parse(inner))
+                    .collect();
+                assert!(!elements.is_empty(), "Array must be nonempty");
+                SingleExpressionInner::Array(elements)
             }
             _ => unreachable!("Corrupt grammar"),
         };
