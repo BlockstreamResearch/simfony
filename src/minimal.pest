@@ -34,7 +34,9 @@ product_type      =  { "(" ~ ty ~ "," ~ ty ~ ")" }
 option_type       =  { "Option<" ~ ty ~ ">" }
 boolean_type      =  { "bool" }
 unsigned_type     =  { "u128" | "u256" | "u16" | "u32" | "u64" | "u1" | "u2" | "u4" | "u8" }
-ty                =  { unit_type | sum_type | product_type | option_type | boolean_type | unsigned_type }
+array_size        =  { ASCII_DIGIT+ }
+array_type        =  { "[" ~ ty ~ ";" ~ array_size ~ "]" }
+ty                =  { unit_type | sum_type | product_type | option_type | boolean_type | unsigned_type | array_type }
 
 expression        =  { block_expression | single_expression }
 block_expression  =  { "{" ~ (statement ~ ";")* ~ expression ~ "}" }

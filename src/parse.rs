@@ -10,6 +10,7 @@ use simplicity::elements::hex::FromHex;
 use simplicity::types::Type as SimType;
 use simplicity::Value;
 
+use crate::array::BTreeSlice;
 use crate::Rule;
 
 /// A complete simplicity program.
@@ -282,6 +283,7 @@ pub enum Type {
     Option(Arc<Self>),
     Boolean,
     UInt(UIntType),
+    Array(Arc<Self>, usize),
 }
 
 /// Normalized unsigned integer type.
@@ -302,7 +304,7 @@ impl<'a> TreeLike for &'a Type {
     fn as_node(&self) -> Tree<Self> {
         match self {
             Type::Unit | Type::Boolean | Type::UInt(..) => Tree::Nullary,
-            Type::Option(r) => Tree::Unary(r),
+            Type::Option(l) | Type::Array(l, _) => Tree::Unary(l),
             Type::Either(l, r) | Type::Product(l, r) => Tree::Binary(l, r),
         }
     }
@@ -343,6 +345,20 @@ impl Type {
                 Type::UInt(ty) => {
                     integer_type.insert(data.node, *ty);
                 }
+                Type::Array(el, size) => {
+                    if !size.is_power_of_two() {
+                        return None;
+                    }
+
+                    let mut uint = *integer_type.get(el.as_ref())?;
+                    for _ in 0..size.trailing_zeros() {
+                        match uint.double() {
+                            Some(doubled_uint) => uint = doubled_uint,
+                            None => return None,
+                        }
+                    }
+                    integer_type.insert(data.node, uint);
+                }
             }
         }
 
@@ -374,6 +390,13 @@ impl Type {
                     output.push(SimType::two_two_n(0));
                 }
                 Type::UInt(ty) => output.push(ty.to_simplicity()),
+                Type::Array(_, size) => {
+                    let el = output.pop().unwrap();
+                    // Cheap clone because SimType consists of Arcs
+                    let el_vector = vec![el; *size];
+                    let tree = BTreeSlice::from_slice(&el_vector);
+                    output.push(tree.fold(SimType::product));
+                }
             }
         }
 
@@ -412,6 +435,13 @@ impl fmt::Display for Type {
                 },
                 Type::Boolean => f.write_str("bool")?,
                 Type::UInt(ty) => write!(f, "{ty}")?,
+                Type::Array(_, size) => match data.n_children_yielded {
+                    0 => f.write_str("[")?,
+                    n => {
+                        debug_assert!(n == 1);
+                        write!(f, "; {size}]")?;
+                    }
+                },
             }
         }
 
@@ -842,33 +872,65 @@ impl PestParse for MatchPattern {
 
 impl PestParse for Type {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        enum Item {
+            Type(Type),
+            Size(usize),
+        }
+
+        impl Item {
+            fn unwrap_type(self) -> Type {
+                match self {
+                    Item::Type(ty) => ty,
+                    _ => panic!("Not a type"),
+                }
+            }
+
+            fn unwrap_size(self) -> usize {
+                match self {
+                    Item::Size(size) => size,
+                    _ => panic!("Not a size"),
+                }
+            }
+        }
+
         assert!(matches!(pair.as_rule(), Rule::ty));
         let pair = TyPair(pair);
         let mut output = vec![];
 
         for data in pair.post_order_iter() {
             match data.node.0.as_rule() {
-                Rule::unit_type => output.push(Type::Unit),
+                Rule::unit_type => output.push(Item::Type(Type::Unit)),
                 Rule::unsigned_type => {
                     let uint_ty = UIntType::parse(data.node.0);
-                    output.push(Type::UInt(uint_ty));
+                    output.push(Item::Type(Type::UInt(uint_ty)));
                 }
                 Rule::sum_type => {
-                    let r = output.pop().unwrap();
-                    let l = output.pop().unwrap();
-                    output.push(Type::Either(Arc::new(l), Arc::new(r)));
+                    let r = output.pop().unwrap().unwrap_type();
+                    let l = output.pop().unwrap().unwrap_type();
+                    output.push(Item::Type(Type::Either(Arc::new(l), Arc::new(r))));
                 }
                 Rule::product_type => {
-                    let r = output.pop().unwrap();
-                    let l = output.pop().unwrap();
-                    output.push(Type::Product(Arc::new(l), Arc::new(r)));
+                    let r = output.pop().unwrap().unwrap_type();
+                    let l = output.pop().unwrap().unwrap_type();
+                    output.push(Item::Type(Type::Product(Arc::new(l), Arc::new(r))));
                 }
                 Rule::option_type => {
-                    let r = output.pop().unwrap();
-                    output.push(Type::Option(Arc::new(r)));
+                    let r = output.pop().unwrap().unwrap_type();
+                    output.push(Item::Type(Type::Option(Arc::new(r))));
                 }
                 Rule::boolean_type => {
-                    output.push(Type::Boolean);
+                    output.push(Item::Type(Type::Boolean));
+                }
+                Rule::array_type => {
+                    let size = output.pop().unwrap().unwrap_size();
+                    let el = output.pop().unwrap().unwrap_type();
+                    output.push(Item::Type(Type::Array(Arc::new(el), size)));
+                }
+                Rule::array_size => {
+                    let size_str = data.node.0.as_str();
+                    let size = size_str.parse::<usize>().unwrap();
+                    assert!(0 < size, "Array size must be nonzero");
+                    output.push(Item::Size(size));
                 }
                 Rule::ty => {}
                 _ => unreachable!("Corrupt grammar"),
@@ -876,7 +938,7 @@ impl PestParse for Type {
         }
 
         debug_assert!(output.len() == 1);
-        output.pop().unwrap()
+        output.pop().unwrap().unwrap_type()
     }
 }
 
@@ -929,12 +991,14 @@ impl<'a> TreeLike for TyPair<'a> {
     fn as_node(&self) -> Tree<Self> {
         let mut it = self.0.clone().into_inner();
         match self.0.as_rule() {
-            Rule::unit_type | Rule::boolean_type | Rule::unsigned_type => Tree::Nullary,
+            Rule::unit_type | Rule::boolean_type | Rule::unsigned_type | Rule::array_size => {
+                Tree::Nullary
+            }
             Rule::ty | Rule::option_type => {
                 let l = it.next().unwrap();
                 Tree::Unary(TyPair(l))
             }
-            Rule::sum_type | Rule::product_type => {
+            Rule::sum_type | Rule::product_type | Rule::array_type => {
                 let l = it.next().unwrap();
                 let r = it.next().unwrap();
                 Tree::Binary(TyPair(l), TyPair(r))
