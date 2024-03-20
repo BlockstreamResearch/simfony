@@ -1,0 +1,6 @@
+let a1: List<u32, 2> = None;
+let a2: List<u32, 2> = Some(1);
+let b1: List<u32, 4> = (None, None);
+let b2: List<u32, 4> = (None, Some(1));
+let b3: List<u32, 4> = (Some([1, 2]), None);
+let b4: List<u32, 4> = (Some([1, 2]), Some(3));
