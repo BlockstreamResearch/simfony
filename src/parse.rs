@@ -10,7 +10,7 @@ use simplicity::elements::hex::FromHex;
 use simplicity::types::Type as SimType;
 use simplicity::Value;
 
-use crate::array::BTreeSlice;
+use crate::array::{BTreeSlice, Partition};
 use crate::Rule;
 
 /// A complete simplicity program.
@@ -286,6 +286,7 @@ pub enum Type {
     Boolean,
     UInt(UIntType),
     Array(Arc<Self>, usize),
+    List(Arc<Self>, usize),
 }
 
 /// Normalized unsigned integer type.
@@ -306,7 +307,7 @@ impl<'a> TreeLike for &'a Type {
     fn as_node(&self) -> Tree<Self> {
         match self {
             Type::Unit | Type::Boolean | Type::UInt(..) => Tree::Nullary,
-            Type::Option(l) | Type::Array(l, _) => Tree::Unary(l),
+            Type::Option(l) | Type::Array(l, _) | Type::List(l, _) => Tree::Unary(l),
             Type::Either(l, r) | Type::Product(l, r) => Tree::Binary(l, r),
         }
     }
@@ -336,6 +337,7 @@ impl Type {
                     integer_type.insert(data.node, uint_ty);
                 }
                 Type::Option(r) => match r.as_ref() {
+                    // Option<1> = u1
                     Type::Unit => {
                         integer_type.insert(data.node, UIntType::U1);
                     }
@@ -361,6 +363,13 @@ impl Type {
                     }
                     integer_type.insert(data.node, uint);
                 }
+                Type::List(el, bound) => match (el.as_ref(), bound) {
+                    // List<1, 2> = Option<1> = u1
+                    (Type::Unit, 2) => {
+                        integer_type.insert(data.node, UIntType::U1);
+                    }
+                    _ => return None,
+                },
             }
         }
 
@@ -398,6 +407,22 @@ impl Type {
                     let el_vector = vec![el; *size];
                     let tree = BTreeSlice::from_slice(&el_vector);
                     output.push(tree.fold(SimType::product));
+                }
+                Type::List(_, bound) => {
+                    debug_assert!(bound.is_power_of_two());
+                    debug_assert!(2 <= *bound);
+                    let el = output.pop().unwrap();
+                    // Cheap clone because SimType consists of Arcs
+                    let el_vector = vec![el; *bound - 1];
+                    let partition = Partition::from_slice(&el_vector, *bound / 2);
+                    debug_assert!(partition.is_complete());
+                    let process = |block: &[SimType]| -> SimType {
+                        debug_assert!(!block.is_empty());
+                        let tree = BTreeSlice::from_slice(block);
+                        let array = tree.fold(SimType::product);
+                        SimType::sum(SimType::unit(), array)
+                    };
+                    output.push(partition.fold(process, SimType::product));
                 }
             }
         }
@@ -442,6 +467,13 @@ impl fmt::Display for Type {
                     n => {
                         debug_assert!(n == 1);
                         write!(f, "; {size}]")?;
+                    }
+                },
+                Type::List(_, bound) => match data.n_children_yielded {
+                    0 => f.write_str("List<")?,
+                    n => {
+                        debug_assert!(n == 1);
+                        write!(f, ", {bound}>")?;
                     }
                 },
             }
@@ -942,6 +974,18 @@ impl PestParse for Type {
                     assert!(0 < size, "Array size must be nonzero");
                     output.push(Item::Size(size));
                 }
+                Rule::list_type => {
+                    let bound = output.pop().unwrap().unwrap_size();
+                    let el = output.pop().unwrap().unwrap_type();
+                    output.push(Item::Type(Type::List(Arc::new(el), bound)));
+                }
+                Rule::list_bound => {
+                    let bound_str = data.node.0.as_str();
+                    let bound = bound_str.parse::<usize>().unwrap();
+                    assert!(bound.is_power_of_two(), "List bound must be a power of two");
+                    assert!(2 <= bound, "List bound must be greater equal two");
+                    output.push(Item::Size(bound));
+                }
                 Rule::ty => {}
                 _ => unreachable!("Corrupt grammar"),
             }
@@ -1001,14 +1045,16 @@ impl<'a> TreeLike for TyPair<'a> {
     fn as_node(&self) -> Tree<Self> {
         let mut it = self.0.clone().into_inner();
         match self.0.as_rule() {
-            Rule::unit_type | Rule::boolean_type | Rule::unsigned_type | Rule::array_size => {
-                Tree::Nullary
-            }
+            Rule::unit_type
+            | Rule::boolean_type
+            | Rule::unsigned_type
+            | Rule::array_size
+            | Rule::list_bound => Tree::Nullary,
             Rule::ty | Rule::option_type => {
                 let l = it.next().unwrap();
                 Tree::Unary(TyPair(l))
             }
-            Rule::sum_type | Rule::product_type | Rule::array_type => {
+            Rule::sum_type | Rule::product_type | Rule::array_type | Rule::list_type => {
                 let l = it.next().unwrap();
                 let r = it.next().unwrap();
                 Tree::Binary(TyPair(l), TyPair(r))
