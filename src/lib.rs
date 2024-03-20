@@ -158,7 +158,7 @@ mod tests {
         _test_progs("./example_progs/cat.simpl");
         _test_progs("./example_progs/match.simpl");
         _test_progs("./example_progs/array.simpl");
-        // _test_progs("./add_with_builtins.simpl");
+        _test_progs("./example_progs/list.simpl");
     }
 
     fn _test_progs(file: &str) {
