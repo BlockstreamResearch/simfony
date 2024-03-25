@@ -206,4 +206,34 @@ mod tests {
             assert_eq!(&output, expected_output);
         }
     }
+
+    #[test]
+    #[rustfmt::skip]
+    fn fold_partition() {
+        let slice_len_output: [(&[&str], usize, &str); 14] = [
+            (&[], 1, ""),
+            (&["a"], 1, "a"),
+            (&[], 2, "(:)"),
+            (&["a"], 2, "(:a)"),
+            (&["a", "b"], 2, "(ab:)"),
+            (&["a", "b", "c"], 2, "(ab:c)"),
+            (&[], 4, "(:(:))"),
+            (&["a"], 4, "(:(:a))"),
+            (&["a", "b"], 4, "(:(ab:))"),
+            (&["a", "b", "c"], 4, "(:(ab:c))"),
+            (&["a", "b", "c", "d"], 4, "(abcd:(:))"),
+            (&["a", "b", "c", "d", "e"], 4, "(abcd:(:e))"),
+            (&["a", "b", "c", "d", "e", "f"], 4, "(abcd:(ef:))"),
+            (&["a", "b", "c", "d", "e", "f", "g"], 4, "(abcd:(ef:g))"),
+        ];
+        let process = |block: &[String]| block.join("");
+        let join = |a: String, b: String| format!("({a}:{b})");
+
+        for (slice, block_len, expected_output) in slice_len_output {
+            let vector: Vec<_> = slice.iter().map(|s| s.to_string()).collect();
+            let partition = Partition::from_slice(&vector, block_len);
+            let output = partition.fold(process, join);
+            assert_eq!(&output, expected_output);
+        }
+    }
 }
