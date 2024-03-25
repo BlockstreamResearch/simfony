@@ -63,3 +63,31 @@ impl<'a, A: Clone> TreeLike for BTreeSlice<'a, A> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[rustfmt::skip]
+    fn fold_btree_slice() {
+        let slice_output: [(&[&str], &str); 8] = [
+            (&["a"], "a"),
+            (&["a", "b"], "(ab)"),
+            (&["a", "b", "c"], "((ab)c)"),
+            (&["a", "b", "c", "d"], "((ab)(cd))"),
+            (&["a", "b", "c", "d", "e"], "(((ab)(cd))e)"),
+            (&["a", "b", "c", "d", "e", "f"], "(((ab)(cd))(ef))"),
+            (&["a", "b", "c", "d", "e", "f", "g"], "(((ab)(cd))((ef)g))"),
+            (&["a", "b", "c", "d", "e", "f", "g", "h"], "(((ab)(cd))((ef)(gh)))"),
+        ];
+        let concat = |a: String, b: String| format!("({a}{b})");
+
+        for (slice, expected_output) in slice_output {
+            let vector: Vec<_> = slice.iter().map(|s| s.to_string()).collect();
+            let tree = BTreeSlice::from_slice(&vector);
+            let output = tree.fold(concat);
+            assert_eq!(&output, expected_output);
+        }
+    }
+}
