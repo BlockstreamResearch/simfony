@@ -143,18 +143,14 @@ pub fn satisfy(prog: &Path, wit_file: &Path) -> RedeemNode<Elements> {
 mod tests {
     use base64::display::Base64Display;
     use base64::engine::general_purpose::STANDARD;
-    use pest::Parser;
     use simplicity::{
-        dag::{NoSharing, PostOrderIterItem},
         encode,
-        node::{Commit, Converter, Inner, Redeem, RedeemData},
         BitMachine, BitWriter, Cmr, Value,
     };
 
     use crate::{
-        named::{ConstructExt, Named, NamedCommitNode, NamedExt, ProgExt},
-        parse::{PestParse, Program, Statement},
-        scope::GlobalScope,
+        named::ProgExt,
+        parse::Statement,
         *,
     };
 
