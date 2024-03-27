@@ -3,13 +3,12 @@ use miniscript::iter::TreeLike;
 use crate::parse::{Identifier, Pattern, WitnessName};
 use crate::{named::ProgExt, ProgNode};
 
-/// A global scope is a stack of scopes.
-/// Each scope is a vector of variables.
-/// The latest scope is the last vector in the stack.
+/// Tracker of variable bindings and witness names.
 ///
-/// Our simplicity translation looks at the index
-/// of the variable from the end of stack to figure it's
-/// position in the environment.
+/// Internally there is a stack of scopes.
+/// A new scope is pushed for each (nested) block expression.
+///
+/// Bindings from higher scopes (in the stack) overwrite bindings from lower scopes.
 #[derive(Debug, Clone)]
 pub struct GlobalScope {
     variables: Vec<Vec<Pattern>>,
@@ -57,21 +56,59 @@ impl GlobalScope {
         self.witnesses.last_mut().unwrap().push(key);
     }
 
-    /// Fetches the [`ProgNode`] for a variable.
-    /// The [`ProgNode`] is a sequence of `take` and `drop` nodes
-    /// that fetches the variable from the environment.
-    /// The [`ProgNode`] is constructed by looking at the index
-    /// of the variable from the end of stack.
+    /// Get a Simplicity expression that returns the value of the given `identifier`.
     ///
-    /// # Panics
+    /// The expression is a sequence of `take` and `drop` followed by `iden`,
+    /// which extracts the seeked value from the environment.
     ///
-    /// Panics if the variable is not found.
-    pub fn get(&self, key: &Identifier) -> ProgNode {
-        // search in the vector of vectors from the end
+    /// The environment starts as the unit value.
+    ///
+    /// Each let statement updates the environment to become
+    /// the product of the assigned value (left) and of the previous environment (right).
+    ///
+    /// (Block) expressions consume the environment and return their output.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// let a: u8 = 0;
+    /// let b = {
+    ///     let b: u8 = 1;
+    ///     let c: u8 = 2;
+    ///     a  // here we seek the value of `a`
+    /// };
+    /// ```
+    ///
+    /// The stack of scopes looks like this:
+    ///
+    /// `[a] [b c]`
+    ///
+    /// The environment looks like this:
+    ///
+    /// ```text
+    ///   .
+    ///  / \
+    /// C   .
+    ///    / \
+    ///   B   .
+    ///      / \
+    ///     A   1
+    /// ```
+    ///
+    /// To extract `a`, we need the expression `drop drop take iden`.
+    ///
+    /// ## Panics
+    ///
+    /// The `identifier` is undefined.
+    pub fn get(&self, identifier: &Identifier) -> ProgNode {
         let mut pos = 0;
         let mut var = None;
         for v in self.variables.iter().rev() {
-            if let Some(idx) = v.iter().rev().position(|var_name| var_name.contains(key)) {
+            if let Some(idx) = v
+                .iter()
+                .rev()
+                .position(|var_name| var_name.contains(identifier))
+            {
                 pos += idx;
                 var = Some(&v[v.len() - 1 - idx]);
                 break;
@@ -81,14 +118,14 @@ impl GlobalScope {
         }
         match var {
             Some(pattern) => {
-                let mut child = pattern.get_program(key).unwrap();
+                let mut child = pattern.get_program(identifier).unwrap();
                 child = ProgNode::take(child);
                 for _ in 0..pos {
                     child = ProgNode::drop_(child);
                 }
                 child
             }
-            None => panic!("Variable {} not found", key),
+            None => panic!("Variable {} not found", identifier),
         }
     }
 }
