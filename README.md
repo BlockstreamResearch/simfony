@@ -2,6 +2,10 @@ A high level DSL for Simplicity. This is a work in progress and is not yet ready
 
 **Please do note that the new language is under active development, and is not ready for production use**
 
+## MSRV
+
+This crate should compile with any feature combination on **Rust 1.61.0** or higher.
+
 ## Simplicity's need for high level DSL
 
 Simplicity introduces a groundbreaking low-level programming language and machine model meticulously crafted for blockchain-based smart contracts. The primary goal is to provide a streamlined and comprehensible foundation that facilitates static analysis and encourages reasoning through formal methods. While the elegance of the language itself is distilled into something as succinct as fitting onto a T-shirt, it's important to note that the simplicity of the language doesn't directly equate to simplicity in the development process. This project revolves around demystifying and simplifying the complexities involved in this ecosystem.
@@ -25,7 +29,7 @@ The DSL's purpose is to make programming in Simplicity accessible even to develo
 The compiler is written in rust and can be installed using cargo.
 
 ```bash
-git clone https://github.com/sanket1729/s-lang.git
+git clone https://github.com/BlockstreamResearch/s-lang.git
 cd s-lang
 cargo build
 ./target/debug/simpc <prog.simpl> <sig.wit>
