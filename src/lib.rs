@@ -2,6 +2,7 @@
 
 pub type ProgNode = Arc<named::NamedConstructNode>;
 
+mod array;
 pub mod compile;
 pub mod dummy_env;
 pub mod named;
@@ -167,6 +168,7 @@ mod tests {
         _test_progs("./example_progs/add.simpl");
         _test_progs("./example_progs/cat.simpl");
         _test_progs("./example_progs/match.simpl");
+        _test_progs("./example_progs/array.simpl");
         // _test_progs("./add_with_builtins.simpl");
     }
 

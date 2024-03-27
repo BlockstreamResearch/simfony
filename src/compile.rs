@@ -4,6 +4,7 @@ use std::{str::FromStr, sync::Arc};
 
 use simplicity::{jet::Elements, node, Cmr, FailEntropy};
 
+use crate::array::BTreeSlice;
 use crate::parse::{Pattern, SingleExpressionInner, UIntType};
 use crate::{
     named::{ConstructExt, NamedConstructNode, ProgExt},
@@ -180,6 +181,16 @@ impl SingleExpression {
                 let input = ProgNode::pair(scrutinized_input, ProgNode::iden());
                 let output = ProgNode::case(l_compiled, r_compiled);
                 ProgNode::comp(input, output)
+            }
+            SingleExpressionInner::Array(elements) => {
+                let el_type = if let Some(Type::Array(ty, _)) = reqd_ty {
+                    Some(ty.as_ref())
+                } else {
+                    None
+                };
+                let nodes: Vec<_> = elements.iter().map(|e| e.eval(scope, el_type)).collect();
+                let tree = BTreeSlice::from_slice(&nodes);
+                tree.fold(ProgNode::pair)
             }
         };
         if let Some(reqd_ty) = reqd_ty {
