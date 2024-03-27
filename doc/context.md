@@ -98,7 +98,7 @@ PCtx(A, `_`) := []
 
 If `p1` and `p2` map disjoint sets of variables
 
-Then PCtx(A, `(p1, p2)`) := PCtx(A, `p1`) ⊎ PCtx(A, `p2`)
+Then PCtx(A × B, `(p1, p2)`) := PCtx(A, `p1`) ⊎ PCtx(B, `p2`)
 
 ## Let statement
 
