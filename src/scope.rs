@@ -102,31 +102,29 @@ impl GlobalScope {
     /// The `identifier` is undefined.
     pub fn get(&self, identifier: &Identifier) -> ProgNode {
         let mut pos = 0;
-        let mut var = None;
-        for v in self.variables.iter().rev() {
-            if let Some(idx) = v
-                .iter()
-                .rev()
-                .position(|var_name| var_name.contains(identifier))
+
+        // Highest scope has precedence
+        for scope in self.variables.iter().rev() {
+            // Last let statement has precedence
+            if let Some((pattern_pos, mut expr)) =
+                scope.iter().rev().enumerate().find_map(|(idx, pattern)| {
+                    pattern.get_program(identifier).map(|expr| (idx, expr))
+                })
             {
-                pos += idx;
-                var = Some(&v[v.len() - 1 - idx]);
-                break;
-            } else {
-                pos += v.len();
-            }
-        }
-        match var {
-            Some(pattern) => {
-                let mut child = pattern.get_program(identifier).unwrap();
-                child = ProgNode::take(child);
+                pos += pattern_pos;
+
+                expr = ProgNode::take(expr);
                 for _ in 0..pos {
-                    child = ProgNode::drop_(child);
+                    expr = ProgNode::drop_(expr);
                 }
-                child
+
+                return expr;
+            } else {
+                pos += scope.len();
             }
-            None => panic!("Variable {} not found", identifier),
         }
+
+        panic!("\"{identifier}\" is undefined");
     }
 }
 
