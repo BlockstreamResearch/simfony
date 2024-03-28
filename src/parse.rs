@@ -49,6 +49,27 @@ impl<'a> TreeLike for &'a Pattern {
     }
 }
 
+impl fmt::Display for Pattern {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for data in self.verbose_pre_order_iter() {
+            match data.node {
+                Pattern::Identifier(i) => write!(f, "{i}")?,
+                Pattern::Ignore => write!(f, "_")?,
+                Pattern::Product(..) => match data.n_children_yielded {
+                    0 => write!(f, "(")?,
+                    1 => write!(f, ",")?,
+                    n => {
+                        debug_assert!(n == 2);
+                        write!(f, ")")?;
+                    }
+                },
+            }
+        }
+
+        Ok(())
+    }
+}
+
 /// Identifier of a variable.
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Identifier(Arc<str>);
