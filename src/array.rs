@@ -1,8 +1,7 @@
+use miniscript::iter::{Tree, TreeLike};
 use std::fmt;
 use std::ops::Range;
 use std::sync::Arc;
-
-use miniscript::iter::{Tree, TreeLike};
 
 /// View of a slice as a balanced binary tree.
 /// The slice must be nonempty.
@@ -331,6 +330,85 @@ impl<T: TreeLike + fmt::Display> fmt::Display for BinaryTree<T> {
     }
 }
 
+/// One step on a path from ancestor nodes to descendent nodes.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum Direction {
+    /// Go to the only child.
+    Down,
+    /// Go to the left child.
+    Left,
+    /// Go to the right child.
+    Right,
+    /// Go to the child at index `n`.
+    Index(usize),
+}
+
+/// A tree that labels each node with the path from root.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct DirectedTree<T> {
+    /// Node
+    tree: T,
+    /// Path from root to the node
+    path: Vec<Direction>,
+}
+
+impl<T> From<T> for DirectedTree<T> {
+    fn from(tree: T) -> Self {
+        Self {
+            tree,
+            path: Vec::new(),
+        }
+    }
+}
+
+impl<T> DirectedTree<T> {
+    /// Extract the node and the path from root.
+    pub fn into_inner(self) -> (T, Vec<Direction>) {
+        (self.tree, self.path)
+    }
+}
+
+impl<T: TreeLike> DirectedTree<T> {
+    /// Find the first node (in pre-order) that satisfies the `predicate`.
+    ///
+    /// Return the node and the path from root to this node.
+    pub fn find<F>(self, predicate: F) -> Option<(T, Vec<Direction>)>
+    where
+        F: Fn(T) -> bool,
+    {
+        self.pre_order_iter()
+            .find(|node| predicate(node.tree.clone()))
+            .map(|node| node.into_inner())
+    }
+
+    fn go(&self, tree: T, direction: Direction) -> Self {
+        let mut path = Vec::with_capacity(self.path.len() + 1);
+        path.extend(&self.path);
+        path.push(direction);
+        Self { tree, path }
+    }
+}
+
+impl<T: TreeLike> TreeLike for DirectedTree<T> {
+    fn as_node(&self) -> Tree<Self> {
+        match self.tree.as_node() {
+            Tree::Nullary => Tree::Nullary,
+            Tree::Unary(l) => Tree::Unary(self.go(l, Direction::Down)),
+            Tree::Binary(l, r) => {
+                Tree::Binary(self.go(l, Direction::Left), self.go(r, Direction::Right))
+            }
+            Tree::Nary(ls) => {
+                let converted: Vec<_> = ls
+                    .iter()
+                    .enumerate()
+                    .map(|(index, tree)| self.go(tree.clone(), Direction::Index(index)))
+                    .collect();
+                Tree::Nary(Arc::from(converted.as_slice()))
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -385,6 +463,35 @@ mod tests {
             let partition = Partition::from_slice(&vector, block_len);
             let output = partition.fold(process, join);
             assert_eq!(&output, expected_output);
+        }
+    }
+
+    #[test]
+    fn find_path() {
+        use Direction::*;
+
+        let elements = vec![1, 2, 3, 4];
+        let tree = BTreeSlice::from_slice(&elements);
+        let directed_tree = DirectedTree::from(tree);
+
+        let target_path: [(&[u32], Option<Vec<Direction>>); 8] = [
+            (&[1, 2, 3, 4], Some(vec![])),
+            (&[1, 2], Some(vec![Left])),
+            (&[3, 4], Some(vec![Right])),
+            (&[1], Some(vec![Left, Left])),
+            (&[2], Some(vec![Left, Right])),
+            (&[3], Some(vec![Right, Left])),
+            (&[4], Some(vec![Right, Right])),
+            (&[], None),
+        ];
+
+        for (target, expected_path) in target_path {
+            let path = directed_tree
+                .clone()
+                .pre_order_iter()
+                .find(|node| node.tree.0 == target)
+                .map(|t| t.path);
+            assert_eq!(path, expected_path);
         }
     }
 }
