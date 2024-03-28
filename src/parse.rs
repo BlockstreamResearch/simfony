@@ -38,6 +38,8 @@ pub enum Pattern {
     Ignore,
     /// Split product value. Bind components to first and second pattern, respectively.
     Product(Arc<Self>, Arc<Self>),
+    /// Split array value. Bind components to balanced binary tree of patterns.
+    Array(Vec<Self>),
 }
 
 impl Pattern {
@@ -78,6 +80,7 @@ impl<'a> TreeLike for &'a Pattern {
         match self {
             Pattern::Identifier(_) | Pattern::Ignore => Tree::Nullary,
             Pattern::Product(l, r) => Tree::Binary(l, r),
+            Pattern::Array(children) => Tree::Nary(children.iter().collect()),
         }
     }
 }
@@ -95,6 +98,11 @@ impl fmt::Display for Pattern {
                         debug_assert!(n == 2);
                         write!(f, ")")?;
                     }
+                },
+                Pattern::Array(children) => match data.n_children_yielded {
+                    0 => write!(f, "[")?,
+                    n if n == children.len() => write!(f, "]")?,
+                    _ => write!(f, ",")?,
                 },
             }
         }

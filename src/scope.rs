@@ -1,5 +1,4 @@
-use miniscript::iter::TreeLike;
-
+use crate::array::{DirectedTree, Direction};
 use crate::parse::{Identifier, Pattern, WitnessName};
 use crate::{named::ProgExt, ProgNode};
 
@@ -136,53 +135,24 @@ impl Pattern {
         }
     }
 
-    pub fn contains(&self, identifier: &Identifier) -> bool {
-        self.pre_order_iter().any(|pattern| {
+    pub fn get_program(&self, identifier: &Identifier) -> Option<ProgNode> {
+        let base_pattern = self.to_base();
+        let directed_tree = DirectedTree::from(&base_pattern);
+        let equals_identifier = |pattern: &Pattern| {
             pattern
                 .get_identifier()
                 .map(|i| i == identifier)
                 .unwrap_or(false)
-        })
-    }
-
-    pub fn get_program(&self, identifier: &Identifier) -> Option<ProgNode> {
-        enum Direction {
-            Left,
-            Right,
-        }
-
-        let mut pattern = self;
-        let mut path = vec![];
-
-        loop {
-            match pattern {
-                Pattern::Identifier(i) => {
-                    if i == identifier {
-                        break;
-                    } else {
-                        return None;
-                    }
-                }
-                Pattern::Ignore => return None,
-                Pattern::Product(l, r) => {
-                    if l.contains(identifier) {
-                        path.push(Direction::Left);
-                        pattern = l;
-                    } else {
-                        // Avoid checking if right branch contains identifier
-                        // We will find out once we reach the leaf
-                        path.push(Direction::Right);
-                        pattern = r;
-                    }
-                }
-            }
-        }
+        };
+        let (_, mut path) = directed_tree.find(equals_identifier)?;
 
         let mut output = ProgNode::iden();
         while let Some(direction) = path.pop() {
             match direction {
                 Direction::Left => output = ProgNode::take(output),
                 Direction::Right => output = ProgNode::drop_(output),
+                Direction::Down => unreachable!("There are no unary patterns"),
+                Direction::Index(..) => unreachable!("Base patterns exclude arrays"),
             }
         }
 
