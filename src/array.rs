@@ -1,12 +1,15 @@
 use miniscript::iter::{Tree, TreeLike};
 
-/// View of a slice as a balanced binary tree of its elements.
+/// View of a slice as a balanced binary tree.
 /// The slice must be nonempty.
+///
+/// Each node is labelled with a slice.
+/// Leaves contain single elements.
 #[derive(Debug, Copy, Clone)]
 pub struct BTreeSlice<'a, A>(&'a [A]);
 
 impl<'a, A> BTreeSlice<'a, A> {
-    /// View the slice as a balanced binary tree of its elements.
+    /// View the slice as a balanced binary tree.
     ///
     /// ## Panics
     ///
