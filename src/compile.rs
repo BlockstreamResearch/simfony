@@ -8,7 +8,7 @@ use crate::array::{BTreeSlice, Partition};
 use crate::parse::{Pattern, SingleExpressionInner, UIntType};
 use crate::{
     named::{ConstructExt, NamedConstructNode, ProgExt},
-    parse::{Expression, ExpressionInner, FuncCall, FuncType, Program, Statement, Type},
+    parse::{Call, CallName, Expression, ExpressionInner, Program, Statement, Type},
     scope::GlobalScope,
     ProgNode,
 };
@@ -33,7 +33,7 @@ fn eval_blk(
             let right = eval_blk(stmts, scope, index + 1, last_expr);
             ProgNode::comp(left, right)
         }
-        Statement::FuncCall(func_call) => {
+        Statement::Call(func_call) => {
             let left = func_call.eval(scope, None);
             let right = eval_blk(stmts, scope, index + 1, last_expr);
             combine_seq(left, right)
@@ -53,40 +53,31 @@ impl Program {
     }
 }
 
-impl FuncCall {
+impl Call {
     pub fn eval(&self, scope: &mut GlobalScope, _reqd_ty: Option<&Type>) -> ProgNode {
-        match &self.func_type {
-            FuncType::Jet(jet_name) => {
-                let args = self
-                    .args
-                    .iter()
-                    .map(|e| e.eval(scope, None)) // TODO: Pass the jet source type here.
-                    .reduce(ProgNode::pair);
-                let jet = Elements::from_str(jet_name).expect("Invalid jet name");
+        let args_expr = self.args.to_expr().eval(scope, None);
+
+        match &self.name {
+            CallName::Jet(jet_name) => {
+                let jet = Elements::from_str(jet_name.as_inner()).expect("Invalid jet name");
                 let jet = ProgNode::jet(jet);
-                match args {
-                    Some(param) => {
-                        // println!("param: {}", param.arrow());
-                        // println!("jet: {}", jet.arrow());
-                        ProgNode::comp(param, jet)
-                    }
-                    None => ProgNode::comp(ProgNode::unit(), jet),
+                match self.args.as_ref().is_empty() {
+                    false => ProgNode::comp(args_expr, jet),
+                    true => ProgNode::comp(ProgNode::unit(), jet),
                 }
             }
-            FuncType::BuiltIn(..) => unimplemented!("Builtins are not supported yet"),
-            FuncType::UnwrapLeft => {
-                debug_assert!(self.args.len() == 1);
-                let b = self.args[0].eval(scope, None);
-                let left_and_unit = ProgNode::pair(b, ProgNode::unit());
+            CallName::BuiltIn(..) => unimplemented!("Builtins are not supported yet"),
+            CallName::UnwrapLeft => {
+                debug_assert!(self.args.as_ref().len() == 1);
+                let left_and_unit = ProgNode::pair(args_expr, ProgNode::unit());
                 let fail_cmr = Cmr::fail(FailEntropy::ZERO);
                 let take_iden = ProgNode::take(ProgNode::iden());
                 let get_inner = ProgNode::assertl(take_iden, fail_cmr);
                 ProgNode::comp(left_and_unit, get_inner)
             }
-            FuncType::UnwrapRight | FuncType::Unwrap => {
-                debug_assert!(self.args.len() == 1);
-                let c = self.args[0].eval(scope, None);
-                let right_and_unit = ProgNode::pair(c, ProgNode::unit());
+            CallName::UnwrapRight | CallName::Unwrap => {
+                debug_assert!(self.args.as_ref().len() == 1);
+                let right_and_unit = ProgNode::pair(args_expr, ProgNode::unit());
                 let fail_cmr = Cmr::fail(FailEntropy::ZERO);
                 let take_iden = ProgNode::take(ProgNode::iden());
                 let get_inner = ProgNode::assertr(fail_cmr, take_iden);
@@ -152,7 +143,7 @@ impl SingleExpressionInner {
                 println!("Identifier {}: {}", identifier, res.arrow());
                 res
             }
-            SingleExpressionInner::FuncCall(call) => call.eval(scope, reqd_ty),
+            SingleExpressionInner::Call(call) => call.eval(scope, reqd_ty),
             SingleExpressionInner::Expression(expression) => expression.eval(scope, reqd_ty),
             SingleExpressionInner::Match {
                 scrutinee,

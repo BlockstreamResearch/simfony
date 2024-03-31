@@ -26,7 +26,7 @@ pub enum Statement {
     /// A declaration of variables inside a pattern.
     Assignment(Assignment),
     /// A function call.
-    FuncCall(FuncCall),
+    Call(Call),
 }
 
 /// Pattern for binding values to variables.
@@ -156,30 +156,24 @@ pub struct Assignment {
     pub position: (usize, usize),
 }
 
-/// A function(jet) call.
-///
-/// The function name is the name of the jet.
-/// The arguments are the arguments to the jet.
-/// Since jets in simplicity operate on a single paired type,
-/// the arguments are paired together.
-/// jet(a, b, c, d) = jet(pair(pair(pair(a, b), c), d))
+/// A function call.
 #[derive(Clone, Debug, Hash)]
-pub struct FuncCall {
-    /// The type of the function.
-    pub func_type: FuncType,
-    /// The arguments to the function.
-    pub args: Arc<[Expression]>,
+pub struct Call {
+    /// The name of the called function.
+    pub name: CallName,
+    /// The arguments of the call.
+    pub args: CallArgs,
     /// The source text associated with this expression
     pub source_text: Arc<str>,
     /// The position of this expression in the source file. (row, col)
     pub position: (usize, usize),
 }
 
-/// A function(jet) name.
+/// A function name.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum FuncType {
+pub enum CallName {
     /// A jet name.
-    Jet(Arc<str>),
+    Jet(JetName),
     /// Left unwrap function
     UnwrapLeft,
     /// Right unwrap function
@@ -188,6 +182,36 @@ pub enum FuncType {
     Unwrap,
     /// A builtin function name.
     BuiltIn(Arc<str>),
+}
+
+/// String that is a jet name.
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct JetName(Arc<str>);
+
+impl JetName {
+    /// Access the inner jet name.
+    pub fn as_inner(&self) -> &Arc<str> {
+        &self.0
+    }
+}
+
+/// List of arguments for a function call.
+#[derive(Clone, Debug, Hash)]
+pub struct CallArgs(Arc<[Expression]>);
+
+impl AsRef<[Expression]> for CallArgs {
+    fn as_ref(&self) -> &[Expression] {
+        self.0.as_ref()
+    }
+}
+
+impl CallArgs {
+    pub fn to_expr(&self) -> SingleExpressionInner {
+        match self.0.is_empty() {
+            true => SingleExpressionInner::Unit,
+            false => SingleExpressionInner::Array(self.0.clone()),
+        }
+    }
 }
 
 /// An expression is something that returns a value.
@@ -252,7 +276,7 @@ pub enum SingleExpressionInner {
     /// Variable identifier expression
     Variable(Identifier),
     /// Function call
-    FuncCall(FuncCall),
+    Call(Call),
     /// Expression in parentheses
     Expression(Arc<Expression>),
     /// Match expression over a sum type
@@ -658,7 +682,7 @@ impl PestParse for Statement {
         let inner_pair = pair.into_inner().next().unwrap();
         match inner_pair.as_rule() {
             Rule::assignment => Statement::Assignment(Assignment::parse(inner_pair)),
-            Rule::func_call => Statement::FuncCall(FuncCall::parse(inner_pair)),
+            Rule::call_expr => Statement::Call(Call::parse(inner_pair)),
             x => panic!("{:?}", x),
         }
     }
@@ -730,46 +754,53 @@ impl PestParse for Assignment {
     }
 }
 
-impl PestParse for FuncCall {
+impl PestParse for Call {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
-        assert!(matches!(pair.as_rule(), Rule::func_call));
+        assert!(matches!(pair.as_rule(), Rule::call_expr));
         let source_text = Arc::from(pair.as_str());
         let position = pair.line_col();
-        let inner_pair = pair.into_inner().next().unwrap();
+        let mut inner = pair.into_inner();
+        let name = CallName::parse(inner.next().unwrap());
+        let args = CallArgs::parse(inner.next().unwrap());
 
-        let func_type = FuncType::parse(inner_pair.clone());
-        let inner_inner = inner_pair.into_inner();
-        let mut args = Vec::new();
-        for inner_inner_pair in inner_inner {
-            match inner_inner_pair.as_rule() {
-                Rule::expression => args.push(Expression::parse(inner_inner_pair)),
-                Rule::jet => {}
-                _ => unreachable!("Corrupt grammar"),
-            }
-        }
-
-        FuncCall {
-            func_type,
-            args: args.into_iter().collect(),
+        Call {
+            name,
+            args,
             source_text,
             position,
         }
     }
 }
 
-impl PestParse for FuncType {
+impl PestParse for CallName {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
-        match pair.as_rule() {
-            Rule::jet_expr => {
-                let jet_pair = pair.into_inner().next().unwrap();
-                let jet_name = jet_pair.as_str().strip_prefix("jet_").unwrap();
-                FuncType::Jet(Arc::from(jet_name))
+        assert!(matches!(pair.as_rule(), Rule::call_name));
+
+        match pair.as_str() {
+            "unwrap_left" => CallName::UnwrapLeft,
+            "unwrap_right" => CallName::UnwrapRight,
+            "unwrap" => CallName::Unwrap,
+            _ => {
+                let inner = pair.into_inner().next().unwrap();
+                CallName::Jet(JetName::parse(inner))
             }
-            Rule::unwrap_left_expr => FuncType::UnwrapLeft,
-            Rule::unwrap_right_expr => FuncType::UnwrapRight,
-            Rule::unwrap_expr => FuncType::Unwrap,
-            rule => panic!("Cannot parse rule: {:?}", rule),
         }
+    }
+}
+
+impl PestParse for JetName {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::jet));
+        let jet_name = pair.as_str().strip_prefix("jet_").unwrap();
+        Self(Arc::from(jet_name))
+    }
+}
+
+impl PestParse for CallArgs {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::call_args));
+        let args = pair.into_inner().map(Expression::parse).collect();
+        CallArgs(args)
     }
 }
 
@@ -841,7 +872,7 @@ impl PestParse for SingleExpression {
             }
             Rule::false_expr => SingleExpressionInner::False,
             Rule::true_expr => SingleExpressionInner::True,
-            Rule::func_call => SingleExpressionInner::FuncCall(FuncCall::parse(inner_pair)),
+            Rule::call_expr => SingleExpressionInner::Call(Call::parse(inner_pair)),
             Rule::bit_string => SingleExpressionInner::BitString(Bits::parse(inner_pair)),
             Rule::byte_string => SingleExpressionInner::ByteString(Bytes::parse(inner_pair)),
             Rule::unsigned_integer => SingleExpressionInner::UnsignedInteger(source_text.clone()),
