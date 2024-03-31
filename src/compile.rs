@@ -57,28 +57,26 @@ impl Program {
 
 impl FuncCall {
     pub fn eval(&self, scope: &mut GlobalScope, _reqd_ty: Option<&Type>) -> ProgNode {
+        let args_expr = self
+            .args
+            .as_ref()
+            .iter()
+            .map(|e| e.eval(scope, None)) // TODO: Pass the jet source type here.
+            .reduce(ProgNode::pair);
+
         match &self.func_type {
             FuncType::Jet(jet_name) => {
-                let args = self
-                    .args
-                    .iter()
-                    .map(|e| e.eval(scope, None)) // TODO: Pass the jet source type here.
-                    .reduce(ProgNode::pair);
-                let jet = Elements::from_str(jet_name).expect("Invalid jet name");
+                let jet = Elements::from_str(jet_name.as_inner()).expect("Invalid jet name");
                 let jet = ProgNode::jet(jet);
-                match args {
-                    Some(param) => {
-                        // println!("param: {}", param.arrow());
-                        // println!("jet: {}", jet.arrow());
-                        ProgNode::comp(param, jet)
-                    }
+                match args_expr {
+                    Some(expr) => ProgNode::comp(expr, jet),
                     None => ProgNode::comp(ProgNode::unit(), jet),
                 }
             }
             FuncType::BuiltIn(..) => unimplemented!("Builtins are not supported yet"),
             FuncType::UnwrapLeft => {
-                debug_assert!(self.args.len() == 1);
-                let b = self.args[0].eval(scope, None);
+                debug_assert!(self.args.as_ref().len() == 1);
+                let b = args_expr.unwrap();
                 let left_and_unit = ProgNode::pair(b, ProgNode::unit());
                 let fail_cmr = Cmr::fail(FailEntropy::ZERO);
                 let take_iden = ProgNode::take(ProgNode::iden());
@@ -86,8 +84,8 @@ impl FuncCall {
                 ProgNode::comp(left_and_unit, get_inner)
             }
             FuncType::UnwrapRight | FuncType::Unwrap => {
-                debug_assert!(self.args.len() == 1);
-                let c = self.args[0].eval(scope, None);
+                debug_assert!(self.args.as_ref().len() == 1);
+                let c = args_expr.unwrap();
                 let right_and_unit = ProgNode::pair(c, ProgNode::unit());
                 let fail_cmr = Cmr::fail(FailEntropy::ZERO);
                 let take_iden = ProgNode::take(ProgNode::iden());

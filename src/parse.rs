@@ -164,7 +164,7 @@ pub struct FuncCall {
     /// The type of the function.
     pub func_type: FuncType,
     /// The arguments to the function.
-    pub args: Vec<Expression>,
+    pub args: CallArguments,
     /// The source text associated with this expression
     pub source_text: Arc<str>,
     /// The position of this expression in the source file. (row, col)
@@ -175,7 +175,7 @@ pub struct FuncCall {
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum FuncType {
     /// A jet name.
-    Jet(Arc<str>),
+    Jet(JetName),
     /// Left unwrap function
     UnwrapLeft,
     /// Right unwrap function
@@ -184,6 +184,27 @@ pub enum FuncType {
     Unwrap,
     /// A builtin function name.
     BuiltIn(Arc<str>),
+}
+
+/// String that is a jet name.
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct JetName(Arc<str>);
+
+impl JetName {
+    /// Access the inner jet name.
+    pub fn as_inner(&self) -> &Arc<str> {
+        &self.0
+    }
+}
+
+/// List of arguments for a function call.
+#[derive(Clone, Debug, Hash)]
+pub struct CallArguments(Vec<Expression>);
+
+impl AsRef<[Expression]> for CallArguments {
+    fn as_ref(&self) -> &[Expression] {
+        self.0.as_ref()
+    }
 }
 
 /// An expression is something that returns a value.
@@ -731,18 +752,9 @@ impl PestParse for FuncCall {
         assert!(matches!(pair.as_rule(), Rule::func_call));
         let source_text = Arc::from(pair.as_str());
         let position = pair.line_col();
-        let inner_pair = pair.into_inner().next().unwrap();
-
-        let func_type = FuncType::parse(inner_pair.clone());
-        let inner_inner = inner_pair.into_inner();
-        let mut args = Vec::new();
-        for inner_inner_pair in inner_inner {
-            match inner_inner_pair.as_rule() {
-                Rule::expression => args.push(Expression::parse(inner_inner_pair)),
-                Rule::jet => {}
-                _ => unreachable!("Corrupt grammar"),
-            }
-        }
+        let mut inner = pair.into_inner();
+        let func_type = FuncType::parse(inner.next().unwrap());
+        let args = CallArguments::parse(inner.next().unwrap());
 
         FuncCall {
             func_type,
@@ -755,17 +767,36 @@ impl PestParse for FuncCall {
 
 impl PestParse for FuncType {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
-        match pair.as_rule() {
-            Rule::jet_expr => {
-                let jet_pair = pair.into_inner().next().unwrap();
-                let jet_name = jet_pair.as_str().strip_prefix("jet_").unwrap();
-                FuncType::Jet(Arc::from(jet_name))
+        assert!(matches!(pair.as_rule(), Rule::function_name));
+
+        match pair.as_str() {
+            "unwrap_left" => FuncType::UnwrapLeft,
+            "unwrap_right" => FuncType::UnwrapRight,
+            "unwrap" => FuncType::Unwrap,
+            _ => {
+                let inner = pair.into_inner().next().unwrap();
+                FuncType::Jet(JetName::parse(inner))
             }
-            Rule::unwrap_left_expr => FuncType::UnwrapLeft,
-            Rule::unwrap_right_expr => FuncType::UnwrapRight,
-            Rule::unwrap_expr => FuncType::Unwrap,
-            rule => panic!("Cannot parse rule: {:?}", rule),
         }
+    }
+}
+
+impl PestParse for JetName {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::jet));
+        let jet_name = pair.as_str().strip_prefix("jet_").unwrap();
+        Self(Arc::from(jet_name))
+    }
+}
+
+impl PestParse for CallArguments {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::call_arguments));
+        let mut args = Vec::new();
+        for inner_pair in pair.into_inner() {
+            args.push(Expression::parse(inner_pair));
+        }
+        CallArguments(args)
     }
 }
 
