@@ -14,14 +14,14 @@ use crate::array::{BTreeSlice, Partition};
 use crate::Rule;
 
 /// A complete simplicity program.
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct Program {
     /// The statements in the program.
     pub statements: Vec<Statement>,
 }
 
 /// A statement in a simplicity program.
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum Statement {
     /// A declaration of variables inside a pattern.
     Assignment(Assignment),
@@ -30,7 +30,7 @@ pub enum Statement {
 }
 
 /// Pattern for binding values to variables.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Pattern {
     /// Bind value to variable name.
     Identifier(Identifier),
@@ -50,7 +50,7 @@ impl<'a> TreeLike for &'a Pattern {
 }
 
 /// Identifier of a variable.
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Identifier(Arc<str>);
 
 impl fmt::Display for Identifier {
@@ -60,7 +60,7 @@ impl fmt::Display for Identifier {
 }
 
 /// The output of an expression is assigned to a pattern.
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct Assignment {
     /// The pattern.
     pub pattern: Pattern,
@@ -81,7 +81,7 @@ pub struct Assignment {
 /// Since jets in simplicity operate on a single paired type,
 /// the arguments are paired together.
 /// jet(a, b, c, d) = jet(pair(pair(pair(a, b), c), d))
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct FuncCall {
     /// The type of the function.
     pub func_type: FuncType,
@@ -94,7 +94,7 @@ pub struct FuncCall {
 }
 
 /// A function(jet) name.
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum FuncType {
     /// A jet name.
     Jet(Arc<str>),
@@ -109,7 +109,7 @@ pub enum FuncType {
 }
 
 /// An expression is something that returns a value.
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct Expression {
     /// The kind of expression
     pub inner: ExpressionInner,
@@ -120,7 +120,7 @@ pub struct Expression {
 }
 
 /// The kind of expression.
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum ExpressionInner {
     /// A block expression executes a series of statements
     /// and returns the value of the final expression.
@@ -130,7 +130,7 @@ pub enum ExpressionInner {
 }
 
 /// A single expression directly returns a value.
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct SingleExpression {
     /// The kind of single expression
     pub inner: SingleExpressionInner,
@@ -141,7 +141,7 @@ pub struct SingleExpression {
 }
 
 /// The kind of single expression.
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum SingleExpressionInner {
     /// Unit literal expression
     Unit,
@@ -191,7 +191,7 @@ pub enum SingleExpressionInner {
 }
 
 /// Bit string whose length is a power of two.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Bits {
     /// Least significant bit of byte
     U1(u8),
@@ -216,7 +216,7 @@ impl Bits {
 }
 
 /// Byte string whose length is a power of two.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Bytes(pub Vec<u8>);
 
 impl Bytes {
@@ -227,7 +227,7 @@ impl Bytes {
 }
 
 /// String that is a witness name.
-#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct WitnessName(Arc<str>);
 
 impl WitnessName {
@@ -244,7 +244,7 @@ impl fmt::Display for WitnessName {
 }
 
 /// Arm of a match expression.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct MatchArm {
     /// Matched pattern
     pub pattern: MatchPattern,
@@ -253,7 +253,7 @@ pub struct MatchArm {
 }
 
 /// Pattern of a match arm.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum MatchPattern {
     /// Bind inner value of left value to variable name.
     Left(Identifier),

@@ -5,7 +5,7 @@ use miniscript::iter::{Tree, TreeLike};
 ///
 /// Each node is labelled with a slice.
 /// Leaves contain single elements.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct BTreeSlice<'a, A>(&'a [A]);
 
 impl<'a, A> BTreeSlice<'a, A> {
@@ -81,7 +81,7 @@ impl<'a, A: Clone> TreeLike for BTreeSlice<'a, A> {
 /// 3. A slice of length `1 < l < N` is a parent:
 ///     1. Left child: The empty block
 ///     2. Right child: The partition of the remaining `l` elements
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum Partition<'a, A> {
     Leaf(&'a [A]),
     Parent { slice: &'a [A], block_len: usize },
