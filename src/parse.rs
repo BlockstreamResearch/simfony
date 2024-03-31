@@ -280,7 +280,7 @@ impl MatchPattern {
 }
 
 /// A Simphony type.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 #[non_exhaustive]
 pub enum Type {
     Unit,
