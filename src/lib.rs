@@ -144,16 +144,9 @@ pub fn satisfy(prog: &Path, wit_file: &Path) -> RedeemNode<Elements> {
 mod tests {
     use base64::display::Base64Display;
     use base64::engine::general_purpose::STANDARD;
-    use simplicity::{
-        encode,
-        BitMachine, BitWriter, Cmr, Value,
-    };
+    use simplicity::{encode, BitMachine, BitWriter, Cmr, Value};
 
-    use crate::{
-        named::ProgExt,
-        parse::Statement,
-        *,
-    };
+    use crate::{named::ProgExt, parse::Statement, *};
 
     #[test]
     fn test_progs() {
@@ -165,7 +158,7 @@ mod tests {
         _test_progs("./example_progs/cat.simpl");
         _test_progs("./example_progs/match.simpl");
         _test_progs("./example_progs/array.simpl");
-        // _test_progs("./add_with_builtins.simpl");
+        _test_progs("./example_progs/list.simpl");
     }
 
     fn _test_progs(file: &str) {

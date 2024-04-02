@@ -64,6 +64,122 @@ impl<'a, A: Clone> TreeLike for BTreeSlice<'a, A> {
     }
 }
 
+/// Partition of a slice into blocks of (lengths of) powers of two.
+///
+/// The blocks start at (length) `N` and decrease to one in order.
+/// Depending on the (length of the) slice, some blocks might be empty.
+///
+/// A partition forms a binary tree:
+///
+/// 1. A slice of length `l = 1` is a leaf
+/// 2. A slice of length `l ≥ N` is a parent:
+///     1. Left child: The block of the first `N` elements
+///     2. Right child: The partition of the remaining `l - N` elements
+/// 3. A slice of length `1 < l < N` is a parent:
+///     1. Left child: The empty block
+///     2. Right child: The partition of the remaining `l` elements
+#[derive(Debug, Copy, Clone)]
+pub enum Partition<'a, A> {
+    Leaf(&'a [A]),
+    Parent { slice: &'a [A], block_len: usize },
+}
+
+impl<'a, A> Partition<'a, A> {
+    /// Partition the `slice` into blocks starting at the given `block_len`.
+    ///
+    /// ## Panics
+    ///
+    /// The `block_len` is not a power of two.
+    ///
+    /// The `block_len` is not large enough to partition the slice (2 * `block_len` ≤ slice length).
+    pub fn from_slice(slice: &'a [A], block_len: usize) -> Self {
+        assert!(
+            block_len.is_power_of_two(),
+            "The block length must be a power of two"
+        );
+        assert!(
+            slice.len() < block_len * 2,
+            "The block length must be large enough to partition the slice"
+        );
+        match block_len {
+            1 => Self::Leaf(slice),
+            _ => Self::Parent { slice, block_len },
+        }
+    }
+}
+
+impl<'a, A: Clone> Partition<'a, A> {
+    /// Check if the partition is complete.
+    ///
+    /// A complete partition contains no empty blocks.
+    pub fn is_complete(&self) -> bool {
+        match self {
+            Partition::Leaf(slice) => {
+                debug_assert!(slice.len().is_power_of_two());
+                slice.len() == 1
+            }
+            Partition::Parent { slice, block_len } => {
+                debug_assert!(slice.len() < block_len * 2);
+                slice.len() + 1 == block_len * 2
+            }
+        }
+    }
+
+    /// Fold the tree of blocks in post-order.
+    ///
+    /// There are two steps:
+    /// 1. Function `f` converts each block (leaf node) into an output value.
+    /// 2. Function `g` joins the outputs of each leaf in post-order.
+    ///
+    /// Function `f` must handle empty blocks if the partition is not complete.
+    pub fn fold<B, F, G>(self, f: F, g: G) -> B
+    where
+        F: Fn(&[A]) -> B,
+        G: Fn(B, B) -> B,
+    {
+        let mut output = vec![];
+        for item in self.post_order_iter() {
+            match item.node {
+                Partition::Leaf(slice) => {
+                    output.push(f(slice));
+                }
+                Partition::Parent { .. } => {
+                    let r = output.pop().unwrap();
+                    let l = output.pop().unwrap();
+                    output.push(g(l, r));
+                }
+            }
+        }
+
+        debug_assert!(output.len() == 1);
+        output.pop().unwrap()
+    }
+}
+
+#[rustfmt::skip]
+impl<'a, A: Clone> TreeLike for Partition<'a, A> {
+    fn as_node(&self) -> Tree<Self> {
+        match self {
+            Self::Leaf(..) => Tree::Nullary,
+            Self::Parent { slice, block_len } => {
+                debug_assert!(2 <= *block_len);
+                let (l, r) = if slice.len() < *block_len {
+                    (
+                        Self::Leaf(&[]),
+                        Self::from_slice(slice, block_len / 2),
+                    )
+                } else {
+                    (
+                        Self::Leaf(&slice[..*block_len]),
+                        Self::from_slice(&slice[*block_len..], block_len / 2),
+                    )
+                };
+                Tree::Binary(l, r)
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -87,6 +203,36 @@ mod tests {
             let vector: Vec<_> = slice.iter().map(|s| s.to_string()).collect();
             let tree = BTreeSlice::from_slice(&vector);
             let output = tree.fold(concat);
+            assert_eq!(&output, expected_output);
+        }
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn fold_partition() {
+        let slice_len_output: [(&[&str], usize, &str); 14] = [
+            (&[], 1, ""),
+            (&["a"], 1, "a"),
+            (&[], 2, "(:)"),
+            (&["a"], 2, "(:a)"),
+            (&["a", "b"], 2, "(ab:)"),
+            (&["a", "b", "c"], 2, "(ab:c)"),
+            (&[], 4, "(:(:))"),
+            (&["a"], 4, "(:(:a))"),
+            (&["a", "b"], 4, "(:(ab:))"),
+            (&["a", "b", "c"], 4, "(:(ab:c))"),
+            (&["a", "b", "c", "d"], 4, "(abcd:(:))"),
+            (&["a", "b", "c", "d", "e"], 4, "(abcd:(:e))"),
+            (&["a", "b", "c", "d", "e", "f"], 4, "(abcd:(ef:))"),
+            (&["a", "b", "c", "d", "e", "f", "g"], 4, "(abcd:(ef:g))"),
+        ];
+        let process = |block: &[String]| block.join("");
+        let join = |a: String, b: String| format!("({a}:{b})");
+
+        for (slice, block_len, expected_output) in slice_len_output {
+            let vector: Vec<_> = slice.iter().map(|s| s.to_string()).collect();
+            let partition = Partition::from_slice(&vector, block_len);
+            let output = partition.fold(process, join);
             assert_eq!(&output, expected_output);
         }
     }

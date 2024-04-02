@@ -1,0 +1,12 @@
+let a1: List<u32, 2> = None;
+let b1: List<u32, 2> = Some(1);
+let c1: List<u32, 4> = (None, None);
+let d1: List<u32, 4> = (None, Some(1));
+let e1: List<u32, 4> = (Some([1, 2]), None);
+let f1: List<u32, 4> = (Some([1, 2]), Some(3));
+let a2: List<u32, 2> = list![];
+let b2: List<u32, 2> = list![1];
+let c2: List<u32, 4> = list![];
+let d2: List<u32, 4> = list![1];
+let e2: List<u32, 4> = list![1, 2];
+let f2: List<u32, 4> = list![1, 2, 3];

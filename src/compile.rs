@@ -4,7 +4,7 @@ use std::{str::FromStr, sync::Arc};
 
 use simplicity::{jet::Elements, node, Cmr, FailEntropy};
 
-use crate::array::BTreeSlice;
+use crate::array::{BTreeSlice, Partition};
 use crate::parse::{Pattern, SingleExpressionInner, UIntType};
 use crate::{
     named::{ConstructExt, NamedConstructNode, ProgExt},
@@ -191,6 +191,34 @@ impl SingleExpression {
                 let nodes: Vec<_> = elements.iter().map(|e| e.eval(scope, el_type)).collect();
                 let tree = BTreeSlice::from_slice(&nodes);
                 tree.fold(ProgNode::pair)
+            }
+            SingleExpressionInner::List(elements) => {
+                let el_type = if let Some(Type::List(ty, _)) = reqd_ty {
+                    Some(ty.as_ref())
+                } else {
+                    None
+                };
+                let nodes: Vec<_> = elements.iter().map(|e| e.eval(scope, el_type)).collect();
+                let bound = if let Some(Type::List(_, bound)) = reqd_ty {
+                    *bound
+                } else {
+                    elements.len().next_power_of_two()
+                };
+                debug_assert!(bound.is_power_of_two());
+                debug_assert!(2 <= bound);
+
+                let partition = Partition::from_slice(&nodes, bound / 2);
+                let process = |block: &[ProgNode]| -> ProgNode {
+                    if block.is_empty() {
+                        ProgNode::injl(ProgNode::unit())
+                    } else {
+                        let tree = BTreeSlice::from_slice(block);
+                        let array = tree.fold(ProgNode::pair);
+                        ProgNode::injr(array)
+                    }
+                };
+
+                partition.fold(process, ProgNode::pair)
             }
         };
         if let Some(reqd_ty) = reqd_ty {
