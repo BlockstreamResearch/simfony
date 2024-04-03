@@ -10,7 +10,7 @@ use simplicity::elements::hex::FromHex;
 use simplicity::types::Type as SimType;
 use simplicity::Value;
 
-use crate::array::{BTreeSlice, Partition};
+use crate::array::{BTreeSlice, BinaryTree, Partition};
 use crate::Rule;
 
 /// A complete simplicity program.
@@ -38,6 +38,39 @@ pub enum Pattern {
     Ignore,
     /// Split product value. Bind components to first and second pattern, respectively.
     Product(Arc<Self>, Arc<Self>),
+}
+
+impl Pattern {
+    /// Create an equivalent pattern that corresponds to the Simplicity base types.
+    ///
+    /// ## Base patterns
+    ///
+    /// - Identifier
+    /// - Ignore
+    /// - Product
+    pub fn to_base(&self) -> Self {
+        let binary = BinaryTree::from_tree(self);
+        let mut to_base = HashMap::new();
+
+        for data in binary.clone().post_order_iter() {
+            match data.node.as_node() {
+                Tree::Nullary => {
+                    let pattern = (*data.node.as_normal().unwrap()).clone();
+                    to_base.insert(data.node, pattern);
+                }
+                Tree::Binary(l, r) => {
+                    let l_converted = to_base.get(&l).unwrap().clone();
+                    let r_converted = to_base.get(&r).unwrap().clone();
+                    let pattern = Pattern::Product(Arc::new(l_converted), Arc::new(r_converted));
+                    to_base.insert(data.node, pattern);
+                }
+                Tree::Unary(..) => unreachable!("There are no unary patterns"),
+                Tree::Nary(..) => unreachable!("Binary trees have no arrays"),
+            }
+        }
+
+        to_base.remove(&binary).unwrap()
+    }
 }
 
 impl<'a> TreeLike for &'a Pattern {
