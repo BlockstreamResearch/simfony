@@ -681,6 +681,11 @@ impl PestParse for Pattern {
                     let l = output.pop().unwrap();
                     output.push(Pattern::Product(Arc::new(l), Arc::new(r)));
                 }
+                Rule::array_pattern => {
+                    assert!(0 < data.node.n_children(), "Array must be nonempty");
+                    let children = output.split_off(output.len() - data.node.n_children());
+                    output.push(Pattern::Array(children));
+                }
                 _ => unreachable!("Corrupt grammar"),
             }
         }
@@ -1120,6 +1125,10 @@ impl<'a> TreeLike for PatternPair<'a> {
                 let l = it.next().unwrap();
                 let r = it.next().unwrap();
                 Tree::Binary(PatternPair(l), PatternPair(r))
+            }
+            Rule::array_pattern => {
+                let children: Arc<[PatternPair]> = it.map(PatternPair).collect();
+                Tree::Nary(children)
             }
             _ => unreachable!("Corrupt grammar"),
         }

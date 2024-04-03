@@ -56,3 +56,7 @@ let j1: [bool; 3] = [false, false, true];
 let j2: ((bool, bool), bool) = j1;
 let k1: [bool; 5] = [false, false, false, false, true];
 let k2: (((bool, bool), (bool, bool)), bool) = k1;
+let [l, m, n] = [1, 2, 3];
+jet_verify(jet_eq_32(1, l));
+jet_verify(jet_eq_32(2, m));
+jet_verify(jet_eq_32(3, n));
