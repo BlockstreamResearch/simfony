@@ -43,6 +43,16 @@ pub enum Pattern {
 }
 
 impl Pattern {
+    /// Construct a product pattern.
+    pub fn product(l: Self, r: Self) -> Self {
+        Self::Product(Arc::new(l), Arc::new(r))
+    }
+
+    /// Construct an array pattern.
+    pub fn array<I: IntoIterator<Item = Self>>(array: I) -> Self {
+        Self::Array(array.into_iter().collect())
+    }
+
     /// Create an equivalent pattern that corresponds to the Simplicity base types.
     ///
     /// ## Base patterns
@@ -114,6 +124,12 @@ impl fmt::Display for Pattern {
 /// Identifier of a variable.
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Identifier(Arc<str>);
+
+impl Identifier {
+    pub fn from_str_unchecked(str: &str) -> Self {
+        Self(Arc::from(str))
+    }
+}
 
 impl fmt::Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

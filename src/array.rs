@@ -412,6 +412,7 @@ impl<T: TreeLike> TreeLike for DirectedTree<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parse::{Identifier, Pattern};
 
     #[test]
     #[rustfmt::skip]
@@ -492,6 +493,51 @@ mod tests {
                 .find(|node| node.tree.0 == target)
                 .map(|t| t.path);
             assert_eq!(path, expected_path);
+        }
+    }
+
+    #[test]
+    fn base_pattern() {
+        let a = Pattern::Identifier(Identifier::from_str_unchecked("a"));
+        let b = Pattern::Identifier(Identifier::from_str_unchecked("b"));
+        let c = Pattern::Identifier(Identifier::from_str_unchecked("c"));
+        let d = Pattern::Identifier(Identifier::from_str_unchecked("d"));
+
+        let pattern_string = [
+            // a = a
+            (a.clone(), a.clone()),
+            // (a, b) = (a, b)
+            (
+                Pattern::product(a.clone(), b.clone()),
+                Pattern::product(a.clone(), b.clone()),
+            ),
+            // [a] = a
+            (Pattern::array([a.clone()]), a.clone()),
+            // [[a]] = a
+            (Pattern::array([Pattern::array([a.clone()])]), a.clone()),
+            // [a b] = (a, b)
+            (
+                Pattern::array([a.clone(), b.clone()]),
+                Pattern::product(a.clone(), b.clone()),
+            ),
+            // [a b c] = ((a, b), c)
+            (
+                Pattern::array([a.clone(), b.clone(), c.clone()]),
+                Pattern::product(Pattern::product(a.clone(), b.clone()), c.clone()),
+            ),
+            // [[a, b], [c, d]] = ((a, b), (c, d))
+            (
+                Pattern::array([
+                    Pattern::array([a.clone(), b.clone()]),
+                    Pattern::array([c.clone(), d.clone()]),
+                ]),
+                Pattern::product(Pattern::product(a, b), Pattern::product(c, d)),
+            ),
+        ];
+
+        for (pattern, expected_base_pattern) in pattern_string {
+            let base_pattern = pattern.to_base();
+            assert_eq!(expected_base_pattern, base_pattern);
         }
     }
 }
