@@ -17,7 +17,8 @@ reserved          = _{ jet | builtin }
 variable_pattern  =  { identifier }
 ignore_pattern    =  { "_" }
 product_pattern   =  { "(" ~ pattern ~ "," ~ pattern ~ ")" }
-pattern           =  { variable_pattern | ignore_pattern | product_pattern }
+array_pattern     =  { "[" ~ pattern ~ ("," ~ pattern)* ~ ","? ~ "]" }
+pattern           =  { ignore_pattern | product_pattern | array_pattern | variable_pattern }
 assignment        =  { "let" ~ pattern ~ (":" ~ ty)? ~ "=" ~ expression }
 
 left_pattern      =  { "Left(" ~ identifier ~ ")" }

@@ -1,12 +1,18 @@
 use miniscript::iter::{Tree, TreeLike};
+use std::fmt;
+use std::ops::Range;
+use std::sync::Arc;
 
-/// View of a slice as a balanced binary tree of its elements.
+/// View of a slice as a balanced binary tree.
 /// The slice must be nonempty.
-#[derive(Debug, Copy, Clone)]
+///
+/// Each node is labelled with a slice.
+/// Leaves contain single elements.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct BTreeSlice<'a, A>(&'a [A]);
 
 impl<'a, A> BTreeSlice<'a, A> {
-    /// View the slice as a balanced binary tree of its elements.
+    /// View the slice as a balanced binary tree.
     ///
     /// ## Panics
     ///
@@ -78,7 +84,7 @@ impl<'a, A: Clone> TreeLike for BTreeSlice<'a, A> {
 /// 3. A slice of length `1 < l < N` is a parent:
 ///     1. Left child: The empty block
 ///     2. Right child: The partition of the remaining `l` elements
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum Partition<'a, A> {
     Leaf(&'a [A]),
     Parent { slice: &'a [A], block_len: usize },
@@ -180,9 +186,233 @@ impl<'a, A: Clone> TreeLike for Partition<'a, A> {
     }
 }
 
+/// Convert a tree into a binary tree.
+/// Each node has fanout at most two.
+///
+/// Nodes with at most two children (non-arrays) are preserved in the binary tree.
+/// We call these nodes _normal nodes_.
+///
+/// Nodes with more than two children (arrays) are converted into balanced binary trees.
+///
+/// ## Example
+///
+/// Take a root node with children `a`, `b`, `c`.
+///
+/// ```text
+///    .
+///  / | \
+/// a  b  c
+/// ```
+///
+/// The 3-ary root is converted into two 2-ary nodes. The normal nodes `a`, `b`, `c` stay preserved.
+///
+/// ```text
+///     .
+///    / \
+///   .   c
+///  / \
+/// a   b
+/// ```
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct BinaryTree<T>(BinaryTreeInner<T>);
+
+impl<T> BinaryTree<T> {
+    /// Access the content of a normal node.
+    pub fn as_normal(&self) -> Option<&T> {
+        match &self.0 {
+            BinaryTreeInner::Normal(tree) => Some(tree),
+            _ => None,
+        }
+    }
+}
+
+impl<T: TreeLike> BinaryTree<T> {
+    /// Convert a tree into a binary tree.
+    ///
+    /// ## Panics
+    ///
+    /// `<T as TreeLike>::as_node` returns `Tree::Nary` with an empty array.
+    pub fn from_tree(tree: T) -> Self {
+        Self(BinaryTreeInner::normal(tree))
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+enum BinaryTreeInner<T> {
+    /// Normal node (with at most two children).
+    ///
+    /// Must be constructed via [`BinaryTreeInner::normal()`].
+    Normal(T),
+    /// Array of at least two children.
+    ///
+    /// Must be constructed via [`BinaryTreeInner::array()`].
+    Array(Arc<[T]>, Range<usize>),
+}
+
+impl<T: TreeLike> BinaryTreeInner<T> {
+    /// Construct a binary tree from a tree.
+    ///
+    /// ## Panics
+    ///
+    /// `<T as TreeLike>::as_node` returns `Tree::Nary` with an empty array.
+    // FIXME: Remove recursion
+    fn normal(tree: T) -> Self {
+        match tree.as_node() {
+            Tree::Nary(array) => {
+                let range = 0..array.len();
+                Self::array(array, range)
+            }
+            _ => Self::Normal(tree),
+        }
+    }
+
+    /// Construct a binary tree from an array.
+    ///
+    /// ## Panics
+    ///
+    /// Array is empty. Range is empty.
+    ///
+    /// `<T as TreeLike>::as_node` returns `Tree::Nary` with an empty array.
+    // FIXME: Remove recursion
+    fn array(array: Arc<[T]>, range: Range<usize>) -> Self {
+        assert!(!array.is_empty(), "Arrays must be nonempty");
+        match range.len() {
+            0 => panic!("Range must be nonempty"),
+            1 => Self::normal(array[range.start].clone()),
+            _ => Self::Array(array, range),
+        }
+    }
+}
+
+impl<T: TreeLike> TreeLike for BinaryTree<T> {
+    /// # Panics
+    ///
+    /// `<T as TreeLike>::as_node` returns `Tree::Nary` with an empty array.
+    fn as_node(&self) -> Tree<Self> {
+        match &self.0 {
+            BinaryTreeInner::Normal(tree) => match tree.as_node() {
+                Tree::Nullary => Tree::Nullary,
+                Tree::Unary(l) => Tree::Unary(Self(BinaryTreeInner::normal(l))),
+                Tree::Binary(l, r) => Tree::Binary(
+                    Self(BinaryTreeInner::normal(l)),
+                    Self(BinaryTreeInner::normal(r)),
+                ),
+                Tree::Nary(array) => {
+                    let range = 0..array.len();
+                    Self(BinaryTreeInner::array(array, range)).as_node()
+                }
+            },
+            BinaryTreeInner::Array(array, range) => {
+                debug_assert!(2 <= range.len());
+                let n = range.len();
+                let next_pow2 = n.next_power_of_two();
+                let half = next_pow2 / 2;
+                let left = Self(BinaryTreeInner::array(
+                    Arc::clone(array),
+                    range.start..range.start + half,
+                ));
+                let right = Self(BinaryTreeInner::array(
+                    Arc::clone(array),
+                    range.start + half..range.end,
+                ));
+                Tree::Binary(left, right)
+            }
+        }
+    }
+}
+
+impl<T: TreeLike + fmt::Display> fmt::Display for BinaryTree<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.0 {
+            BinaryTreeInner::Normal(tree) => write!(f, "{tree}"),
+            BinaryTreeInner::Array(..) => write!(f, "."),
+        }
+    }
+}
+
+/// One step on a path from ancestor nodes to descendent nodes.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum Direction {
+    /// Go to the only child.
+    Down,
+    /// Go to the left child.
+    Left,
+    /// Go to the right child.
+    Right,
+    /// Go to the child at index `n`.
+    Index(usize),
+}
+
+/// A tree that labels each node with the path from root.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct DirectedTree<T> {
+    /// Node
+    tree: T,
+    /// Path from root to the node
+    path: Vec<Direction>,
+}
+
+impl<T> From<T> for DirectedTree<T> {
+    fn from(tree: T) -> Self {
+        Self {
+            tree,
+            path: Vec::new(),
+        }
+    }
+}
+
+impl<T> DirectedTree<T> {
+    /// Extract the node and the path from root.
+    pub fn into_inner(self) -> (T, Vec<Direction>) {
+        (self.tree, self.path)
+    }
+}
+
+impl<T: TreeLike> DirectedTree<T> {
+    /// Find the first node (in pre-order) that satisfies the `predicate`.
+    ///
+    /// Return the node and the path from root to this node.
+    pub fn find<F>(self, predicate: F) -> Option<(T, Vec<Direction>)>
+    where
+        F: Fn(T) -> bool,
+    {
+        self.pre_order_iter()
+            .find(|node| predicate(node.tree.clone()))
+            .map(|node| node.into_inner())
+    }
+
+    fn go(&self, tree: T, direction: Direction) -> Self {
+        let mut path = Vec::with_capacity(self.path.len() + 1);
+        path.extend(&self.path);
+        path.push(direction);
+        Self { tree, path }
+    }
+}
+
+impl<T: TreeLike> TreeLike for DirectedTree<T> {
+    fn as_node(&self) -> Tree<Self> {
+        match self.tree.as_node() {
+            Tree::Nullary => Tree::Nullary,
+            Tree::Unary(l) => Tree::Unary(self.go(l, Direction::Down)),
+            Tree::Binary(l, r) => {
+                Tree::Binary(self.go(l, Direction::Left), self.go(r, Direction::Right))
+            }
+            Tree::Nary(ls) => {
+                let converted: Vec<_> = ls
+                    .iter()
+                    .enumerate()
+                    .map(|(index, tree)| self.go(tree.clone(), Direction::Index(index)))
+                    .collect();
+                Tree::Nary(Arc::from(converted.as_slice()))
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parse::{Identifier, Pattern};
 
     #[test]
     #[rustfmt::skip]
@@ -234,6 +464,80 @@ mod tests {
             let partition = Partition::from_slice(&vector, block_len);
             let output = partition.fold(process, join);
             assert_eq!(&output, expected_output);
+        }
+    }
+
+    #[test]
+    fn find_path() {
+        use Direction::*;
+
+        let elements = vec![1, 2, 3, 4];
+        let tree = BTreeSlice::from_slice(&elements);
+        let directed_tree = DirectedTree::from(tree);
+
+        let target_path: [(&[u32], Option<Vec<Direction>>); 8] = [
+            (&[1, 2, 3, 4], Some(vec![])),
+            (&[1, 2], Some(vec![Left])),
+            (&[3, 4], Some(vec![Right])),
+            (&[1], Some(vec![Left, Left])),
+            (&[2], Some(vec![Left, Right])),
+            (&[3], Some(vec![Right, Left])),
+            (&[4], Some(vec![Right, Right])),
+            (&[], None),
+        ];
+
+        for (target, expected_path) in target_path {
+            let path = directed_tree
+                .clone()
+                .pre_order_iter()
+                .find(|node| node.tree.0 == target)
+                .map(|t| t.path);
+            assert_eq!(path, expected_path);
+        }
+    }
+
+    #[test]
+    fn base_pattern() {
+        let a = Pattern::Identifier(Identifier::from_str_unchecked("a"));
+        let b = Pattern::Identifier(Identifier::from_str_unchecked("b"));
+        let c = Pattern::Identifier(Identifier::from_str_unchecked("c"));
+        let d = Pattern::Identifier(Identifier::from_str_unchecked("d"));
+
+        let pattern_string = [
+            // a = a
+            (a.clone(), a.clone()),
+            // (a, b) = (a, b)
+            (
+                Pattern::product(a.clone(), b.clone()),
+                Pattern::product(a.clone(), b.clone()),
+            ),
+            // [a] = a
+            (Pattern::array([a.clone()]), a.clone()),
+            // [[a]] = a
+            (Pattern::array([Pattern::array([a.clone()])]), a.clone()),
+            // [a b] = (a, b)
+            (
+                Pattern::array([a.clone(), b.clone()]),
+                Pattern::product(a.clone(), b.clone()),
+            ),
+            // [a b c] = ((a, b), c)
+            (
+                Pattern::array([a.clone(), b.clone(), c.clone()]),
+                Pattern::product(Pattern::product(a.clone(), b.clone()), c.clone()),
+            ),
+            // [[a, b], [c, d]] = ((a, b), (c, d))
+            (
+                Pattern::array([
+                    Pattern::array([a.clone(), b.clone()]),
+                    Pattern::array([c.clone(), d.clone()]),
+                ]),
+                Pattern::product(Pattern::product(a, b), Pattern::product(c, d)),
+            ),
+        ];
+
+        for (pattern, expected_base_pattern) in pattern_string {
+            let base_pattern = pattern.to_base();
+            assert_eq!(expected_base_pattern, base_pattern);
         }
     }
 }

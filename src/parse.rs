@@ -10,18 +10,18 @@ use simplicity::elements::hex::FromHex;
 use simplicity::types::Type as SimType;
 use simplicity::Value;
 
-use crate::array::{BTreeSlice, Partition};
+use crate::array::{BTreeSlice, BinaryTree, Partition};
 use crate::Rule;
 
 /// A complete simplicity program.
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct Program {
     /// The statements in the program.
     pub statements: Vec<Statement>,
 }
 
 /// A statement in a simplicity program.
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum Statement {
     /// A declaration of variables inside a pattern.
     Assignment(Assignment),
@@ -30,7 +30,7 @@ pub enum Statement {
 }
 
 /// Pattern for binding values to variables.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Pattern {
     /// Bind value to variable name.
     Identifier(Identifier),
@@ -38,6 +38,51 @@ pub enum Pattern {
     Ignore,
     /// Split product value. Bind components to first and second pattern, respectively.
     Product(Arc<Self>, Arc<Self>),
+    /// Split array value. Bind components to balanced binary tree of patterns.
+    Array(Vec<Self>),
+}
+
+impl Pattern {
+    /// Construct a product pattern.
+    pub fn product(l: Self, r: Self) -> Self {
+        Self::Product(Arc::new(l), Arc::new(r))
+    }
+
+    /// Construct an array pattern.
+    pub fn array<I: IntoIterator<Item = Self>>(array: I) -> Self {
+        Self::Array(array.into_iter().collect())
+    }
+
+    /// Create an equivalent pattern that corresponds to the Simplicity base types.
+    ///
+    /// ## Base patterns
+    ///
+    /// - Identifier
+    /// - Ignore
+    /// - Product
+    pub fn to_base(&self) -> Self {
+        let binary = BinaryTree::from_tree(self);
+        let mut to_base = HashMap::new();
+
+        for data in binary.clone().post_order_iter() {
+            match data.node.as_node() {
+                Tree::Nullary => {
+                    let pattern = (*data.node.as_normal().unwrap()).clone();
+                    to_base.insert(data.node, pattern);
+                }
+                Tree::Binary(l, r) => {
+                    let l_converted = to_base.get(&l).unwrap().clone();
+                    let r_converted = to_base.get(&r).unwrap().clone();
+                    let pattern = Pattern::Product(Arc::new(l_converted), Arc::new(r_converted));
+                    to_base.insert(data.node, pattern);
+                }
+                Tree::Unary(..) => unreachable!("There are no unary patterns"),
+                Tree::Nary(..) => unreachable!("Binary trees have no arrays"),
+            }
+        }
+
+        to_base.remove(&binary).unwrap()
+    }
 }
 
 impl<'a> TreeLike for &'a Pattern {
@@ -45,13 +90,46 @@ impl<'a> TreeLike for &'a Pattern {
         match self {
             Pattern::Identifier(_) | Pattern::Ignore => Tree::Nullary,
             Pattern::Product(l, r) => Tree::Binary(l, r),
+            Pattern::Array(children) => Tree::Nary(children.iter().collect()),
         }
     }
 }
 
+impl fmt::Display for Pattern {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for data in self.verbose_pre_order_iter() {
+            match data.node {
+                Pattern::Identifier(i) => write!(f, "{i}")?,
+                Pattern::Ignore => write!(f, "_")?,
+                Pattern::Product(..) => match data.n_children_yielded {
+                    0 => write!(f, "(")?,
+                    1 => write!(f, ",")?,
+                    n => {
+                        debug_assert!(n == 2);
+                        write!(f, ")")?;
+                    }
+                },
+                Pattern::Array(children) => match data.n_children_yielded {
+                    0 => write!(f, "[")?,
+                    n if n == children.len() => write!(f, "]")?,
+                    _ => write!(f, ",")?,
+                },
+            }
+        }
+
+        Ok(())
+    }
+}
+
 /// Identifier of a variable.
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Identifier(Arc<str>);
+
+impl Identifier {
+    pub fn from_str_unchecked(str: &str) -> Self {
+        Self(Arc::from(str))
+    }
+}
 
 impl fmt::Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -60,7 +138,7 @@ impl fmt::Display for Identifier {
 }
 
 /// The output of an expression is assigned to a pattern.
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct Assignment {
     /// The pattern.
     pub pattern: Pattern,
@@ -81,7 +159,7 @@ pub struct Assignment {
 /// Since jets in simplicity operate on a single paired type,
 /// the arguments are paired together.
 /// jet(a, b, c, d) = jet(pair(pair(pair(a, b), c), d))
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct FuncCall {
     /// The type of the function.
     pub func_type: FuncType,
@@ -94,7 +172,7 @@ pub struct FuncCall {
 }
 
 /// A function(jet) name.
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum FuncType {
     /// A jet name.
     Jet(Arc<str>),
@@ -109,7 +187,7 @@ pub enum FuncType {
 }
 
 /// An expression is something that returns a value.
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct Expression {
     /// The kind of expression
     pub inner: ExpressionInner,
@@ -120,7 +198,7 @@ pub struct Expression {
 }
 
 /// The kind of expression.
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum ExpressionInner {
     /// A block expression executes a series of statements
     /// and returns the value of the final expression.
@@ -130,7 +208,7 @@ pub enum ExpressionInner {
 }
 
 /// A single expression directly returns a value.
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct SingleExpression {
     /// The kind of single expression
     pub inner: SingleExpressionInner,
@@ -141,7 +219,7 @@ pub struct SingleExpression {
 }
 
 /// The kind of single expression.
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum SingleExpressionInner {
     /// Unit literal expression
     Unit,
@@ -191,7 +269,7 @@ pub enum SingleExpressionInner {
 }
 
 /// Bit string whose length is a power of two.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Bits {
     /// Least significant bit of byte
     U1(u8),
@@ -216,7 +294,7 @@ impl Bits {
 }
 
 /// Byte string whose length is a power of two.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Bytes(pub Vec<u8>);
 
 impl Bytes {
@@ -227,7 +305,7 @@ impl Bytes {
 }
 
 /// String that is a witness name.
-#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct WitnessName(Arc<str>);
 
 impl WitnessName {
@@ -244,7 +322,7 @@ impl fmt::Display for WitnessName {
 }
 
 /// Arm of a match expression.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct MatchArm {
     /// Matched pattern
     pub pattern: MatchPattern,
@@ -253,7 +331,7 @@ pub struct MatchArm {
 }
 
 /// Pattern of a match arm.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum MatchPattern {
     /// Bind inner value of left value to variable name.
     Left(Identifier),
@@ -280,7 +358,7 @@ impl MatchPattern {
 }
 
 /// A Simphony type.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 #[non_exhaustive]
 pub enum Type {
     Unit,
@@ -602,6 +680,11 @@ impl PestParse for Pattern {
                     let r = output.pop().unwrap();
                     let l = output.pop().unwrap();
                     output.push(Pattern::Product(Arc::new(l), Arc::new(r)));
+                }
+                Rule::array_pattern => {
+                    assert!(0 < data.node.n_children(), "Array must be nonempty");
+                    let children = output.split_off(output.len() - data.node.n_children());
+                    output.push(Pattern::Array(children));
                 }
                 _ => unreachable!("Corrupt grammar"),
             }
@@ -1042,6 +1125,10 @@ impl<'a> TreeLike for PatternPair<'a> {
                 let l = it.next().unwrap();
                 let r = it.next().unwrap();
                 Tree::Binary(PatternPair(l), PatternPair(r))
+            }
+            Rule::array_pattern => {
+                let children: Arc<[PatternPair]> = it.map(PatternPair).collect();
+                Tree::Nary(children)
             }
             _ => unreachable!("Corrupt grammar"),
         }

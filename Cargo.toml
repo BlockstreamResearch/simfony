@@ -2,7 +2,8 @@
 name = "s-lang"
 version = "0.1.0"
 authors = ["sanket1729 <sanket1729@gmail.com>"]
-edition = "2018"
+edition = "2021"
+rust-version = "1.61.0"
 
 [lib]
 name = "s_lang"
