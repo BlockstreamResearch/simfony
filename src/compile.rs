@@ -9,7 +9,7 @@ use crate::parse::{Pattern, SingleExpressionInner, UIntType};
 use crate::{
     named::{ConstructExt, NamedConstructNode, ProgExt},
     parse::{
-        Expression, ExpressionInner, FuncCall, FuncType, Program, SingleExpression, Statement, Type,
+        Call, Expression, ExpressionInner, FuncType, Program, SingleExpression, Statement, Type,
     },
     scope::GlobalScope,
     ProgNode,
@@ -35,7 +35,7 @@ fn eval_blk(
             let right = eval_blk(stmts, scope, index + 1, last_expr);
             ProgNode::comp(left, right)
         }
-        Statement::FuncCall(func_call) => {
+        Statement::Call(func_call) => {
             let left = func_call.eval(scope, None);
             let right = eval_blk(stmts, scope, index + 1, last_expr);
             combine_seq(left, right)
@@ -55,7 +55,7 @@ impl Program {
     }
 }
 
-impl FuncCall {
+impl Call {
     pub fn eval(&self, scope: &mut GlobalScope, _reqd_ty: Option<&Type>) -> ProgNode {
         let args_expr = self
             .args
@@ -155,7 +155,7 @@ impl SingleExpression {
                 println!("Identifier {}: {}", identifier, res.arrow());
                 res
             }
-            SingleExpressionInner::FuncCall(call) => call.eval(scope, reqd_ty),
+            SingleExpressionInner::Call(call) => call.eval(scope, reqd_ty),
             SingleExpressionInner::Expression(expression) => expression.eval(scope, reqd_ty),
             SingleExpressionInner::Match {
                 scrutinee,

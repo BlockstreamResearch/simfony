@@ -26,7 +26,7 @@ pub enum Statement {
     /// A declaration of variables inside a pattern.
     Assignment(Assignment),
     /// A function call.
-    FuncCall(FuncCall),
+    Call(Call),
 }
 
 /// Pattern for binding values to variables.
@@ -152,18 +152,12 @@ pub struct Assignment {
     pub position: (usize, usize),
 }
 
-/// A function(jet) call.
-///
-/// The function name is the name of the jet.
-/// The arguments are the arguments to the jet.
-/// Since jets in simplicity operate on a single paired type,
-/// the arguments are paired together.
-/// jet(a, b, c, d) = jet(pair(pair(pair(a, b), c), d))
+/// A function call.
 #[derive(Clone, Debug, Hash)]
-pub struct FuncCall {
-    /// The type of the function.
+pub struct Call {
+    /// The type of the call.
     pub func_type: FuncType,
-    /// The arguments to the function.
+    /// The arguments of the call.
     pub args: CallArguments,
     /// The source text associated with this expression
     pub source_text: Arc<str>,
@@ -269,7 +263,7 @@ pub enum SingleExpressionInner {
     /// Variable identifier expression
     Variable(Identifier),
     /// Function call
-    FuncCall(FuncCall),
+    Call(Call),
     /// Expression in parentheses
     Expression(Arc<Expression>),
     /// Match expression over a sum type
@@ -675,7 +669,7 @@ impl PestParse for Statement {
         let inner_pair = pair.into_inner().next().unwrap();
         match inner_pair.as_rule() {
             Rule::assignment => Statement::Assignment(Assignment::parse(inner_pair)),
-            Rule::func_call => Statement::FuncCall(FuncCall::parse(inner_pair)),
+            Rule::call_expr => Statement::Call(Call::parse(inner_pair)),
             x => panic!("{:?}", x),
         }
     }
@@ -747,16 +741,16 @@ impl PestParse for Assignment {
     }
 }
 
-impl PestParse for FuncCall {
+impl PestParse for Call {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
-        assert!(matches!(pair.as_rule(), Rule::func_call));
+        assert!(matches!(pair.as_rule(), Rule::call_expr));
         let source_text = Arc::from(pair.as_str());
         let position = pair.line_col();
         let mut inner = pair.into_inner();
         let func_type = FuncType::parse(inner.next().unwrap());
         let args = CallArguments::parse(inner.next().unwrap());
 
-        FuncCall {
+        Call {
             func_type,
             args,
             source_text,
@@ -868,7 +862,7 @@ impl PestParse for SingleExpression {
             }
             Rule::false_expr => SingleExpressionInner::False,
             Rule::true_expr => SingleExpressionInner::True,
-            Rule::func_call => SingleExpressionInner::FuncCall(FuncCall::parse(inner_pair)),
+            Rule::call_expr => SingleExpressionInner::Call(Call::parse(inner_pair)),
             Rule::bit_string => SingleExpressionInner::BitString(Bits::parse(inner_pair)),
             Rule::byte_string => SingleExpressionInner::ByteString(Bytes::parse(inner_pair)),
             Rule::unsigned_integer => SingleExpressionInner::UnsignedInteger(source_text.clone()),
