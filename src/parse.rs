@@ -872,10 +872,7 @@ impl PestParse for JetName {
 impl PestParse for CallArguments {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
         assert!(matches!(pair.as_rule(), Rule::call_arguments));
-        let mut args = Vec::new();
-        for inner_pair in pair.into_inner() {
-            args.push(Expression::parse(inner_pair));
-        }
+        let args = pair.into_inner().map(Expression::parse).collect();
         CallArguments(args)
     }
 }
