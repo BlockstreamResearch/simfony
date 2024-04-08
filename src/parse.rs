@@ -25,6 +25,8 @@ pub struct Program {
 pub enum Statement {
     /// A declaration of variables inside a pattern.
     Assignment(Assignment),
+    /// A declaration of a closure
+    ClosureAssignment(ClosureAssignment),
     /// A function call.
     Call(Call),
 }
@@ -152,6 +154,14 @@ pub struct Assignment {
     pub position: (usize, usize),
 }
 
+#[derive(Clone, Debug, Hash)]
+pub struct ClosureAssignment {
+    /// Variable name associated with the closure
+    pub pattern: Identifier,
+    /// Closure
+    pub closure: ClosureExpression,
+}
+
 /// A function call.
 #[derive(Clone, Debug, Hash)]
 pub struct Call {
@@ -176,6 +186,8 @@ pub enum FunctionName {
     UnwrapRight,
     /// Some unwrap function
     Unwrap,
+    /// A closure name.
+    Closure(Identifier),
     /// A builtin function name.
     BuiltIn(Arc<str>),
 }
@@ -369,6 +381,62 @@ impl MatchPattern {
             MatchPattern::Left(i) | MatchPattern::Right(i) | MatchPattern::Some(i) => Some(i),
             MatchPattern::None | MatchPattern::False | MatchPattern::True => None,
         }
+    }
+}
+
+/// A Simfony closure.
+///
+/// Closures are functions that capture their environment.
+///
+/// ## Structure
+///
+/// There is a list of identifiers for closure arguments.
+///
+/// There is an expression (that may use variable identifiers).
+/// Variables included in the list of arguments are assigned on every closure call.
+/// Variables not included in the list of arguments are read from the environment.
+///
+/// ## Idempotency
+///
+/// Calling a closure with the same arguments, assuming a constant environment, leads to the same output.
+///
+/// Reassigning a variable that is captured by a closure also updates the captured value!
+/// The closure captures the variable identifier and always uses the latest assigned value.
+///
+/// Introspection jets and witness expressions return a constant value for every transaction environment.
+// FIXME: Make closures capture environment variables by value
+// Capturing variable identifiers whose value may change is confusing and impossible in Rust
+#[derive(Clone, Debug, Hash)]
+pub struct ClosureExpression {
+    /// Closure arguments
+    args: ClosureArguments,
+    /// Closure expression
+    expr: Expression,
+}
+
+impl ClosureExpression {
+    pub fn args(&self) -> &ClosureArguments {
+        &self.args
+    }
+
+    pub fn expr(&self) -> &Expression {
+        &self.expr
+    }
+}
+
+/// List of argument names for a closure.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct ClosureArguments(Vec<Identifier>);
+
+impl AsRef<[Identifier]> for ClosureArguments {
+    fn as_ref(&self) -> &[Identifier] {
+        self.0.as_ref()
+    }
+}
+
+impl From<ClosureArguments> for Vec<Identifier> {
+    fn from(args: ClosureArguments) -> Self {
+        args.0
     }
 }
 
@@ -669,8 +737,11 @@ impl PestParse for Statement {
         let inner_pair = pair.into_inner().next().unwrap();
         match inner_pair.as_rule() {
             Rule::assignment => Statement::Assignment(Assignment::parse(inner_pair)),
+            Rule::closure_assign => {
+                Statement::ClosureAssignment(ClosureAssignment::parse(inner_pair))
+            }
             Rule::call_expr => Statement::Call(Call::parse(inner_pair)),
-            x => panic!("{:?}", x),
+            _ => unreachable!("Corrupt grammar"),
         }
     }
 }
@@ -741,6 +812,17 @@ impl PestParse for Assignment {
     }
 }
 
+impl PestParse for ClosureAssignment {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::closure_assign));
+        let mut inner_pair = pair.into_inner();
+        let pattern = Identifier::parse(inner_pair.next().unwrap().into_inner().next().unwrap());
+        let closure = ClosureExpression::parse(inner_pair.next().unwrap());
+
+        ClosureAssignment { pattern, closure }
+    }
+}
+
 impl PestParse for Call {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
         assert!(matches!(pair.as_rule(), Rule::call_expr));
@@ -769,7 +851,11 @@ impl PestParse for FunctionName {
             "unwrap" => FunctionName::Unwrap,
             _ => {
                 let inner = pair.into_inner().next().unwrap();
-                FunctionName::Jet(JetName::parse(inner))
+                match inner.as_rule() {
+                    Rule::jet => FunctionName::Jet(JetName::parse(inner)),
+                    Rule::identifier => FunctionName::Closure(Identifier::parse(inner)),
+                    _ => unreachable!("Corrupt grammar"),
+                }
             }
         }
     }
@@ -1028,6 +1114,25 @@ impl PestParse for MatchPattern {
             Rule::true_pattern => MatchPattern::True,
             _ => unreachable!("Corrupt grammar"),
         }
+    }
+}
+
+impl PestParse for ClosureExpression {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::closure_expr));
+        let mut inner = pair.into_inner();
+        let args = ClosureArguments::parse(inner.next().unwrap());
+        let expr = Expression::parse(inner.next().unwrap());
+
+        ClosureExpression { args, expr }
+    }
+}
+
+impl PestParse for ClosureArguments {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::closure_arguments));
+        let args = pair.into_inner().map(Identifier::parse).collect();
+        ClosureArguments(args)
     }
 }
 

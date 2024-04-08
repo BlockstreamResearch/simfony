@@ -35,6 +35,7 @@ fn eval_blk(
             let right = eval_blk(stmts, scope, index + 1, last_expr);
             ProgNode::comp(left, right)
         }
+        Statement::ClosureAssignment(..) => todo!(),
         Statement::Call(func_call) => {
             let left = func_call.eval(scope, None);
             let right = eval_blk(stmts, scope, index + 1, last_expr);
@@ -92,6 +93,7 @@ impl Call {
                 let get_inner = ProgNode::assertr(fail_cmr, take_iden);
                 ProgNode::comp(right_and_unit, get_inner)
             }
+            FunctionName::Closure(..) => todo!(),
         }
     }
 }
