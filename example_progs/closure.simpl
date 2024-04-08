@@ -1,0 +1,9 @@
+let f = |a, b, c| {
+    let (carry_a_b, plus_a_b) = jet_add_32(a, b);
+    let (carry_a_b_c, plus_a_b_c) = jet_full_add_32(carry_a_b, (plus_a_b, c));
+    jet_verify(jet_complement_1(carry_a_b_c));
+    plus_a_b_c
+};
+let output = f(1, 2, 3);
+let expected = 6;
+jet_verify(jet_eq_32(expected, output));
