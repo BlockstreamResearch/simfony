@@ -8,9 +8,7 @@ use crate::array::{BTreeSlice, Partition};
 use crate::parse::{Pattern, SingleExpressionInner, UIntType};
 use crate::{
     named::{ConstructExt, NamedConstructNode, ProgExt},
-    parse::{
-        Call, Expression, ExpressionInner, FunctionName, Program, SingleExpression, Statement, Type,
-    },
+    parse::{Call, Expression, ExpressionInner, FunctionName, Program, Statement, Type},
     scope::GlobalScope,
     ProgNode,
 };
@@ -35,7 +33,10 @@ fn eval_blk(
             let right = eval_blk(stmts, scope, index + 1, last_expr);
             ProgNode::comp(left, right)
         }
-        Statement::ClosureAssignment(..) => todo!(),
+        Statement::ClosureAssignment(assignment) => {
+            scope.insert_closure(assignment.pattern.clone(), assignment.closure.clone());
+            eval_blk(stmts, scope, index + 1, last_expr)
+        }
         Statement::Call(func_call) => {
             let left = func_call.eval(scope, None);
             let right = eval_blk(stmts, scope, index + 1, last_expr);
@@ -57,7 +58,7 @@ impl Program {
 }
 
 impl Call {
-    pub fn eval(&self, scope: &mut GlobalScope, _reqd_ty: Option<&Type>) -> ProgNode {
+    pub fn eval(&self, scope: &mut GlobalScope, reqd_ty: Option<&Type>) -> ProgNode {
         let args_expr = self
             .args
             .as_ref()
@@ -93,7 +94,34 @@ impl Call {
                 let get_inner = ProgNode::assertr(fail_cmr, take_iden);
                 ProgNode::comp(right_and_unit, get_inner)
             }
-            FunctionName::Closure(..) => todo!(),
+            FunctionName::Closure(closure_name) => {
+                // `let f = |a, b, c| e; f(1, 2, 3)`
+                // is equivalent to
+                // `{ let [a, b, c] = [1, 2, 3]; e }`
+                scope.push_scope();
+
+                let args_pattern = Pattern::Array(
+                    scope
+                        .get_closure(closure_name)
+                        .args()
+                        .as_ref()
+                        .iter()
+                        .cloned()
+                        .map(Pattern::Identifier)
+                        .collect(),
+                );
+                scope.insert(args_pattern);
+                let args_expr = SingleExpressionInner::Array(self.args.clone().into());
+                // TODO: Pass args type
+                let args = args_expr.eval(scope, None);
+                let closure_input = ProgNode::pair(args, ProgNode::iden());
+
+                let closure_expr = scope.get_closure(closure_name).expr().clone();
+                let closure_output = closure_expr.eval(scope, reqd_ty);
+
+                scope.pop_scope();
+                ProgNode::comp(closure_input, closure_output)
+            }
         }
     }
 }
@@ -107,14 +135,14 @@ impl Expression {
                 scope.pop_scope();
                 res
             }
-            ExpressionInner::SingleExpression(e) => e.eval(scope, reqd_ty),
+            ExpressionInner::SingleExpression(e) => e.inner.eval(scope, reqd_ty),
         }
     }
 }
 
-impl SingleExpression {
+impl SingleExpressionInner {
     pub fn eval(&self, scope: &mut GlobalScope, reqd_ty: Option<&Type>) -> ProgNode {
-        let res = match &self.inner {
+        let res = match self {
             SingleExpressionInner::Unit => ProgNode::unit(),
             SingleExpressionInner::Left(l) => {
                 let l = l.eval(scope, None);

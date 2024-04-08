@@ -213,6 +213,12 @@ impl AsRef<[Expression]> for CallArguments {
     }
 }
 
+impl From<CallArguments> for Vec<Expression> {
+    fn from(args: CallArguments) -> Self {
+        args.0
+    }
+}
+
 /// An expression is something that returns a value.
 #[derive(Clone, Debug, Hash)]
 pub struct Expression {

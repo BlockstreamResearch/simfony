@@ -1,5 +1,7 @@
+use std::collections::HashMap;
+
 use crate::array::{DirectedTree, Direction};
-use crate::parse::{Identifier, Pattern, WitnessName};
+use crate::parse::{ClosureExpression, Identifier, Pattern, WitnessName};
 use crate::{named::ProgExt, ProgNode};
 
 /// Tracker of variable bindings and witness names.
@@ -11,6 +13,7 @@ use crate::{named::ProgExt, ProgNode};
 #[derive(Debug, Clone)]
 pub struct GlobalScope {
     variables: Vec<Vec<Pattern>>,
+    closures: Vec<HashMap<Identifier, ClosureExpression>>,
     witnesses: Vec<Vec<WitnessName>>,
 }
 
@@ -25,6 +28,7 @@ impl GlobalScope {
     pub fn new() -> Self {
         GlobalScope {
             variables: vec![Vec::new()],
+            closures: vec![HashMap::new()],
             witnesses: vec![Vec::new()],
         }
     }
@@ -48,6 +52,14 @@ impl GlobalScope {
     /// Pushes a new variable to the latest scope.
     pub fn insert(&mut self, pattern: Pattern) {
         self.variables.last_mut().unwrap().push(pattern);
+    }
+
+    /// Push a new closure to the latest scope.
+    pub fn insert_closure(&mut self, identifier: Identifier, closure: ClosureExpression) {
+        self.closures
+            .last_mut()
+            .unwrap()
+            .insert(identifier, closure);
     }
 
     /// Pushes a new witness to the latest scope.
@@ -120,6 +132,18 @@ impl GlobalScope {
                 return expr;
             } else {
                 pos += scope.len();
+            }
+        }
+
+        panic!("\"{identifier}\" is undefined");
+    }
+
+    /// Get the closure expression under the given name.
+    pub fn get_closure(&self, identifier: &Identifier) -> &ClosureExpression {
+        // Highest scope has precedence
+        for local_closures in self.closures.iter().rev() {
+            if let Some(closure) = local_closures.get(identifier) {
+                return closure;
             }
         }
 
