@@ -34,11 +34,6 @@ use crate::{
 #[grammar = "minimal.pest"]
 pub struct IdentParser;
 
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(transparent)]
-pub struct WitFileData {
-    pub map: HashMap<String, String>,
-}
 
 pub fn _compile(file: &Path) -> Arc<Node<Named<Commit<Elements>>>> {
     let file = std::fs::read_to_string(file).unwrap();
@@ -59,14 +54,11 @@ pub fn compile(file: &Path) -> CommitNode<Elements> {
 }
 
 pub fn satisfy(prog: &Path, wit_file: &Path) -> RedeemNode<Elements> {
-    let commit_node = _compile(prog);
-    let simplicity_prog =
-        Arc::<_>::try_unwrap(commit_node).expect("Only one reference to commit node");
-
-    let file = std::fs::File::open(wit_file).expect("Error opening witness file");
-    let rdr = std::io::BufReader::new(file);
-    let mut wit_data: WitFileData =
-        serde_json::from_reader(rdr).expect("Error reading witness file");
+    #[derive(serde::Serialize, serde::Deserialize)]
+    #[serde(transparent)]
+    struct WitFileData {
+        map: HashMap<String, String>,
+    }
 
     impl Converter<Named<Commit<Elements>>, Redeem<Elements>> for WitFileData {
         type Error = ();
@@ -133,6 +125,15 @@ pub fn satisfy(prog: &Path, wit_file: &Path) -> RedeemNode<Elements> {
             )))
         }
     }
+
+    let commit_node = _compile(prog);
+    let simplicity_prog =
+        Arc::<_>::try_unwrap(commit_node).expect("Only one reference to commit node");
+
+    let file = std::fs::File::open(wit_file).expect("Error opening witness file");
+    let rdr = std::io::BufReader::new(file);
+    let mut wit_data: WitFileData =
+        serde_json::from_reader(rdr).expect("Error reading witness file");
 
     let redeem_prog = simplicity_prog
         .convert::<NoSharing, Redeem<Elements>, _>(&mut wit_data)
