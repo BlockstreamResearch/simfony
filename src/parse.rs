@@ -155,8 +155,8 @@ pub struct Assignment {
 /// A function call.
 #[derive(Clone, Debug, Hash)]
 pub struct Call {
-    /// The type of the call.
-    pub func_type: FuncType,
+    /// The name of the called function.
+    pub name: FunctionName,
     /// The arguments of the call.
     pub args: CallArguments,
     /// The source text associated with this expression
@@ -165,9 +165,9 @@ pub struct Call {
     pub position: (usize, usize),
 }
 
-/// A function(jet) name.
+/// A function name.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum FuncType {
+pub enum FunctionName {
     /// A jet name.
     Jet(JetName),
     /// Left unwrap function
@@ -747,11 +747,11 @@ impl PestParse for Call {
         let source_text = Arc::from(pair.as_str());
         let position = pair.line_col();
         let mut inner = pair.into_inner();
-        let func_type = FuncType::parse(inner.next().unwrap());
+        let func_type = FunctionName::parse(inner.next().unwrap());
         let args = CallArguments::parse(inner.next().unwrap());
 
         Call {
-            func_type,
+            name: func_type,
             args,
             source_text,
             position,
@@ -759,17 +759,17 @@ impl PestParse for Call {
     }
 }
 
-impl PestParse for FuncType {
+impl PestParse for FunctionName {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
         assert!(matches!(pair.as_rule(), Rule::function_name));
 
         match pair.as_str() {
-            "unwrap_left" => FuncType::UnwrapLeft,
-            "unwrap_right" => FuncType::UnwrapRight,
-            "unwrap" => FuncType::Unwrap,
+            "unwrap_left" => FunctionName::UnwrapLeft,
+            "unwrap_right" => FunctionName::UnwrapRight,
+            "unwrap" => FunctionName::Unwrap,
             _ => {
                 let inner = pair.into_inner().next().unwrap();
-                FuncType::Jet(JetName::parse(inner))
+                FunctionName::Jet(JetName::parse(inner))
             }
         }
     }

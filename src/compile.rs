@@ -9,7 +9,7 @@ use crate::parse::{Pattern, SingleExpressionInner, UIntType};
 use crate::{
     named::{ConstructExt, NamedConstructNode, ProgExt},
     parse::{
-        Call, Expression, ExpressionInner, FuncType, Program, SingleExpression, Statement, Type,
+        Call, Expression, ExpressionInner, FunctionName, Program, SingleExpression, Statement, Type,
     },
     scope::GlobalScope,
     ProgNode,
@@ -64,8 +64,8 @@ impl Call {
             .map(|e| e.eval(scope, None)) // TODO: Pass the jet source type here.
             .reduce(ProgNode::pair);
 
-        match &self.func_type {
-            FuncType::Jet(jet_name) => {
+        match &self.name {
+            FunctionName::Jet(jet_name) => {
                 let jet = Elements::from_str(jet_name.as_inner()).expect("Invalid jet name");
                 let jet = ProgNode::jet(jet);
                 match args_expr {
@@ -73,8 +73,8 @@ impl Call {
                     None => ProgNode::comp(ProgNode::unit(), jet),
                 }
             }
-            FuncType::BuiltIn(..) => unimplemented!("Builtins are not supported yet"),
-            FuncType::UnwrapLeft => {
+            FunctionName::BuiltIn(..) => unimplemented!("Builtins are not supported yet"),
+            FunctionName::UnwrapLeft => {
                 debug_assert!(self.args.as_ref().len() == 1);
                 let b = args_expr.unwrap();
                 let left_and_unit = ProgNode::pair(b, ProgNode::unit());
@@ -83,7 +83,7 @@ impl Call {
                 let get_inner = ProgNode::assertl(take_iden, fail_cmr);
                 ProgNode::comp(left_and_unit, get_inner)
             }
-            FuncType::UnwrapRight | FuncType::Unwrap => {
+            FunctionName::UnwrapRight | FunctionName::Unwrap => {
                 debug_assert!(self.args.as_ref().len() == 1);
                 let c = args_expr.unwrap();
                 let right_and_unit = ProgNode::pair(c, ProgNode::unit());
