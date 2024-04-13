@@ -34,7 +34,6 @@ use crate::{
 #[grammar = "minimal.pest"]
 pub struct IdentParser;
 
-
 pub fn _compile(file: &Path) -> Arc<Node<Named<Commit<Elements>>>> {
     let file = std::fs::read_to_string(file).unwrap();
     let mut pairs = IdentParser::parse(Rule::program, &file).unwrap_or_else(|e| panic!("{}", e));

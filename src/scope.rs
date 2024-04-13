@@ -1,8 +1,8 @@
 use crate::array::{DirectedTree, Direction};
-use crate::parse::{Identifier, Pattern, WitnessName};
+use crate::parse::{Identifier, Pattern};
 use crate::{named::ProgExt, ProgNode};
 
-/// Tracker of variable bindings and witness names.
+/// Tracker of variable bindings.
 ///
 /// Internally there is a stack of scopes.
 /// A new scope is pushed for each (nested) block expression.
@@ -11,7 +11,6 @@ use crate::{named::ProgExt, ProgNode};
 #[derive(Debug, Clone)]
 pub struct GlobalScope {
     variables: Vec<Vec<Pattern>>,
-    witnesses: Vec<Vec<WitnessName>>,
 }
 
 impl Default for GlobalScope {
@@ -25,14 +24,12 @@ impl GlobalScope {
     pub fn new() -> Self {
         GlobalScope {
             variables: vec![Vec::new()],
-            witnesses: vec![Vec::new()],
         }
     }
 
     /// Pushes a new scope to the stack.
     pub fn push_scope(&mut self) {
         self.variables.push(Vec::new());
-        self.witnesses.push(Vec::new());
     }
 
     /// Pops the latest scope from the stack.
@@ -42,17 +39,11 @@ impl GlobalScope {
     /// Panics if the stack is empty.
     pub fn pop_scope(&mut self) {
         self.variables.pop().expect("Popping scope zero");
-        self.witnesses.pop().expect("Popping scope zero");
     }
 
     /// Pushes a new variable to the latest scope.
     pub fn insert(&mut self, pattern: Pattern) {
         self.variables.last_mut().unwrap().push(pattern);
-    }
-
-    /// Pushes a new witness to the latest scope.
-    pub fn insert_witness(&mut self, key: WitnessName) {
-        self.witnesses.last_mut().unwrap().push(key);
     }
 
     /// Get a Simplicity expression that returns the value of the given `identifier`.

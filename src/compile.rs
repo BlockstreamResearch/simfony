@@ -148,10 +148,7 @@ impl SingleExpression {
                 let value = bytes.to_simplicity();
                 ProgNode::comp(ProgNode::unit(), ProgNode::const_word(value))
             }
-            SingleExpressionInner::Witness(name) => {
-                scope.insert_witness(name.clone());
-                ProgNode::witness(name.as_inner().clone())
-            }
+            SingleExpressionInner::Witness(name) => ProgNode::witness(name.as_inner().clone()),
             SingleExpressionInner::Variable(identifier) => {
                 let res = scope.get(identifier);
                 println!("Identifier {}: {}", identifier, res.arrow());
