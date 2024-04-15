@@ -8,6 +8,7 @@ pub mod dummy_env;
 pub mod named;
 pub mod parse;
 pub mod scope;
+mod util;
 
 use std::{collections::HashMap, path::Path, sync::Arc};
 
