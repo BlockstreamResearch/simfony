@@ -107,9 +107,16 @@ impl GlobalScope {
         self.variables.last_mut().unwrap().push(pattern);
     }
 
-    /// Get a Simplicity expression that returns the value of a variable.
-    ///
-    /// The expression takes the current input value and returns the seeked value.
+    /// Return a pattern that corresponds to the current input value.
+    fn to_pattern(&self) -> Pattern {
+        let mut it = self.variables.iter().flat_map(|scope| scope.iter());
+        let first = it.next().unwrap();
+        it.cloned()
+            .fold(first.clone(), |acc, next| Pattern::product(next, acc))
+    }
+
+    /// Get a Simplicity expression that returns a value of the shape of the target.
+    /// The expression consumes the current input value.
     ///
     /// ## Example
     ///
@@ -118,7 +125,7 @@ impl GlobalScope {
     /// let b = {
     ///     let b: u8 = 1;
     ///     let c: u8 = 2;
-    ///     a  // here we seek the value of `a`
+    ///     (a, b)  // here we seek the value of `(a, b)`
     /// };
     /// ```
     ///
@@ -134,37 +141,17 @@ impl GlobalScope {
     ///      a   _        0  ()
     /// ```
     ///
-    /// The expression `drop drop take iden` returns the value `0` for variable `a`.
+    /// The expression `drop pair (drop take iden) (take iden)` returns the seeked value.
     ///
     /// ## Panics
     ///
-    /// The variable is not defined.
-    pub fn get(&self, identifier: &Identifier) -> ProgNode {
-        if let Some((pos, path)) = self
-            .variables
-            .iter()
-            .rev() // Innermost scope has precedence
-            .flat_map(|scope| scope.iter().rev()) // Last assignment has precedence
-            .enumerate()
-            .find_map(|(idx, pattern)| pattern.get_path(identifier).map(|expr| (idx, expr)))
-        {
-            let mut expr = ProgNode::iden();
-            for short in path.into_iter().rev() {
-                match short {
-                    Short::O => expr = ProgNode::take(expr),
-                    Short::I => expr = ProgNode::drop_(expr),
-                }
-            }
-            if pos + 1 < self.variables.iter().map(|scope| scope.len()).sum() {
-                expr = ProgNode::take(expr);
-            }
-            for _ in 0..pos {
-                expr = ProgNode::drop_(expr);
-            }
-            return expr;
+    /// A variable is undefined.
+    pub fn get(&self, target: &Pattern) -> ProgNode {
+        let env_pattern = self.to_pattern();
+        match env_pattern.translate(target) {
+            Ok(expr) => expr,
+            Err(identifier) => panic!("\"{identifier}\" is undefined"),
         }
-
-        panic!("\"{identifier}\" is undefined");
     }
 }
 

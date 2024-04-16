@@ -150,7 +150,7 @@ impl SingleExpression {
             }
             SingleExpressionInner::Witness(name) => ProgNode::witness(name.as_inner().clone()),
             SingleExpressionInner::Variable(identifier) => {
-                let res = scope.get(identifier);
+                let res = scope.get(&Pattern::Identifier(identifier.clone()));
                 println!("Identifier {}: {}", identifier, res.arrow());
                 res
             }
