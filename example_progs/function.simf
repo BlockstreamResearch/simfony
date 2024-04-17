@@ -1,0 +1,28 @@
+fn forty_two() {
+    42
+};
+let a = forty_two();
+let b = 42;
+jet_verify(jet_eq_32(a, b));
+fn checked_add_32(x, y) {
+    let (carry, sum) = jet_add_32(x, y);
+    jet_verify(jet_complement_1(carry));
+    sum
+};
+let a = 1;
+let b = 4294967294;
+let c = checked_add_32(a, b);
+let d = 4294967295;
+jet_verify(jet_eq_32(c, d));
+fn first() {
+    1
+};
+fn second() {
+    checked_add_32(first(), first())
+};
+fn third() {
+    checked_add_32(first(), second())
+};
+let a = third();
+let b = 3;
+jet_verify(jet_eq_32(a, b));
