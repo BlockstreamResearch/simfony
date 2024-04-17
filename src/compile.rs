@@ -8,9 +8,7 @@ use crate::array::{BTreeSlice, Partition};
 use crate::parse::{Pattern, SingleExpressionInner, UIntType};
 use crate::{
     named::{ConstructExt, NamedConstructNode, ProgExt},
-    parse::{
-        Expression, ExpressionInner, FuncCall, FuncType, Program, SingleExpression, Statement, Type,
-    },
+    parse::{Expression, ExpressionInner, FuncCall, FuncType, Program, Statement, Type},
     scope::GlobalScope,
     ProgNode,
 };
@@ -107,14 +105,14 @@ impl Expression {
                 scope.pop_scope();
                 res
             }
-            ExpressionInner::SingleExpression(e) => e.eval(scope, reqd_ty),
+            ExpressionInner::SingleExpression(e) => e.inner.eval(scope, reqd_ty),
         }
     }
 }
 
-impl SingleExpression {
+impl SingleExpressionInner {
     pub fn eval(&self, scope: &mut GlobalScope, reqd_ty: Option<&Type>) -> ProgNode {
-        let res = match &self.inner {
+        let res = match self {
             SingleExpressionInner::Unit => ProgNode::unit(),
             SingleExpressionInner::Left(l) => {
                 let l = l.eval(scope, None);
