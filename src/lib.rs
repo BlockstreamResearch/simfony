@@ -40,7 +40,7 @@ pub fn _compile(file: &Path) -> Arc<Node<Named<Commit<Elements>>>> {
 
     let prog = Program::parse(pairs.next().unwrap());
 
-    let mut scope = GlobalScope::new();
+    let mut scope = GlobalScope::default();
     let simplicity_prog = prog.eval(&mut scope);
     simplicity_prog
         .finalize_types_main()
@@ -176,7 +176,7 @@ mod tests {
             }
         }
         let prog = Program { statements: stmts };
-        let mut scope = GlobalScope::new();
+        let mut scope = GlobalScope::default();
         let simplicity_prog = prog.eval(&mut scope);
         let mut vec = Vec::new();
         let mut writer = BitWriter::new(&mut vec);

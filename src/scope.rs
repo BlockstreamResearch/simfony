@@ -56,15 +56,15 @@ pub struct GlobalScope {
 
 impl Default for GlobalScope {
     fn default() -> Self {
-        Self::new()
+        Self::new(Pattern::Ignore)
     }
 }
 
 impl GlobalScope {
-    /// Creates a new [`GlobalScope`].
-    pub fn new() -> Self {
-        GlobalScope {
-            variables: vec![Vec::new()],
+    /// Create a new [`GlobalScope`] for an `input` of the given shape.
+    pub fn new(input: Pattern) -> Self {
+        Self {
+            variables: vec![vec![input]],
         }
     }
 
@@ -136,27 +136,21 @@ impl GlobalScope {
     ///
     /// The variable is not defined.
     pub fn get(&self, identifier: &Identifier) -> ProgNode {
-        let mut pos = 0;
-
-        // Highest scope has precedence
-        for scope in self.variables.iter().rev() {
-            // Last let statement has precedence
-            if let Some((pattern_pos, mut expr)) =
-                scope.iter().rev().enumerate().find_map(|(idx, pattern)| {
-                    pattern.get_program(identifier).map(|expr| (idx, expr))
-                })
-            {
-                pos += pattern_pos;
-
+        if let Some((pos, mut expr)) = self
+            .variables
+            .iter()
+            .rev() // Innermost scope has precedence
+            .flat_map(|scope| scope.iter().rev()) // Last assignment has precedence
+            .enumerate()
+            .find_map(|(idx, pattern)| pattern.get_program(identifier).map(|expr| (idx, expr)))
+        {
+            if pos + 1 < self.variables.iter().map(|scope| scope.len()).sum() {
                 expr = ProgNode::take(expr);
-                for _ in 0..pos {
-                    expr = ProgNode::drop_(expr);
-                }
-
-                return expr;
-            } else {
-                pos += scope.len();
             }
+            for _ in 0..pos {
+                expr = ProgNode::drop_(expr);
+            }
+            return expr;
         }
 
         panic!("\"{identifier}\" is undefined");
