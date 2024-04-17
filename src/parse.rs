@@ -266,7 +266,7 @@ pub enum SingleExpressionInner {
     /// True literal expression
     True,
     /// Unsigned integer literal expression
-    UnsignedInteger(Arc<str>),
+    UnsignedInteger(UnsignedDecimal),
     /// Bit string literal expression
     BitString(Bits),
     /// Byte string literal expression
@@ -294,6 +294,23 @@ pub enum SingleExpressionInner {
     ///
     /// The exclusive upper bound on the list size is not known at this point
     List(Arc<[Expression]>),
+}
+
+/// Valid unsigned decimal string.
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct UnsignedDecimal(Arc<str>);
+
+impl UnsignedDecimal {
+    /// Access the inner decimal string.
+    pub fn as_inner(&self) -> &Arc<str> {
+        &self.0
+    }
+}
+
+impl fmt::Display for UnsignedDecimal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
 }
 
 /// Bit string whose length is a power of two.
@@ -611,15 +628,15 @@ impl UIntType {
     }
 
     /// Parse a decimal string for the type.
-    pub fn parse_decimal(&self, literal: &str) -> Arc<Value> {
+    pub fn parse_decimal(&self, decimal: &UnsignedDecimal) -> Arc<Value> {
         match self {
-            UIntType::U1 => Value::u1(literal.parse::<u8>().unwrap()),
-            UIntType::U2 => Value::u2(literal.parse::<u8>().unwrap()),
-            UIntType::U4 => Value::u4(literal.parse::<u8>().unwrap()),
-            UIntType::U8 => Value::u8(literal.parse::<u8>().unwrap()),
-            UIntType::U16 => Value::u16(literal.parse::<u16>().unwrap()),
-            UIntType::U32 => Value::u32(literal.parse::<u32>().unwrap()),
-            UIntType::U64 => Value::u64(literal.parse::<u64>().unwrap()),
+            UIntType::U1 => Value::u1(decimal.as_inner().parse::<u8>().unwrap()),
+            UIntType::U2 => Value::u2(decimal.as_inner().parse::<u8>().unwrap()),
+            UIntType::U4 => Value::u4(decimal.as_inner().parse::<u8>().unwrap()),
+            UIntType::U8 => Value::u8(decimal.as_inner().parse::<u8>().unwrap()),
+            UIntType::U16 => Value::u16(decimal.as_inner().parse::<u16>().unwrap()),
+            UIntType::U32 => Value::u32(decimal.as_inner().parse::<u32>().unwrap()),
+            UIntType::U64 => Value::u64(decimal.as_inner().parse::<u64>().unwrap()),
             UIntType::U128 => panic!("Use bit or hex strings for u128"),
             UIntType::U256 => panic!("Use bit or hex strings for u256"),
         }
@@ -875,7 +892,9 @@ impl PestParse for SingleExpression {
             Rule::call_expr => SingleExpressionInner::Call(Call::parse(inner_pair)),
             Rule::bit_string => SingleExpressionInner::BitString(Bits::parse(inner_pair)),
             Rule::byte_string => SingleExpressionInner::ByteString(Bytes::parse(inner_pair)),
-            Rule::unsigned_integer => SingleExpressionInner::UnsignedInteger(source_text.clone()),
+            Rule::unsigned_integer => {
+                SingleExpressionInner::UnsignedInteger(UnsignedDecimal::parse(inner_pair))
+            }
             Rule::witness_expr => {
                 let witness_pair = inner_pair.into_inner().next().unwrap();
                 SingleExpressionInner::Witness(WitnessName::parse(witness_pair))
@@ -932,6 +951,14 @@ impl PestParse for SingleExpression {
             source_text,
             position,
         }
+    }
+}
+
+impl PestParse for UnsignedDecimal {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::unsigned_integer));
+        let decimal = Arc::from(pair.as_str());
+        Self(decimal)
     }
 }
 
