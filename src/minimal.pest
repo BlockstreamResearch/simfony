@@ -6,7 +6,7 @@ program = {
     (statement ~ ";")* ~
     EOI
 }
-statement = { assignment | call_expr }
+statement = { assignment | function | call_expr }
 
 identifier        = @{ !(reserved) ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
 jet               = @{ "jet_" ~ (ASCII_ALPHANUMERIC | "_")+ }
@@ -20,6 +20,10 @@ product_pattern   =  { "(" ~ pattern ~ "," ~ pattern ~ ")" }
 array_pattern     =  { "[" ~ pattern ~ ("," ~ pattern)* ~ ","? ~ "]" }
 pattern           =  { ignore_pattern | product_pattern | array_pattern | variable_pattern }
 assignment        =  { "let" ~ pattern ~ (":" ~ ty)? ~ "=" ~ expression }
+
+function_name     =  { identifier }
+function_params   =  { (identifier ~ ("," ~ identifier)*)? }
+function          =  { "fn" ~ function_name ~ "(" ~ function_params ~ ")" ~ block_expression }
 
 left_pattern      =  { "Left(" ~ identifier ~ ")" }
 right_pattern     =  { "Right(" ~ identifier ~ ")" }

@@ -33,6 +33,10 @@ fn eval_blk(
             let right = eval_blk(stmts, scope, index + 1, last_expr);
             ProgNode::comp(left, right)
         }
+        Statement::Function(..) => {
+            // Don't translate function until its call
+            eval_blk(stmts, scope, index + 1, last_expr)
+        }
         Statement::Call(func_call) => {
             let left = func_call.eval(scope, None);
             let right = eval_blk(stmts, scope, index + 1, last_expr);

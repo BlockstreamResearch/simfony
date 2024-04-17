@@ -25,6 +25,8 @@ pub struct Program {
 pub enum Statement {
     /// A declaration of variables inside a pattern.
     Assignment(Assignment),
+    /// A function declaration.
+    Function(Function),
     /// A function call.
     Call(Call),
 }
@@ -154,6 +156,68 @@ pub struct Assignment {
     pub source_text: Arc<str>,
     /// The position of this assignment in the source file. (row, col)
     pub position: (usize, usize),
+}
+
+/// A function.
+#[derive(Clone, Debug, Hash)]
+pub struct Function {
+    /// The name of the function
+    name: FunctionName,
+    /// The parameters of the function.
+    ///
+    /// Sequence of variables that are used inside the function body.
+    params: FunctionParams,
+    /// The function body.
+    ///
+    /// Simfony expression whose variables are function parameters.
+    body: Expression,
+}
+
+impl Function {
+    // Access the function name.
+    pub fn name(&self) -> &FunctionName {
+        &self.name
+    }
+
+    // Access the function parameters.
+    pub fn params(&self) -> &FunctionParams {
+        &self.params
+    }
+
+    // Access the function body.
+    pub fn body(&self) -> &Expression {
+        &self.body
+    }
+}
+
+/// A sequence of function parameters.
+#[derive(Clone, Debug, Hash)]
+pub struct FunctionParams(Arc<[Identifier]>);
+
+impl FunctionParams {
+    pub fn to_pattern(&self) -> Pattern {
+        match self.0.is_empty() {
+            true => Pattern::Ignore,
+            false => Pattern::array(self.0.iter().cloned().map(Pattern::Identifier)),
+        }
+    }
+}
+
+/// A function name.
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct FunctionName(Arc<str>);
+
+impl FunctionName {
+    /// Access the inner name.
+    pub fn as_inner(&self) -> &Arc<str> {
+        &self.0
+    }
+}
+
+impl fmt::Display for FunctionName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
 }
 
 /// A function call.
@@ -699,6 +763,7 @@ impl PestParse for Statement {
         let inner_pair = pair.into_inner().next().unwrap();
         match inner_pair.as_rule() {
             Rule::assignment => Statement::Assignment(Assignment::parse(inner_pair)),
+            Rule::function => Statement::Function(Function::parse(inner_pair)),
             Rule::call_expr => Statement::Call(Call::parse(inner_pair)),
             x => panic!("{:?}", x),
         }
@@ -768,6 +833,32 @@ impl PestParse for Assignment {
             source_text,
             position,
         }
+    }
+}
+
+impl PestParse for Function {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::function));
+        let mut it = pair.into_inner();
+        let name = FunctionName::parse(it.next().unwrap());
+        let params = FunctionParams::parse(it.next().unwrap());
+        let body = Expression::parse(it.next().unwrap());
+        Self { name, params, body }
+    }
+}
+
+impl PestParse for FunctionName {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::function_name));
+        Self(Arc::from(pair.as_str()))
+    }
+}
+
+impl PestParse for FunctionParams {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::function_params));
+        let params = pair.into_inner().map(Identifier::parse).collect();
+        Self(params)
     }
 }
 
