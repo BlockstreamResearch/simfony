@@ -75,6 +75,16 @@ impl GlobalScope {
         }
     }
 
+    /// Create a child scope for an `input` of the given shape.
+    /// The child scope may nest inner scopes.
+    /// The child scope becomes the new outermost scope and is impossible to exit.
+    pub fn to_child(&self, input: Pattern) -> Self {
+        Self {
+            variables: vec![vec![input]],
+            functions: vec![self.functions.iter().flatten().cloned().collect()],
+        }
+    }
+
     /// Push a new scope onto the stack.
     pub fn push_scope(&mut self) {
         self.variables.push(vec![]);

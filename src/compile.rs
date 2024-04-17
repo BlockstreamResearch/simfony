@@ -88,6 +88,13 @@ impl Call {
                 let get_inner = ProgNode::assertr(fail_cmr, take_iden);
                 ProgNode::comp(right_and_unit, get_inner)
             }
+            CallName::Function(name) => {
+                let function = scope.get_function(name);
+                let params_pattern = function.params().to_pattern();
+                let mut params_scope = scope.to_child(params_pattern);
+                let body_expr = function.body().eval(&mut params_scope, None);
+                ProgNode::comp(args_expr, body_expr)
+            }
         }
     }
 }

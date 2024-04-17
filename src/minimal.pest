@@ -12,7 +12,7 @@ identifier        = @{ !(reserved) ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
 jet               = @{ "jet_" ~ (ASCII_ALPHANUMERIC | "_")+ }
 builtin           = @{ "builtin_" ~ (ASCII_ALPHANUMERIC | "_")+ }
 witness_name      = @{ (ASCII_ALPHANUMERIC | "_")+ }
-reserved          = _{ jet | builtin }
+reserved          = _{ jet | builtin | "unwrap_left" | "unwrap_right" | "unwrap" }
 
 variable_pattern  =  { identifier }
 ignore_pattern    = @{ "_" }
@@ -55,7 +55,7 @@ none_expr         = @{ "None" }
 some_expr         =  { "Some(" ~ expression ~ ")" }
 false_expr        = @{ "false" }
 true_expr         = @{ "true" }
-call_name         =  { jet | "unwrap_left" | "unwrap_right" | "unwrap" }
+call_name         =  { jet | "unwrap_left" | "unwrap_right" | "unwrap" | function_name }
 call_args         =  { (expression ~ ("," ~ expression)*)? }
 call_expr         =  { call_name ~ "(" ~ call_args ~ ")" }
 unsigned_integer  = @{ ASCII_DIGIT+ }
