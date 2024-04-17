@@ -3,7 +3,7 @@ use std::sync::Arc;
 use miniscript::iter::{Tree, TreeLike};
 
 use crate::array::{DirectedTree, Direction};
-use crate::parse::{Identifier, Pattern};
+use crate::parse::{Function, FunctionName, Identifier, Pattern};
 use crate::{named::ProgExt, ProgNode};
 
 /// Tracker of variable bindings.
@@ -56,6 +56,8 @@ pub struct GlobalScope {
     /// p1 ↔ v1
     /// ```
     variables: Vec<Vec<Pattern>>,
+    /// For each scope, the set of declared functions.
+    functions: Vec<Vec<Function>>,
 }
 
 impl Default for GlobalScope {
@@ -69,12 +71,14 @@ impl GlobalScope {
     pub fn new(input: Pattern) -> Self {
         Self {
             variables: vec![vec![input]],
+            functions: vec![vec![]],
         }
     }
 
     /// Push a new scope onto the stack.
     pub fn push_scope(&mut self) {
-        self.variables.push(Vec::new());
+        self.variables.push(vec![]);
+        self.functions.push(vec![]);
     }
 
     /// Pop a scope from the stack.
@@ -84,6 +88,7 @@ impl GlobalScope {
     /// The stack is empty.
     pub fn pop_scope(&mut self) {
         self.variables.pop().expect("Empty stack");
+        self.functions.pop().expect("Empty stack");
     }
 
     /// Push an assignment to the current scope.
@@ -151,6 +156,29 @@ impl GlobalScope {
         match env_pattern.translate(target) {
             Ok(expr) => expr,
             Err(identifier) => panic!("\"{identifier}\" is undefined"),
+        }
+    }
+
+    /// Declare a function in the current scope.
+    pub fn insert_function(&mut self, function: Function) {
+        self.functions.last_mut().unwrap().push(function);
+    }
+
+    /// Get the function from the current scope.
+    ///
+    /// ## Panics
+    ///
+    /// Function is undeclared.
+    pub fn get_function(&self, name: &FunctionName) -> &Function {
+        match self
+            .functions
+            .iter()
+            .rev() // innermost scope has precedence
+            .flat_map(|scope| scope.iter().rev()) // last declaration has precedence
+            .find(|function| function.name() == name)
+        {
+            Some(function) => function,
+            None => panic!("Function \"{name}\" is undeclared"),
         }
     }
 }
