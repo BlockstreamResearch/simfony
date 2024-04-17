@@ -39,7 +39,7 @@ pub enum Pattern {
     /// Split product value. Bind components to first and second pattern, respectively.
     Product(Arc<Self>, Arc<Self>),
     /// Split array value. Bind components to balanced binary tree of patterns.
-    Array(Vec<Self>),
+    Array(Arc<[Self]>),
 }
 
 impl Pattern {
@@ -50,7 +50,11 @@ impl Pattern {
 
     /// Construct an array pattern.
     pub fn array<I: IntoIterator<Item = Self>>(array: I) -> Self {
-        Self::Array(array.into_iter().collect())
+        let inner: Arc<_> = array.into_iter().collect();
+        if inner.is_empty() {
+            panic!("Array must not be empty");
+        }
+        Self::Array(inner)
     }
 
     /// Create an equivalent pattern that corresponds to the Simplicity base types.
@@ -164,7 +168,7 @@ pub struct FuncCall {
     /// The type of the function.
     pub func_type: FuncType,
     /// The arguments to the function.
-    pub args: Vec<Expression>,
+    pub args: Arc<[Expression]>,
     /// The source text associated with this expression
     pub source_text: Arc<str>,
     /// The position of this expression in the source file. (row, col)
@@ -261,11 +265,11 @@ pub enum SingleExpressionInner {
         right: MatchArm,
     },
     /// Array wrapper expression
-    Array(Vec<Expression>),
+    Array(Arc<[Expression]>),
     /// List wrapper expression
     ///
     /// The exclusive upper bound on the list size is not known at this point
-    List(Vec<Expression>),
+    List(Arc<[Expression]>),
 }
 
 /// Bit string whose length is a power of two.
@@ -278,7 +282,7 @@ pub enum Bits {
     /// Four least significant bits of byte
     U4(u8),
     /// All bits from byte string
-    Long(Vec<u8>),
+    Long(Arc<[u8]>),
 }
 
 impl Bits {
@@ -295,7 +299,7 @@ impl Bits {
 
 /// Byte string whose length is a power of two.
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct Bytes(pub Vec<u8>);
+pub struct Bytes(pub Arc<[u8]>);
 
 impl Bytes {
     /// Convert the byte string into a Simplicity value.
@@ -684,7 +688,7 @@ impl PestParse for Pattern {
                 Rule::array_pattern => {
                     assert!(0 < data.node.n_children(), "Array must be nonempty");
                     let children = output.split_off(output.len() - data.node.n_children());
-                    output.push(Pattern::Array(children));
+                    output.push(Pattern::Array(children.into_iter().collect()));
                 }
                 _ => unreachable!("Corrupt grammar"),
             }
@@ -746,7 +750,7 @@ impl PestParse for FuncCall {
 
         FuncCall {
             func_type,
-            args,
+            args: args.into_iter().collect(),
             source_text,
             position,
         }
@@ -875,7 +879,7 @@ impl PestParse for SingleExpression {
                 }
             }
             Rule::array_expr => {
-                let elements: Vec<_> = inner_pair
+                let elements: Arc<_> = inner_pair
                     .into_inner()
                     .map(|inner| Expression::parse(inner))
                     .collect();
@@ -883,7 +887,7 @@ impl PestParse for SingleExpression {
                 SingleExpressionInner::Array(elements)
             }
             Rule::list_expr => {
-                let elements: Vec<_> = inner_pair
+                let elements: Arc<_> = inner_pair
                     .into_inner()
                     .map(|inner| Expression::parse(inner))
                     .collect();
@@ -939,7 +943,7 @@ impl PestParse for Bits {
                 debug_assert!(bytes[0] < 16);
                 Bits::U4(bytes[0])
             }
-            _ => Bits::Long(bytes),
+            _ => Bits::Long(bytes.into_iter().collect()),
         }
     }
 }
@@ -956,7 +960,7 @@ impl PestParse for Bytes {
         }
 
         let bytes = Vec::<u8>::from_hex(hex_digits).unwrap();
-        Bytes(bytes)
+        Bytes(bytes.into_iter().collect())
     }
 }
 
