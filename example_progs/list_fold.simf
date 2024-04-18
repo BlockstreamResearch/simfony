@@ -1,0 +1,46 @@
+fn checked_add_32(el, acc) {
+    let (carry, sum) = jet_add_32(el, acc);
+    // Check carry =? 0
+    jet_verify(jet_complement_1(carry));
+    sum
+};
+
+// Sum all list elements
+let one_element: List<u32, 2> = list![1];
+let sum: u32 = fold::<2>(one_element, 0, checked_add_32);
+let expected = 1;
+jet_verify(jet_eq_32(expected, sum));
+
+let three_elements: List<u32, 4> = list![1, 2, 3];
+let sum: u32 = fold::<4>(three_elements, 0, checked_add_32);
+let expected = 6;
+jet_verify(jet_eq_32(expected, sum));
+
+let seven_elements: List<u32, 8> = list![1, 2, 3, 4, 5, 6, 7];
+let sum: u32 = fold::<8>(seven_elements, 0, checked_add_32);
+let expected = 28;
+jet_verify(jet_eq_32(expected, sum));
+
+// List values may be shorter than their maximum length
+// The iteration stops at the last element
+let one_element: List<u32, 8> = list![1];
+let sum: u32 = fold::<8>(one_element, 0, checked_add_32);
+let expected = 1;
+jet_verify(jet_eq_32(expected, sum));
+
+fn checked_mul_32(a, b) {
+    let (prod_high, prod_low) = jet_multiply_32(a, b);
+    jet_verify(jet_is_zero_32(prod_high));
+    prod_low
+};
+
+fn mul_add(el, acc, ctx) {
+    let el_times_ctx = checked_mul_32(el, ctx);
+    checked_add_32(acc, el_times_ctx)
+};
+
+// Double all list elements and take their sum
+let two: u32 = 2;
+let doubled_sum: u32 = fold::<8>(seven_elements, 0, two, mul_add);
+let expected = 56;
+jet_verify(jet_eq_32(expected, doubled_sum));
