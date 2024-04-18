@@ -143,7 +143,7 @@ impl node::Marker for Named<Construct<Elements>> {
     }
 }
 
-pub trait ProgExt {
+pub trait ProgExt: Sized {
     fn unit() -> Self;
 
     fn iden() -> Self;
@@ -173,6 +173,53 @@ pub trait ProgExt {
     fn jet(jet: Elements) -> Self;
 
     fn const_word(v: Arc<Value>) -> Self;
+
+    fn o() -> SelectorBuilder<Self> {
+        SelectorBuilder::default().o()
+    }
+
+    fn i() -> SelectorBuilder<Self> {
+        SelectorBuilder::default().i()
+    }
+}
+
+#[derive(Debug, Clone, Hash)]
+pub struct SelectorBuilder<P> {
+    selection: Vec<bool>,
+    program: PhantomData<P>,
+}
+
+impl<P> Default for SelectorBuilder<P> {
+    fn default() -> Self {
+        Self {
+            selection: Vec::default(),
+            program: PhantomData,
+        }
+    }
+}
+
+impl<P: ProgExt> SelectorBuilder<P> {
+    pub fn o(mut self) -> Self {
+        self.selection.push(false);
+        self
+    }
+
+    pub fn i(mut self) -> Self {
+        self.selection.push(true);
+        self
+    }
+
+    pub fn h(self) -> P {
+        let mut ret = P::iden();
+        for bit in self.selection.into_iter().rev() {
+            match bit {
+                false => ret = P::take(ret),
+                true => ret = P::drop_(ret),
+            }
+        }
+
+        ret
+    }
 }
 
 impl ProgExt for ProgNode {
