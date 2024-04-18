@@ -202,7 +202,7 @@ impl SingleExpression {
                 let bound = if let Some(Type::List(_, bound)) = reqd_ty {
                     *bound
                 } else {
-                    elements.len().next_power_of_two()
+                    elements.len().saturating_add(1).next_power_of_two()
                 };
                 debug_assert!(bound.is_power_of_two());
                 debug_assert!(2 <= bound);
