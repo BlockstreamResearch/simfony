@@ -360,6 +360,20 @@ pub enum SingleExpressionInner {
     ///
     /// The exclusive upper bound on the list size is not known at this point
     List(Arc<[Expression]>),
+    /// List fold expression
+    ListFold {
+        /// Exclusive upper bound on list size.
+        // TODO: Remove once we have a typed Simfony syntax tree
+        bound: usize,
+        /// List to fold.
+        list: Arc<Expression>,
+        /// Initial value of the accumulator.
+        acc: Arc<Expression>,
+        /// Value of the readonly context.
+        ctx: Option<Arc<Expression>>,
+        /// Name of function that is executed in each iteration.
+        name: FunctionName,
+    },
 }
 
 /// Valid unsigned decimal string.
@@ -1039,6 +1053,29 @@ impl PestParse for SingleExpression {
                     .map(|inner| Expression::parse(inner))
                     .collect();
                 SingleExpressionInner::List(elements)
+            }
+            Rule::list_fold_expr => {
+                let mut it = inner_pair.into_inner();
+                let bound = it.next().unwrap().as_str().parse::<usize>().unwrap();
+                assert!(bound.is_power_of_two(), "List bound must be a power of two");
+                assert!(2 <= bound, "List bound must be greater equal two");
+                let list = Arc::new(Expression::parse(it.next().unwrap()));
+                let acc = Arc::new(Expression::parse(it.next().unwrap()));
+                let (ctx, name) = match (it.next(), it.next()) {
+                    (Some(ctx_pair), Some(name_pair)) => (
+                        Some(Arc::new(Expression::parse(ctx_pair))),
+                        FunctionName::parse(name_pair),
+                    ),
+                    (Some(name_pair), None) => (None, FunctionName::parse(name_pair)),
+                    _ => panic!("Corrupt grammar"),
+                };
+                SingleExpressionInner::ListFold {
+                    bound,
+                    list,
+                    acc,
+                    ctx,
+                    name,
+                }
             }
             _ => unreachable!("Corrupt grammar"),
         };
