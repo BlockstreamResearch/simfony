@@ -203,6 +203,12 @@ impl FunctionParams {
     }
 }
 
+impl AsRef<[Identifier]> for FunctionParams {
+    fn as_ref(&self) -> &[Identifier] {
+        self.0.as_ref()
+    }
+}
+
 /// A function name.
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct FunctionName(Arc<str>);

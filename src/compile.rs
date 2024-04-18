@@ -218,7 +218,58 @@ impl SingleExpressionInner {
 
                 partition.fold(process, ProgNode::pair)
             }
-            SingleExpressionInner::ListFold { .. } => todo!(),
+            SingleExpressionInner::ListFold {
+                bound,
+                list,
+                acc,
+                ctx,
+                name,
+            } => {
+                debug_assert!(bound.is_power_of_two());
+                debug_assert!(2 <= *bound);
+
+                let list_expr = list.eval(scope, None);
+                let acc_expr = acc.eval(scope, None);
+                let ctx_expr = ctx
+                    .as_ref()
+                    .map(|e| e.eval(scope, None))
+                    .unwrap_or(ProgNode::unit());
+                let args_expr = ProgNode::pair(list_expr, ProgNode::pair(acc_expr, ctx_expr));
+
+                let function = scope.get_function(name);
+                if ctx.is_none() {
+                    assert_eq!(
+                        function.params().as_ref().len(),
+                        2,
+                        "List fold expects binary function (element, accumulator) → accumulator"
+                    );
+                } else {
+                    assert_eq!(
+                        function.params().as_ref().len(),
+                        3,
+                        "List fold expects ternary function (element, accumulator, context) → accumulator"
+                    );
+                }
+                let el_var = Pattern::Identifier(function.params().as_ref()[0].clone());
+                let acc_var = Pattern::Identifier(function.params().as_ref()[1].clone());
+                let ctx_var = function
+                    .params()
+                    .as_ref()
+                    .get(2)
+                    .cloned()
+                    .map(Pattern::Identifier)
+                    .unwrap_or(Pattern::Ignore);
+                // list_fold expects a Simplicity expression of type A × (B × C) → B
+                // Compile the function body with the corresponding pattern
+                // This results in a Simplicity expression with the required type
+                let params_pattern = Pattern::product(el_var, Pattern::product(acc_var, ctx_var));
+                let mut params_scope = scope.to_child(params_pattern);
+                let body_expr = function.body().eval(&mut params_scope, None);
+                let n = bound.get().trailing_zeros();
+                let fold_expr = list_fold(n, body_expr);
+
+                ProgNode::comp(args_expr, fold_expr)
+            }
         };
         if let Some(reqd_ty) = reqd_ty {
             res.arrow()
@@ -230,5 +281,84 @@ impl SingleExpressionInner {
                 .unwrap();
         }
         res
+    }
+}
+
+/// Fold a list of less than `2^n` elements using function `f`.
+///
+/// The list has type `A^(<2^n)`.
+///
+/// Function `f: A × (B × C) → B`
+/// takes a list element, a state of type `B` and a context of type `C`,
+/// and produces an updated state of type `B`.
+///
+/// The fold `(fold f)_n : A^(<2^n) × (B × C) → B`
+/// takes the list, plus an initial state and context,
+/// and produces a final (folded) state.
+///
+/// ## Panics
+///
+/// n = 0
+fn list_fold(n: u32, f: ProgNode) -> ProgNode {
+    match n {
+        0 => panic!("A^<1 is an illegal type"),
+        // (fold f)_1 := case IOH f_0
+        1 => {
+            let ioh = ProgNode::i().o().h();
+            let f_0 = f_array(0, f);
+            ProgNode::case(ioh, f_0)
+        }
+        // (fold f)_(n + 1) := OOH ▵ (OIH ▵ IH); case (drop (fold f)_n)) g_n
+        // where g_n        := IOH ▵ ((OH ▵ IIH; f_n) ▵ IIIH); (fold f)_n
+        m_plus_one => {
+            let m = m_plus_one - 1;
+            let f_m = f_array(m, f.clone());
+            let fold_m = list_fold(m, f);
+
+            let case_input = ProgNode::pair(
+                ProgNode::o().o().h(),
+                ProgNode::pair(ProgNode::o().i().h(), ProgNode::i().h()),
+            );
+            let case_left = ProgNode::drop_(fold_m.clone());
+            let f_m_input = ProgNode::pair(ProgNode::o().h(), ProgNode::i().i().h());
+            let f_m_output = ProgNode::comp(f_m_input, f_m);
+            let fold_m_input = ProgNode::pair(
+                ProgNode::i().o().h(),
+                ProgNode::pair(f_m_output, ProgNode::i().i().i().h()),
+            );
+            let case_right = ProgNode::comp(fold_m_input, fold_m);
+
+            ProgNode::comp(case_input, ProgNode::case(case_left, case_right))
+        }
+    }
+}
+
+/// Generalize a function to work on arrays.
+///
+/// Function `f : A × (B × C) → B`
+/// takes an element of type `A`, a state of type `B` and a context of type `C`,
+/// and produces an updated state of type `B`.
+///
+/// Generalized function `f_n : A^(2^n) × (B × C) → C`
+/// takes an array of type `A^(2^n)` plus a state and context,
+/// and produces an updated state.
+fn f_array(n: u32, f: ProgNode) -> ProgNode {
+    match n {
+        // f_0 : A × (B × C) → B
+        // f_0 := f
+        0 => f,
+        // f_(n + 1) : A^(2^(n + 1)) × (B × C) → C
+        // f_(n + 1) := OIH ▵ ((OOH ▵ IH; f_n) ▵ IIH); f_n
+        m_plus_one => {
+            let m = m_plus_one - 1;
+            let f_m = f_array(m, f);
+            let fst_input = ProgNode::pair(ProgNode::o().o().h(), ProgNode::i().h());
+            let fst_output = ProgNode::comp(fst_input, f_m.clone());
+            let snd_input = ProgNode::pair(
+                ProgNode::o().i().h(),
+                ProgNode::pair(fst_output, ProgNode::i().i().h()),
+            );
+            ProgNode::comp(snd_input, f_m)
+        }
     }
 }
