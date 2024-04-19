@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 use std::fmt;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use miniscript::iter::{Tree, TreeLike};
@@ -388,7 +389,7 @@ pub enum Type {
     Option(Arc<Self>),
     Boolean,
     UInt(UIntType),
-    Array(Arc<Self>, usize),
+    Array(Arc<Self>, NonZeroUsize),
     List(Arc<Self>, usize),
 }
 
@@ -507,7 +508,7 @@ impl Type {
                 Type::Array(_, size) => {
                     let el = output.pop().unwrap();
                     // Cheap clone because SimType consists of Arcs
-                    let el_vector = vec![el; *size];
+                    let el_vector = vec![el; size.get()];
                     let tree = BTreeSlice::from_slice(&el_vector);
                     output.push(tree.fold(SimType::product));
                 }
@@ -1041,7 +1042,7 @@ impl PestParse for Type {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
         enum Item {
             Type(Type),
-            Size(usize),
+            Size(NonZeroUsize),
         }
 
         impl Item {
@@ -1052,7 +1053,7 @@ impl PestParse for Type {
                 }
             }
 
-            fn unwrap_size(self) -> usize {
+            fn unwrap_size(self) -> NonZeroUsize {
                 match self {
                     Item::Size(size) => size,
                     _ => panic!("Not a size"),
@@ -1095,20 +1096,21 @@ impl PestParse for Type {
                 }
                 Rule::array_size => {
                     let size_str = data.node.0.as_str();
-                    let size = size_str.parse::<usize>().unwrap();
-                    assert!(0 < size, "Array size must be nonzero");
+                    let size = size_str
+                        .parse::<NonZeroUsize>()
+                        .expect("Array size must be nonzero");
                     output.push(Item::Size(size));
                 }
                 Rule::list_type => {
                     let bound = output.pop().unwrap().unwrap_size();
                     let el = output.pop().unwrap().unwrap_type();
-                    output.push(Item::Type(Type::List(Arc::new(el), bound)));
+                    output.push(Item::Type(Type::List(Arc::new(el), bound.get())));
                 }
                 Rule::list_bound => {
                     let bound_str = data.node.0.as_str();
-                    let bound = bound_str.parse::<usize>().unwrap();
+                    let bound = bound_str.parse::<NonZeroUsize>().unwrap();
                     assert!(bound.is_power_of_two(), "List bound must be a power of two");
-                    assert!(2 <= bound, "List bound must be greater equal two");
+                    assert!(2 <= bound.get(), "List bound must be greater equal two");
                     output.push(Item::Size(bound));
                 }
                 Rule::ty => {}
