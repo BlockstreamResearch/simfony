@@ -165,15 +165,24 @@ impl SingleExpression {
                 right,
             } => {
                 let mut l_scope = scope.clone();
-                if let Some(x) = left.pattern.get_identifier() {
-                    l_scope.insert(Pattern::Identifier(x.clone()));
-                }
+                l_scope.insert(
+                    left.pattern
+                        .get_identifier()
+                        .cloned()
+                        .map(Pattern::Identifier)
+                        .unwrap_or(Pattern::Ignore),
+                );
                 let l_compiled = left.expression.eval(&mut l_scope, reqd_ty);
 
                 let mut r_scope = scope.clone();
-                if let Some(y) = right.pattern.get_identifier() {
-                    r_scope.insert(Pattern::Identifier(y.clone()));
-                }
+                r_scope.insert(
+                    right
+                        .pattern
+                        .get_identifier()
+                        .cloned()
+                        .map(Pattern::Identifier)
+                        .unwrap_or(Pattern::Ignore),
+                );
                 let r_compiled = right.expression.eval(&mut r_scope, reqd_ty);
 
                 // TODO: Enforce target type A + B for m_expr
