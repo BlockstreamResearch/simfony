@@ -181,6 +181,14 @@ pub trait ProgExt: Sized {
     fn i() -> SelectorBuilder<Self> {
         SelectorBuilder::default().i()
     }
+
+    fn _false() -> Self {
+        Self::injl(Self::unit())
+    }
+
+    fn _true() -> Self {
+        Self::injr(Self::unit())
+    }
 }
 
 #[derive(Debug, Clone, Hash)]
