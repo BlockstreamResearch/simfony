@@ -80,3 +80,29 @@ impl NonZeroPow2Usize {
 }
 
 checked_num!(NonZeroPow2Usize, usize, "a power of two greater than 1");
+
+/// An integer that is known to be a power _of a power_ of two.
+///
+/// The integer is equal to 2^(2^n) for some n ≥ 0.
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct DoublePow2Usize(usize);
+
+checked_num!(DoublePow2Usize, usize, "a double power of two");
+
+impl DoublePow2Usize {
+    /// Create a double power of two.
+    pub const fn new(n: usize) -> Option<Self> {
+        if n.is_power_of_two() && n.trailing_zeros().is_power_of_two() {
+            Some(Self(n))
+        } else {
+            None
+        }
+    }
+
+    /// Return the binary logarithm _of the binary logarithm_ of the value.
+    ///
+    /// The integer is equal to 2^(2^n). Return n.
+    pub const fn log2_log2(self) -> u32 {
+        self.0.trailing_zeros().trailing_zeros()
+    }
+}
