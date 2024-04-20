@@ -5,6 +5,7 @@ use std::{str::FromStr, sync::Arc};
 use simplicity::{jet::Elements, node, Cmr, FailEntropy};
 
 use crate::array::{BTreeSlice, Partition};
+use crate::num::NonZeroPow2Usize;
 use crate::parse::{Pattern, SingleExpressionInner, UIntType};
 use crate::{
     named::{ConstructExt, NamedConstructNode, ProgExt},
@@ -209,12 +210,10 @@ impl SingleExpressionInner {
                 let bound = if let Some(Type::List(_, bound)) = reqd_ty {
                     *bound
                 } else {
-                    elements.len().saturating_add(1).next_power_of_two()
+                    NonZeroPow2Usize::next(elements.len().saturating_add(1))
                 };
-                debug_assert!(bound.is_power_of_two());
-                debug_assert!(2 <= bound);
 
-                let partition = Partition::from_slice(&nodes, bound / 2);
+                let partition = Partition::from_slice(&nodes, bound.get() / 2);
                 let process = |block: &[ProgNode]| -> ProgNode {
                     if block.is_empty() {
                         ProgNode::injl(ProgNode::unit())

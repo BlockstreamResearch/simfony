@@ -12,6 +12,7 @@ use simplicity::types::Type as SimType;
 use simplicity::Value;
 
 use crate::array::{BTreeSlice, BinaryTree, Partition};
+use crate::num::NonZeroPow2Usize;
 use crate::Rule;
 
 /// A complete simplicity program.
@@ -390,7 +391,7 @@ pub enum Type {
     Boolean,
     UInt(UIntType),
     Array(Arc<Self>, NonZeroUsize),
-    List(Arc<Self>, usize),
+    List(Arc<Self>, NonZeroPow2Usize),
 }
 
 /// Normalized unsigned integer type.
@@ -467,9 +468,9 @@ impl Type {
                     }
                     integer_type.insert(data.node, uint);
                 }
-                Type::List(el, bound) => match (el.as_ref(), bound) {
+                Type::List(el, bound) => match (el.as_ref(), *bound) {
                     // List<1, 2> = Option<1> = u1
-                    (Type::Unit, 2) => {
+                    (Type::Unit, NonZeroPow2Usize::TWO) => {
                         integer_type.insert(data.node, UIntType::U1);
                     }
                     _ => return None,
@@ -513,12 +514,10 @@ impl Type {
                     output.push(tree.fold(SimType::product));
                 }
                 Type::List(_, bound) => {
-                    debug_assert!(bound.is_power_of_two());
-                    debug_assert!(2 <= *bound);
                     let el = output.pop().unwrap();
                     // Cheap clone because SimType consists of Arcs
-                    let el_vector = vec![el; *bound - 1];
-                    let partition = Partition::from_slice(&el_vector, *bound / 2);
+                    let el_vector = vec![el; bound.get() - 1];
+                    let partition = Partition::from_slice(&el_vector, bound.get() / 2);
                     debug_assert!(partition.is_complete());
                     let process = |block: &[SimType]| -> SimType {
                         debug_assert!(!block.is_empty());
@@ -1043,6 +1042,7 @@ impl PestParse for Type {
         enum Item {
             Type(Type),
             Size(NonZeroUsize),
+            Bound(NonZeroPow2Usize),
         }
 
         impl Item {
@@ -1057,6 +1057,13 @@ impl PestParse for Type {
                 match self {
                     Item::Size(size) => size,
                     _ => panic!("Not a size"),
+                }
+            }
+
+            fn unwrap_bound(self) -> NonZeroPow2Usize {
+                match self {
+                    Item::Bound(size) => size,
+                    _ => panic!("Not a bound"),
                 }
             }
         }
@@ -1102,16 +1109,16 @@ impl PestParse for Type {
                     output.push(Item::Size(size));
                 }
                 Rule::list_type => {
-                    let bound = output.pop().unwrap().unwrap_size();
+                    let bound = output.pop().unwrap().unwrap_bound();
                     let el = output.pop().unwrap().unwrap_type();
-                    output.push(Item::Type(Type::List(Arc::new(el), bound.get())));
+                    output.push(Item::Type(Type::List(Arc::new(el), bound)));
                 }
                 Rule::list_bound => {
                     let bound_str = data.node.0.as_str();
-                    let bound = bound_str.parse::<NonZeroUsize>().unwrap();
-                    assert!(bound.is_power_of_two(), "List bound must be a power of two");
-                    assert!(2 <= bound.get(), "List bound must be greater equal two");
-                    output.push(Item::Size(bound));
+                    let bound = bound_str
+                        .parse::<NonZeroPow2Usize>()
+                        .expect("List bound must be a power of two greater than 1");
+                    output.push(Item::Bound(bound));
                 }
                 Rule::ty => {}
                 _ => unreachable!("Corrupt grammar"),
