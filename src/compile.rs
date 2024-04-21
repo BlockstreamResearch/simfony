@@ -5,12 +5,11 @@ use std::{str::FromStr, sync::Arc};
 use simplicity::{jet::Elements, node, Cmr, FailEntropy};
 
 use crate::array::{BTreeSlice, Partition};
+use crate::num::NonZeroPow2Usize;
 use crate::parse::{Pattern, SingleExpressionInner, UIntType};
 use crate::{
     named::{ConstructExt, NamedConstructNode, ProgExt},
-    parse::{
-        Expression, ExpressionInner, FuncCall, FuncType, Program, SingleExpression, Statement, Type,
-    },
+    parse::{Expression, ExpressionInner, FuncCall, FuncType, Program, Statement, Type},
     scope::GlobalScope,
     ProgNode,
 };
@@ -107,14 +106,14 @@ impl Expression {
                 scope.pop_scope();
                 res
             }
-            ExpressionInner::SingleExpression(e) => e.eval(scope, reqd_ty),
+            ExpressionInner::SingleExpression(e) => e.inner.eval(scope, reqd_ty),
         }
     }
 }
 
-impl SingleExpression {
+impl SingleExpressionInner {
     pub fn eval(&self, scope: &mut GlobalScope, reqd_ty: Option<&Type>) -> ProgNode {
-        let res = match &self.inner {
+        let res = match self {
             SingleExpressionInner::Unit => ProgNode::unit(),
             SingleExpressionInner::Left(l) => {
                 let l = l.eval(scope, None);
@@ -165,15 +164,24 @@ impl SingleExpression {
                 right,
             } => {
                 let mut l_scope = scope.clone();
-                if let Some(x) = left.pattern.get_identifier() {
-                    l_scope.insert(Pattern::Identifier(x.clone()));
-                }
+                l_scope.insert(
+                    left.pattern
+                        .get_identifier()
+                        .cloned()
+                        .map(Pattern::Identifier)
+                        .unwrap_or(Pattern::Ignore),
+                );
                 let l_compiled = left.expression.eval(&mut l_scope, reqd_ty);
 
                 let mut r_scope = scope.clone();
-                if let Some(y) = right.pattern.get_identifier() {
-                    r_scope.insert(Pattern::Identifier(y.clone()));
-                }
+                r_scope.insert(
+                    right
+                        .pattern
+                        .get_identifier()
+                        .cloned()
+                        .map(Pattern::Identifier)
+                        .unwrap_or(Pattern::Ignore),
+                );
                 let r_compiled = right.expression.eval(&mut r_scope, reqd_ty);
 
                 // TODO: Enforce target type A + B for m_expr
@@ -202,12 +210,10 @@ impl SingleExpression {
                 let bound = if let Some(Type::List(_, bound)) = reqd_ty {
                     *bound
                 } else {
-                    elements.len().next_power_of_two()
+                    NonZeroPow2Usize::next(elements.len().saturating_add(1))
                 };
-                debug_assert!(bound.is_power_of_two());
-                debug_assert!(2 <= bound);
 
-                let partition = Partition::from_slice(&nodes, bound / 2);
+                let partition = Partition::from_slice(&nodes, bound.get() / 2);
                 let process = |block: &[ProgNode]| -> ProgNode {
                     if block.is_empty() {
                         ProgNode::injl(ProgNode::unit())

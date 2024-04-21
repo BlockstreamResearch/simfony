@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 use std::fmt;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use miniscript::iter::{Tree, TreeLike};
@@ -11,6 +12,7 @@ use simplicity::types::Type as SimType;
 use simplicity::Value;
 
 use crate::array::{BTreeSlice, BinaryTree, Partition};
+use crate::num::NonZeroPow2Usize;
 use crate::Rule;
 
 /// A complete simplicity program.
@@ -39,7 +41,7 @@ pub enum Pattern {
     /// Split product value. Bind components to first and second pattern, respectively.
     Product(Arc<Self>, Arc<Self>),
     /// Split array value. Bind components to balanced binary tree of patterns.
-    Array(Vec<Self>),
+    Array(Arc<[Self]>),
 }
 
 impl Pattern {
@@ -50,7 +52,11 @@ impl Pattern {
 
     /// Construct an array pattern.
     pub fn array<I: IntoIterator<Item = Self>>(array: I) -> Self {
-        Self::Array(array.into_iter().collect())
+        let inner: Arc<_> = array.into_iter().collect();
+        if inner.is_empty() {
+            panic!("Array must not be empty");
+        }
+        Self::Array(inner)
     }
 
     /// Create an equivalent pattern that corresponds to the Simplicity base types.
@@ -164,7 +170,7 @@ pub struct FuncCall {
     /// The type of the function.
     pub func_type: FuncType,
     /// The arguments to the function.
-    pub args: Vec<Expression>,
+    pub args: Arc<[Expression]>,
     /// The source text associated with this expression
     pub source_text: Arc<str>,
     /// The position of this expression in the source file. (row, col)
@@ -238,7 +244,7 @@ pub enum SingleExpressionInner {
     /// True literal expression
     True,
     /// Unsigned integer literal expression
-    UnsignedInteger(Arc<str>),
+    UnsignedInteger(UnsignedDecimal),
     /// Bit string literal expression
     BitString(Bits),
     /// Byte string literal expression
@@ -261,11 +267,28 @@ pub enum SingleExpressionInner {
         right: MatchArm,
     },
     /// Array wrapper expression
-    Array(Vec<Expression>),
+    Array(Arc<[Expression]>),
     /// List wrapper expression
     ///
     /// The exclusive upper bound on the list size is not known at this point
-    List(Vec<Expression>),
+    List(Arc<[Expression]>),
+}
+
+/// Valid unsigned decimal string.
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct UnsignedDecimal(Arc<str>);
+
+impl UnsignedDecimal {
+    /// Access the inner decimal string.
+    pub fn as_inner(&self) -> &Arc<str> {
+        &self.0
+    }
+}
+
+impl fmt::Display for UnsignedDecimal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
 }
 
 /// Bit string whose length is a power of two.
@@ -278,7 +301,7 @@ pub enum Bits {
     /// Four least significant bits of byte
     U4(u8),
     /// All bits from byte string
-    Long(Vec<u8>),
+    Long(Arc<[u8]>),
 }
 
 impl Bits {
@@ -295,7 +318,7 @@ impl Bits {
 
 /// Byte string whose length is a power of two.
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct Bytes(pub Vec<u8>);
+pub struct Bytes(pub Arc<[u8]>);
 
 impl Bytes {
     /// Convert the byte string into a Simplicity value.
@@ -367,8 +390,8 @@ pub enum Type {
     Option(Arc<Self>),
     Boolean,
     UInt(UIntType),
-    Array(Arc<Self>, usize),
-    List(Arc<Self>, usize),
+    Array(Arc<Self>, NonZeroUsize),
+    List(Arc<Self>, NonZeroPow2Usize),
 }
 
 /// Normalized unsigned integer type.
@@ -445,9 +468,9 @@ impl Type {
                     }
                     integer_type.insert(data.node, uint);
                 }
-                Type::List(el, bound) => match (el.as_ref(), bound) {
+                Type::List(el, bound) => match (el.as_ref(), *bound) {
                     // List<1, 2> = Option<1> = u1
-                    (Type::Unit, 2) => {
+                    (Type::Unit, NonZeroPow2Usize::TWO) => {
                         integer_type.insert(data.node, UIntType::U1);
                     }
                     _ => return None,
@@ -486,17 +509,15 @@ impl Type {
                 Type::Array(_, size) => {
                     let el = output.pop().unwrap();
                     // Cheap clone because SimType consists of Arcs
-                    let el_vector = vec![el; *size];
+                    let el_vector = vec![el; size.get()];
                     let tree = BTreeSlice::from_slice(&el_vector);
                     output.push(tree.fold(SimType::product));
                 }
                 Type::List(_, bound) => {
-                    debug_assert!(bound.is_power_of_two());
-                    debug_assert!(2 <= *bound);
                     let el = output.pop().unwrap();
                     // Cheap clone because SimType consists of Arcs
-                    let el_vector = vec![el; *bound - 1];
-                    let partition = Partition::from_slice(&el_vector, *bound / 2);
+                    let el_vector = vec![el; bound.get() - 1];
+                    let partition = Partition::from_slice(&el_vector, bound.get() / 2);
                     debug_assert!(partition.is_complete());
                     let process = |block: &[SimType]| -> SimType {
                         debug_assert!(!block.is_empty());
@@ -583,15 +604,15 @@ impl UIntType {
     }
 
     /// Parse a decimal string for the type.
-    pub fn parse_decimal(&self, literal: &str) -> Arc<Value> {
+    pub fn parse_decimal(&self, decimal: &UnsignedDecimal) -> Arc<Value> {
         match self {
-            UIntType::U1 => Value::u1(literal.parse::<u8>().unwrap()),
-            UIntType::U2 => Value::u2(literal.parse::<u8>().unwrap()),
-            UIntType::U4 => Value::u4(literal.parse::<u8>().unwrap()),
-            UIntType::U8 => Value::u8(literal.parse::<u8>().unwrap()),
-            UIntType::U16 => Value::u16(literal.parse::<u16>().unwrap()),
-            UIntType::U32 => Value::u32(literal.parse::<u32>().unwrap()),
-            UIntType::U64 => Value::u64(literal.parse::<u64>().unwrap()),
+            UIntType::U1 => Value::u1(decimal.as_inner().parse::<u8>().unwrap()),
+            UIntType::U2 => Value::u2(decimal.as_inner().parse::<u8>().unwrap()),
+            UIntType::U4 => Value::u4(decimal.as_inner().parse::<u8>().unwrap()),
+            UIntType::U8 => Value::u8(decimal.as_inner().parse::<u8>().unwrap()),
+            UIntType::U16 => Value::u16(decimal.as_inner().parse::<u16>().unwrap()),
+            UIntType::U32 => Value::u32(decimal.as_inner().parse::<u32>().unwrap()),
+            UIntType::U64 => Value::u64(decimal.as_inner().parse::<u64>().unwrap()),
             UIntType::U128 => panic!("Use bit or hex strings for u128"),
             UIntType::U256 => panic!("Use bit or hex strings for u256"),
         }
@@ -684,7 +705,7 @@ impl PestParse for Pattern {
                 Rule::array_pattern => {
                     assert!(0 < data.node.n_children(), "Array must be nonempty");
                     let children = output.split_off(output.len() - data.node.n_children());
-                    output.push(Pattern::Array(children));
+                    output.push(Pattern::Array(children.into_iter().collect()));
                 }
                 _ => unreachable!("Corrupt grammar"),
             }
@@ -746,7 +767,7 @@ impl PestParse for FuncCall {
 
         FuncCall {
             func_type,
-            args,
+            args: args.into_iter().collect(),
             source_text,
             position,
         }
@@ -840,7 +861,9 @@ impl PestParse for SingleExpression {
             Rule::func_call => SingleExpressionInner::FuncCall(FuncCall::parse(inner_pair)),
             Rule::bit_string => SingleExpressionInner::BitString(Bits::parse(inner_pair)),
             Rule::byte_string => SingleExpressionInner::ByteString(Bytes::parse(inner_pair)),
-            Rule::unsigned_integer => SingleExpressionInner::UnsignedInteger(source_text.clone()),
+            Rule::unsigned_integer => {
+                SingleExpressionInner::UnsignedInteger(UnsignedDecimal::parse(inner_pair))
+            }
             Rule::witness_expr => {
                 let witness_pair = inner_pair.into_inner().next().unwrap();
                 SingleExpressionInner::Witness(WitnessName::parse(witness_pair))
@@ -875,7 +898,7 @@ impl PestParse for SingleExpression {
                 }
             }
             Rule::array_expr => {
-                let elements: Vec<_> = inner_pair
+                let elements: Arc<_> = inner_pair
                     .into_inner()
                     .map(|inner| Expression::parse(inner))
                     .collect();
@@ -883,7 +906,7 @@ impl PestParse for SingleExpression {
                 SingleExpressionInner::Array(elements)
             }
             Rule::list_expr => {
-                let elements: Vec<_> = inner_pair
+                let elements: Arc<_> = inner_pair
                     .into_inner()
                     .map(|inner| Expression::parse(inner))
                     .collect();
@@ -897,6 +920,14 @@ impl PestParse for SingleExpression {
             source_text,
             position,
         }
+    }
+}
+
+impl PestParse for UnsignedDecimal {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+        assert!(matches!(pair.as_rule(), Rule::unsigned_integer));
+        let decimal = Arc::from(pair.as_str());
+        Self(decimal)
     }
 }
 
@@ -939,7 +970,7 @@ impl PestParse for Bits {
                 debug_assert!(bytes[0] < 16);
                 Bits::U4(bytes[0])
             }
-            _ => Bits::Long(bytes),
+            _ => Bits::Long(bytes.into_iter().collect()),
         }
     }
 }
@@ -956,7 +987,7 @@ impl PestParse for Bytes {
         }
 
         let bytes = Vec::<u8>::from_hex(hex_digits).unwrap();
-        Bytes(bytes)
+        Bytes(bytes.into_iter().collect())
     }
 }
 
@@ -1010,7 +1041,8 @@ impl PestParse for Type {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
         enum Item {
             Type(Type),
-            Size(usize),
+            Size(NonZeroUsize),
+            Bound(NonZeroPow2Usize),
         }
 
         impl Item {
@@ -1021,10 +1053,17 @@ impl PestParse for Type {
                 }
             }
 
-            fn unwrap_size(self) -> usize {
+            fn unwrap_size(self) -> NonZeroUsize {
                 match self {
                     Item::Size(size) => size,
                     _ => panic!("Not a size"),
+                }
+            }
+
+            fn unwrap_bound(self) -> NonZeroPow2Usize {
+                match self {
+                    Item::Bound(size) => size,
+                    _ => panic!("Not a bound"),
                 }
             }
         }
@@ -1064,21 +1103,22 @@ impl PestParse for Type {
                 }
                 Rule::array_size => {
                     let size_str = data.node.0.as_str();
-                    let size = size_str.parse::<usize>().unwrap();
-                    assert!(0 < size, "Array size must be nonzero");
+                    let size = size_str
+                        .parse::<NonZeroUsize>()
+                        .expect("Array size must be nonzero");
                     output.push(Item::Size(size));
                 }
                 Rule::list_type => {
-                    let bound = output.pop().unwrap().unwrap_size();
+                    let bound = output.pop().unwrap().unwrap_bound();
                     let el = output.pop().unwrap().unwrap_type();
                     output.push(Item::Type(Type::List(Arc::new(el), bound)));
                 }
                 Rule::list_bound => {
                     let bound_str = data.node.0.as_str();
-                    let bound = bound_str.parse::<usize>().unwrap();
-                    assert!(bound.is_power_of_two(), "List bound must be a power of two");
-                    assert!(2 <= bound, "List bound must be greater equal two");
-                    output.push(Item::Size(bound));
+                    let bound = bound_str
+                        .parse::<NonZeroPow2Usize>()
+                        .expect("List bound must be a power of two greater than 1");
+                    output.push(Item::Bound(bound));
                 }
                 Rule::ty => {}
                 _ => unreachable!("Corrupt grammar"),

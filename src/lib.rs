@@ -6,6 +6,7 @@ mod array;
 pub mod compile;
 pub mod dummy_env;
 pub mod named;
+pub mod num;
 pub mod parse;
 pub mod scope;
 
@@ -33,7 +34,6 @@ use crate::{
 #[derive(Parser)]
 #[grammar = "minimal.pest"]
 pub struct IdentParser;
-
 
 pub fn _compile(file: &Path) -> Arc<Node<Named<Commit<Elements>>>> {
     let file = std::fs::read_to_string(file).unwrap();
@@ -179,22 +179,12 @@ mod tests {
         let prog = Program { statements: stmts };
         let mut scope = GlobalScope::new();
         let simplicity_prog = prog.eval(&mut scope);
-        let mut vec = Vec::new();
-        let mut writer = BitWriter::new(&mut vec);
-        encode::encode_program(&simplicity_prog, &mut writer).unwrap();
-        println!("{}", Base64Display::new(&vec, &STANDARD));
-        dbg!(&simplicity_prog);
         let commit_node = simplicity_prog
             .finalize_types_main()
             .expect("Type check error");
         // let commit_node = commit_node.to_commit_node();
         let simplicity_prog =
             Arc::<_>::try_unwrap(commit_node).expect("Only one reference to commit node");
-        dbg!(&simplicity_prog);
-        let mut vec = Vec::new();
-        let mut writer = BitWriter::new(&mut vec);
-        let _encoded = encode::encode_program(&simplicity_prog, &mut writer).unwrap();
-        println!("{}", Base64Display::new(&vec, &STANDARD));
 
         struct MyConverter;
 
@@ -245,6 +235,13 @@ mod tests {
         let redeem_prog = simplicity_prog
             .convert::<NoSharing, Redeem<Elements>, _>(&mut MyConverter)
             .unwrap();
+
+        let mut vec = Vec::new();
+        let mut writer = BitWriter::new(&mut vec);
+        let _encoded = encode::encode_program(&redeem_prog, &mut writer).unwrap();
+        dbg!(&redeem_prog);
+        println!("{}", Base64Display::new(&vec, &STANDARD));
+
         let mut bit_mac = BitMachine::for_program(&redeem_prog);
         let env = dummy_env::dummy();
         bit_mac
