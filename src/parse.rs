@@ -539,7 +539,7 @@ impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for data in self.verbose_pre_order_iter() {
             match data.node {
-                Type::Unit => f.write_str("1")?,
+                Type::Unit => f.write_str("()")?,
                 Type::Either(_, _) => match data.n_children_yielded {
                     0 => f.write_str("Either<")?,
                     1 => f.write_str(",")?,
