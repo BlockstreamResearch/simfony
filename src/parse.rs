@@ -550,7 +550,7 @@ impl fmt::Display for Type {
                 },
                 Type::Product(_, _) => match data.n_children_yielded {
                     0 => f.write_str("(")?,
-                    1 => f.write_str(",")?,
+                    1 => f.write_str(", ")?,
                     n => {
                         debug_assert!(n == 2);
                         f.write_str(")")?;
