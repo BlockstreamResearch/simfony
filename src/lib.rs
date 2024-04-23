@@ -44,7 +44,7 @@ pub fn compile_named(program: Arc<str>) -> Result<Arc<Node<Named<Commit<Elements
         .with_file(program.clone())?;
 
     let mut scope = GlobalScope::new();
-    let simplicity_program = simfony_program.eval(&mut scope);
+    let simplicity_program = simfony_program.eval(&mut scope).with_file(program)?;
     let named_commit = simplicity_program
         .finalize_types_main()
         .expect("Type check error");
@@ -237,15 +237,15 @@ mod tests {
         let inp = ProgNode::const_word(Value::u32(10));
         let node = ProgNode::jet(Elements::ParseLock);
         println!("l1: {}", node.arrow());
-        let node = ProgNode::comp(inp, node);
+        let node = ProgNode::comp(inp, node).unwrap();
         println!("l2: {}", node.arrow());
-        let node = ProgNode::pair(node, ProgNode::unit());
+        let node = ProgNode::pair(node, ProgNode::unit()).unwrap();
         println!("l3: {}", node.arrow());
         let later_operation = ProgNode::take(ProgNode::unit());
         println!("l4: {}", later_operation.arrow());
-        let assert_node = ProgNode::assertl(later_operation, Cmr::unit());
+        let assert_node = ProgNode::assertl(later_operation, Cmr::unit()).unwrap();
         println!("l5: {}", assert_node.arrow());
-        let comp = ProgNode::comp(node, assert_node);
+        let comp = ProgNode::comp(node, assert_node).unwrap();
         println!("l6: {}", comp.arrow());
         // let node2 = ProgNode::assert(&node, Cmr::unit()).unwrap();
         // println!("l3: {}", node2.arrow());

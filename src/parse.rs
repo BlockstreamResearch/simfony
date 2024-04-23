@@ -668,18 +668,22 @@ impl UIntType {
     }
 
     /// Parse a decimal string for the type.
-    pub fn parse_decimal(&self, decimal: &UnsignedDecimal) -> Arc<Value> {
-        match self {
-            UIntType::U1 => Value::u1(decimal.as_inner().parse::<u8>().unwrap()),
-            UIntType::U2 => Value::u2(decimal.as_inner().parse::<u8>().unwrap()),
-            UIntType::U4 => Value::u4(decimal.as_inner().parse::<u8>().unwrap()),
-            UIntType::U8 => Value::u8(decimal.as_inner().parse::<u8>().unwrap()),
-            UIntType::U16 => Value::u16(decimal.as_inner().parse::<u16>().unwrap()),
-            UIntType::U32 => Value::u32(decimal.as_inner().parse::<u32>().unwrap()),
-            UIntType::U64 => Value::u64(decimal.as_inner().parse::<u64>().unwrap()),
-            UIntType::U128 => panic!("Use bit or hex strings for u128"),
-            UIntType::U256 => panic!("Use bit or hex strings for u256"),
+    pub fn parse_decimal(&self, decimal: &UnsignedDecimal) -> Result<Arc<Value>, Error> {
+        if let UIntType::U128 | UIntType::U256 = self {
+            return Err(Error::InvalidDecimal(*self));
         }
+
+        match self {
+            UIntType::U1 => decimal.as_inner().parse::<u8>().map(Value::u1),
+            UIntType::U2 => decimal.as_inner().parse::<u8>().map(Value::u2),
+            UIntType::U4 => decimal.as_inner().parse::<u8>().map(Value::u4),
+            UIntType::U8 => decimal.as_inner().parse::<u8>().map(Value::u8),
+            UIntType::U16 => decimal.as_inner().parse::<u16>().map(Value::u16),
+            UIntType::U32 => decimal.as_inner().parse::<u32>().map(Value::u32),
+            UIntType::U64 => decimal.as_inner().parse::<u64>().map(Value::u64),
+            _ => unreachable!("Covered by outer match"),
+        }
+        .map_err(Error::from)
     }
 
     /// Convert the type into a Simplicity type.

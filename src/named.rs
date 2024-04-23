@@ -148,7 +148,9 @@ pub trait ProgExt: Sized {
 
     fn iden() -> Self;
 
-    fn pair(a: Self, b: Self) -> Self;
+    // FIXME: Change back to -> Self
+    // Simfony needs a proper type system to ensure that the compiler never constructs invalid Simplicity
+    fn pair(a: Self, b: Self) -> Result<Self, types::Error>;
 
     fn injl(a: Self) -> Self;
 
@@ -158,13 +160,13 @@ pub trait ProgExt: Sized {
 
     fn drop_(a: Self) -> Self;
 
-    fn comp(a: Self, b: Self) -> Self;
+    fn comp(a: Self, b: Self) -> Result<Self, types::Error>;
 
-    fn case(a: Self, b: Self) -> Self;
+    fn case(a: Self, b: Self) -> Result<Self, types::Error>;
 
-    fn assertl(a: Self, b: Cmr) -> Self;
+    fn assertl(a: Self, b: Cmr) -> Result<Self, types::Error>;
 
-    fn assertr(a: Cmr, b: Self) -> Self;
+    fn assertr(a: Cmr, b: Self) -> Result<Self, types::Error>;
 
     fn witness(ident: Arc<str>) -> Self;
 
@@ -188,6 +190,10 @@ pub trait ProgExt: Sized {
 
     fn _true() -> Self {
         Self::injr(Self::unit())
+    }
+
+    fn pair_unwrap(a: Self, b: Self) -> Self {
+        Self::pair(a, b).unwrap()
     }
 }
 
@@ -239,8 +245,8 @@ impl ProgExt for ProgNode {
         Arc::new(NamedConstructNode::_new(Inner::Iden).unwrap())
     }
 
-    fn pair(a: Self, b: Self) -> Self {
-        Arc::new(NamedConstructNode::_new(Inner::Pair(a, b)).unwrap())
+    fn pair(a: Self, b: Self) -> Result<Self, types::Error> {
+        NamedConstructNode::_new(Inner::Pair(a, b)).map(Arc::new)
     }
 
     fn injl(a: Self) -> Self {
@@ -259,20 +265,20 @@ impl ProgExt for ProgNode {
         Arc::new(NamedConstructNode::_new(Inner::Drop(a)).unwrap())
     }
 
-    fn comp(a: Self, b: Self) -> Self {
-        Arc::new(NamedConstructNode::_new(Inner::Comp(a, b)).unwrap())
+    fn comp(a: Self, b: Self) -> Result<Self, types::Error> {
+        NamedConstructNode::_new(Inner::Comp(a, b)).map(Arc::new)
     }
 
-    fn case(a: Self, b: Self) -> Self {
-        Arc::new(NamedConstructNode::_new(Inner::Case(a, b)).unwrap())
+    fn case(a: Self, b: Self) -> Result<Self, types::Error> {
+        NamedConstructNode::_new(Inner::Case(a, b)).map(Arc::new)
     }
 
-    fn assertl(a: Self, b: Cmr) -> Self {
-        Arc::new(NamedConstructNode::_new(Inner::AssertL(a, b)).unwrap())
+    fn assertl(a: Self, b: Cmr) -> Result<Self, types::Error> {
+        NamedConstructNode::_new(Inner::AssertL(a, b)).map(Arc::new)
     }
 
-    fn assertr(a: Cmr, b: Self) -> Self {
-        Arc::new(NamedConstructNode::_new(Inner::AssertR(a, b)).unwrap())
+    fn assertr(a: Cmr, b: Self) -> Result<Self, types::Error> {
+        NamedConstructNode::_new(Inner::AssertR(a, b)).map(Arc::new)
     }
 
     fn witness(ident: Arc<str>) -> Self {

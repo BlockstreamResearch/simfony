@@ -95,35 +95,21 @@ impl GlobalScope {
     /// ```
     ///
     /// To extract `a`, we need the expression `drop drop take iden`.
-    ///
-    /// ## Panics
-    ///
-    /// The `identifier` is undefined.
-    pub fn get(&self, identifier: &Identifier) -> ProgNode {
-        let mut pos = 0;
-
-        // Highest scope has precedence
-        for scope in self.variables.iter().rev() {
-            // Last let statement has precedence
-            if let Some((pattern_pos, mut expr)) =
-                scope.iter().rev().enumerate().find_map(|(idx, pattern)| {
-                    pattern.get_program(identifier).map(|expr| (idx, expr))
+    pub fn get(&self, identifier: &Identifier) -> Option<ProgNode> {
+        self.variables
+            .iter()
+            .rev() // Innermost scope has precedence
+            .flat_map(|scope| scope.iter().rev()) // Last assignment has precedence
+            .enumerate()
+            .find_map(|(idx, pattern)| {
+                pattern.get_program(identifier).map(|mut expr| {
+                    expr = ProgNode::take(expr);
+                    for _ in 0..idx {
+                        expr = ProgNode::drop_(expr);
+                    }
+                    expr
                 })
-            {
-                pos += pattern_pos;
-
-                expr = ProgNode::take(expr);
-                for _ in 0..pos {
-                    expr = ProgNode::drop_(expr);
-                }
-
-                return expr;
-            } else {
-                pos += scope.len();
-            }
-        }
-
-        panic!("\"{identifier}\" is undefined");
+            })
     }
 }
 
