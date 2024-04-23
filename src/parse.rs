@@ -15,6 +15,79 @@ use crate::array::{BTreeSlice, BinaryTree, Partition};
 use crate::num::NonZeroPow2Usize;
 use crate::Rule;
 
+/// Position of an object inside a file.
+///
+/// [`pest::Position<'i>`] forces us to track lifetimes, so we introduce our own struct.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct Position {
+    /// Line where the object is located.
+    ///
+    /// Starts at 1.
+    pub line: NonZeroUsize,
+    /// Column where the object is located.
+    ///
+    /// Starts at 1.
+    pub col: NonZeroUsize,
+}
+
+impl Position {
+    /// Create a new position.
+    ///
+    /// ## Panics
+    ///
+    /// Line or column are zero.
+    pub fn new(line: usize, col: usize) -> Self {
+        let line = NonZeroUsize::new(line).expect("PEST lines start at 1");
+        let col = NonZeroUsize::new(col).expect("PEST columns start at 1");
+        Self { line, col }
+    }
+}
+
+/// Area that an object spans inside a file.
+///
+/// [`pest::Span<'i>`] forces us to track lifetimes, so we introduce our own struct.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct Span {
+    /// Position where the object starts.
+    pub start: Position,
+    /// Position where the object ends.
+    pub end: Position,
+}
+
+impl Span {
+    /// Create a new span.
+    ///
+    /// ## Panics
+    ///
+    /// Start comes after end.
+    pub fn new(start: Position, end: Position) -> Self {
+        assert!(start.line <= end.line, "Start cannot come after end");
+        assert!(
+            start.line < end.line || start.col <= end.col,
+            "Start cannot come after end"
+        );
+        Self { start, end }
+    }
+
+    /// Check if the span covers more than one line.
+    pub fn is_multiline(&self) -> bool {
+        self.start.line < self.end.line
+    }
+}
+
+impl<'a> From<&'a pest::iterators::Pair<'_, Rule>> for Span {
+    fn from(pair: &'a pest::iterators::Pair<Rule>) -> Self {
+        let (line, col) = pair.line_col();
+        let start = Position::new(line, col);
+        // end_pos().line_col() is O(n) in file length
+        // https://github.com/pest-parser/pest/issues/560
+        // We should generate `Span`s only on error paths
+        let (line, col) = pair.as_span().end_pos().line_col();
+        let end = Position::new(line, col);
+        Self::new(start, end)
+    }
+}
+
 /// A complete simplicity program.
 #[derive(Clone, Debug, Hash)]
 pub struct Program {
@@ -154,8 +227,8 @@ pub struct Assignment {
     pub expression: Expression,
     /// The source text associated with this assignment.
     pub source_text: Arc<str>,
-    /// The position of this assignment in the source file. (row, col)
-    pub position: (usize, usize),
+    /// Area that this assignment spans in the source file.
+    pub span: Span,
 }
 
 /// A function(jet) call.
@@ -173,8 +246,8 @@ pub struct FuncCall {
     pub args: Arc<[Expression]>,
     /// The source text associated with this expression
     pub source_text: Arc<str>,
-    /// The position of this expression in the source file. (row, col)
-    pub position: (usize, usize),
+    /// Area that this call spans in the source file.
+    pub span: Span,
 }
 
 /// A function(jet) name.
@@ -199,8 +272,8 @@ pub struct Expression {
     pub inner: ExpressionInner,
     /// The source text associated with this expression
     pub source_text: Arc<str>,
-    /// The position of this expression in the source file. (row, col)
-    pub position: (usize, usize),
+    /// Area that this expression spans in the source file.
+    pub span: Span,
 }
 
 /// The kind of expression.
@@ -220,8 +293,8 @@ pub struct SingleExpression {
     pub inner: SingleExpressionInner,
     /// The source text associated with this expression
     pub source_text: Arc<str>,
-    /// The position of this expression in the source file. (row, col)
-    pub position: (usize, usize),
+    /// Area that this expression spans in the source file.
+    pub span: Span,
 }
 
 /// The kind of single expression.
@@ -728,7 +801,7 @@ impl PestParse for Assignment {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
         assert!(matches!(pair.as_rule(), Rule::assignment));
         let source_text = Arc::from(pair.as_str());
-        let position = pair.line_col();
+        let span = Span::from(&pair);
         let mut inner_pair = pair.into_inner();
         let pattern = Pattern::parse(inner_pair.next().unwrap());
         let reqd_ty = if let Rule::ty = inner_pair.peek().unwrap().as_rule() {
@@ -742,7 +815,7 @@ impl PestParse for Assignment {
             ty: reqd_ty,
             expression,
             source_text,
-            position,
+            span,
         }
     }
 }
@@ -751,7 +824,7 @@ impl PestParse for FuncCall {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
         assert!(matches!(pair.as_rule(), Rule::func_call));
         let source_text = Arc::from(pair.as_str());
-        let position = pair.line_col();
+        let span = Span::from(&pair);
         let inner_pair = pair.into_inner().next().unwrap();
 
         let func_type = FuncType::parse(inner_pair.clone());
@@ -769,7 +842,7 @@ impl PestParse for FuncCall {
             func_type,
             args: args.into_iter().collect(),
             source_text,
-            position,
+            span,
         }
     }
 }
@@ -793,7 +866,7 @@ impl PestParse for FuncType {
 impl PestParse for Expression {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
         let source_text = Arc::from(pair.as_str());
-        let position = pair.line_col();
+        let span = Span::from(&pair);
         let pair = match pair.as_rule() {
             Rule::expression => pair.into_inner().next().unwrap(),
             Rule::block_expression | Rule::single_expression => pair,
@@ -819,7 +892,7 @@ impl PestParse for Expression {
         Expression {
             inner,
             source_text,
-            position,
+            span,
         }
     }
 }
@@ -829,7 +902,7 @@ impl PestParse for SingleExpression {
         assert!(matches!(pair.as_rule(), Rule::single_expression));
 
         let source_text: Arc<str> = Arc::from(pair.as_str());
-        let position = pair.line_col();
+        let span = Span::from(&pair);
         let inner_pair = pair.into_inner().next().unwrap();
 
         let inner = match inner_pair.as_rule() {
@@ -918,7 +991,7 @@ impl PestParse for SingleExpression {
         SingleExpression {
             inner,
             source_text,
-            position,
+            span,
         }
     }
 }
