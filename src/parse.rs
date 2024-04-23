@@ -12,6 +12,7 @@ use simplicity::types::Type as SimType;
 use simplicity::Value;
 
 use crate::array::{BTreeSlice, BinaryTree, Partition};
+use crate::error::{Error, RichError, WithSpan};
 use crate::num::NonZeroPow2Usize;
 use crate::Rule;
 
@@ -111,12 +112,13 @@ impl Pattern {
     }
 
     /// Construct an array pattern.
-    pub fn array<I: IntoIterator<Item = Self>>(array: I) -> Self {
+    pub fn array<I: IntoIterator<Item = Self>>(array: I) -> Result<Self, Error> {
         let inner: Arc<_> = array.into_iter().collect();
         if inner.is_empty() {
-            panic!("Array must not be empty");
+            Err(Error::ArraySizeZero)
+        } else {
+            Ok(Self::Array(inner))
         }
-        Self::Array(inner)
     }
 
     /// Create an equivalent pattern that corresponds to the Simplicity base types.
@@ -327,6 +329,8 @@ pub enum SingleExpressionInner {
         right: MatchArm,
     },
     /// Array wrapper expression
+    ///
+    /// The array must not be empty.
     Array(Arc<[Expression]>),
     /// List wrapper expression
     ///
@@ -710,39 +714,39 @@ impl fmt::Display for UIntType {
     }
 }
 
-pub trait PestParse {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Self;
+pub trait PestParse: Sized {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError>;
 }
 
 impl PestParse for Program {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::program));
         let mut stmts = Vec::new();
         for inner_pair in pair.into_inner() {
             match inner_pair.as_rule() {
-                Rule::statement => stmts.push(Statement::parse(inner_pair)),
+                Rule::statement => stmts.push(Statement::parse(inner_pair)?),
                 Rule::EOI => (),
                 _ => unreachable!(),
             };
         }
-        Program { statements: stmts }
+        Ok(Program { statements: stmts })
     }
 }
 
 impl PestParse for Statement {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::statement));
         let inner_pair = pair.into_inner().next().unwrap();
         match inner_pair.as_rule() {
-            Rule::assignment => Statement::Assignment(Assignment::parse(inner_pair)),
-            Rule::func_call => Statement::FuncCall(FuncCall::parse(inner_pair)),
-            x => panic!("{:?}", x),
+            Rule::assignment => Assignment::parse(inner_pair).map(Statement::Assignment),
+            Rule::func_call => FuncCall::parse(inner_pair).map(Statement::FuncCall),
+            _ => unreachable!("Corrupt grammar"),
         }
     }
 }
 
 impl PestParse for Pattern {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::pattern));
         let pair = PatternPair(pair);
         let mut output = vec![];
@@ -751,7 +755,8 @@ impl PestParse for Pattern {
             match data.node.0.as_rule() {
                 Rule::pattern => {}
                 Rule::variable_pattern => {
-                    let identifier = Identifier::parse(data.node.0.into_inner().next().unwrap());
+                    let identifier_pair = data.node.0.into_inner().next().unwrap();
+                    let identifier = Identifier::parse(identifier_pair)?;
                     output.push(Pattern::Identifier(identifier));
                 }
                 Rule::ignore_pattern => {
@@ -765,99 +770,100 @@ impl PestParse for Pattern {
                 Rule::array_pattern => {
                     assert!(0 < data.node.n_children(), "Array must be nonempty");
                     let children = output.split_off(output.len() - data.node.n_children());
-                    output.push(Pattern::Array(children.into_iter().collect()));
+                    let array = Pattern::array(children).with_span(&data.node.0)?;
+                    output.push(array);
                 }
                 _ => unreachable!("Corrupt grammar"),
             }
         }
 
         debug_assert!(output.len() == 1);
-        output.pop().unwrap()
+        Ok(output.pop().unwrap())
     }
 }
 
 impl PestParse for Identifier {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::identifier));
         let identifier = Arc::from(pair.as_str());
-        Identifier(identifier)
+        Ok(Identifier(identifier))
     }
 }
 
 impl PestParse for Assignment {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::assignment));
         let source_text = Arc::from(pair.as_str());
         let span = Span::from(&pair);
         let mut inner_pair = pair.into_inner();
-        let pattern = Pattern::parse(inner_pair.next().unwrap());
-        let reqd_ty = if let Rule::ty = inner_pair.peek().unwrap().as_rule() {
-            Some(Type::parse(inner_pair.next().unwrap()))
+        let pattern = Pattern::parse(inner_pair.next().unwrap())?;
+        let ty = if let Rule::ty = inner_pair.peek().unwrap().as_rule() {
+            Some(Type::parse(inner_pair.next().unwrap())?)
         } else {
             None
         };
-        let expression = Expression::parse(inner_pair.next().unwrap());
-        Assignment {
+        let expression = Expression::parse(inner_pair.next().unwrap())?;
+        Ok(Assignment {
             pattern,
-            ty: reqd_ty,
+            ty,
             expression,
             source_text,
             span,
-        }
+        })
     }
 }
 
 impl PestParse for FuncCall {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::func_call));
         let source_text = Arc::from(pair.as_str());
         let span = Span::from(&pair);
         let inner_pair = pair.into_inner().next().unwrap();
 
-        let func_type = FuncType::parse(inner_pair.clone());
+        let func_type = FuncType::parse(inner_pair.clone())?;
         let inner_inner = inner_pair.into_inner();
         let mut args = Vec::new();
         for inner_inner_pair in inner_inner {
             match inner_inner_pair.as_rule() {
-                Rule::expression => args.push(Expression::parse(inner_inner_pair)),
+                Rule::expression => args.push(Expression::parse(inner_inner_pair)?),
                 Rule::jet => {}
                 _ => unreachable!("Corrupt grammar"),
             }
         }
 
-        FuncCall {
+        Ok(FuncCall {
             func_type,
             args: args.into_iter().collect(),
             source_text,
             span,
-        }
+        })
     }
 }
 
 impl PestParse for FuncType {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         match pair.as_rule() {
             Rule::jet_expr => {
                 let jet_pair = pair.into_inner().next().unwrap();
                 let jet_name = jet_pair.as_str().strip_prefix("jet_").unwrap();
-                FuncType::Jet(Arc::from(jet_name))
+                Ok(FuncType::Jet(Arc::from(jet_name)))
             }
-            Rule::unwrap_left_expr => FuncType::UnwrapLeft,
-            Rule::unwrap_right_expr => FuncType::UnwrapRight,
-            Rule::unwrap_expr => FuncType::Unwrap,
-            rule => panic!("Cannot parse rule: {:?}", rule),
+            Rule::unwrap_left_expr => Ok(FuncType::UnwrapLeft),
+            Rule::unwrap_right_expr => Ok(FuncType::UnwrapRight),
+            Rule::unwrap_expr => Ok(FuncType::Unwrap),
+            _ => unreachable!("Corrupt grammar"),
         }
     }
 }
 
 impl PestParse for Expression {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         let source_text = Arc::from(pair.as_str());
         let span = Span::from(&pair);
         let pair = match pair.as_rule() {
             Rule::expression => pair.into_inner().next().unwrap(),
             Rule::block_expression | Rule::single_expression => pair,
-            rule => panic!("Cannot parse rule: {:?}", rule),
+            _ => unreachable!("Corrupt grammar"),
         };
 
         let inner = match pair.as_rule() {
@@ -865,27 +871,27 @@ impl PestParse for Expression {
                 let mut stmts = Vec::new();
                 let mut inner_pair = pair.into_inner();
                 while let Some(Rule::statement) = inner_pair.peek().map(|x| x.as_rule()) {
-                    stmts.push(Statement::parse(inner_pair.next().unwrap()));
+                    stmts.push(Statement::parse(inner_pair.next().unwrap())?);
                 }
-                let expr = Expression::parse(inner_pair.next().unwrap());
+                let expr = Expression::parse(inner_pair.next().unwrap())?;
                 ExpressionInner::BlockExpression(stmts, Arc::new(expr))
             }
             Rule::single_expression => {
-                ExpressionInner::SingleExpression(SingleExpression::parse(pair))
+                ExpressionInner::SingleExpression(SingleExpression::parse(pair)?)
             }
             _ => unreachable!("Corrupt grammar"),
         };
 
-        Expression {
+        Ok(Expression {
             inner,
             source_text,
             span,
-        }
+        })
     }
 }
 
 impl PestParse for SingleExpression {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::single_expression));
 
         let source_text: Arc<str> = Arc::from(pair.as_str());
@@ -896,59 +902,77 @@ impl PestParse for SingleExpression {
             Rule::unit_expr => SingleExpressionInner::Unit,
             Rule::left_expr => {
                 let l = inner_pair.into_inner().next().unwrap();
-                SingleExpressionInner::Left(Arc::new(Expression::parse(l)))
+                SingleExpressionInner::Left(Arc::new(Expression::parse(l)?))
             }
             Rule::right_expr => {
                 let r = inner_pair.into_inner().next().unwrap();
-                SingleExpressionInner::Right(Arc::new(Expression::parse(r)))
+                SingleExpressionInner::Right(Arc::new(Expression::parse(r)?))
             }
             Rule::product_expr => {
                 let mut product_pair = inner_pair.into_inner();
                 let l = product_pair.next().unwrap();
                 let r = product_pair.next().unwrap();
                 SingleExpressionInner::Product(
-                    Arc::new(Expression::parse(l)),
-                    Arc::new(Expression::parse(r)),
+                    Arc::new(Expression::parse(l)?),
+                    Arc::new(Expression::parse(r)?),
                 )
             }
             Rule::none_expr => SingleExpressionInner::None,
             Rule::some_expr => {
                 let r = inner_pair.into_inner().next().unwrap();
-                SingleExpressionInner::Some(Arc::new(Expression::parse(r)))
+                SingleExpressionInner::Some(Arc::new(Expression::parse(r)?))
             }
             Rule::false_expr => SingleExpressionInner::False,
             Rule::true_expr => SingleExpressionInner::True,
-            Rule::func_call => SingleExpressionInner::FuncCall(FuncCall::parse(inner_pair)),
-            Rule::bit_string => SingleExpressionInner::BitString(Bits::parse(inner_pair)),
-            Rule::byte_string => SingleExpressionInner::ByteString(Bytes::parse(inner_pair)),
+            Rule::func_call => SingleExpressionInner::FuncCall(FuncCall::parse(inner_pair)?),
+            Rule::bit_string => SingleExpressionInner::BitString(Bits::parse(inner_pair)?),
+            Rule::byte_string => SingleExpressionInner::ByteString(Bytes::parse(inner_pair)?),
             Rule::unsigned_integer => {
-                SingleExpressionInner::UnsignedInteger(UnsignedDecimal::parse(inner_pair))
+                SingleExpressionInner::UnsignedInteger(UnsignedDecimal::parse(inner_pair)?)
             }
             Rule::witness_expr => {
                 let witness_pair = inner_pair.into_inner().next().unwrap();
-                SingleExpressionInner::Witness(WitnessName::parse(witness_pair))
+                SingleExpressionInner::Witness(WitnessName::parse(witness_pair)?)
             }
             Rule::variable_expr => {
                 let identifier_pair = inner_pair.into_inner().next().unwrap();
-                SingleExpressionInner::Variable(Identifier::parse(identifier_pair))
+                SingleExpressionInner::Variable(Identifier::parse(identifier_pair)?)
             }
             Rule::expression => {
-                SingleExpressionInner::Expression(Arc::new(Expression::parse(inner_pair)))
+                SingleExpressionInner::Expression(Arc::new(Expression::parse(inner_pair)?))
             }
             Rule::match_expr => {
                 let mut it = inner_pair.into_inner();
-                let scrutinee = Arc::new(Expression::parse(it.next().unwrap()));
-                let first_arm = MatchArm::parse(it.next().unwrap());
-                let second_arm = MatchArm::parse(it.next().unwrap());
+                let scrutinee_pair = it.next().unwrap();
+                let scrutinee = Arc::new(Expression::parse(scrutinee_pair.clone())?);
+                let first_arm = MatchArm::parse(it.next().unwrap())?;
+                let second_arm = MatchArm::parse(it.next().unwrap())?;
 
                 let (left, right) = match (&first_arm.pattern, &second_arm.pattern) {
                     (MatchPattern::Left(..), MatchPattern::Right(..)) => (first_arm, second_arm),
+                    (MatchPattern::Left(..), _) => {
+                        return Err(Error::UnmatchedPattern("Right")).with_span(&scrutinee_pair)
+                    }
                     (MatchPattern::Right(..), MatchPattern::Left(..)) => (second_arm, first_arm),
+                    (MatchPattern::Right(..), _) => {
+                        return Err(Error::UnmatchedPattern("Left")).with_span(&scrutinee_pair)
+                    }
                     (MatchPattern::None, MatchPattern::Some(..)) => (first_arm, second_arm),
+                    (MatchPattern::None, _) => {
+                        return Err(Error::UnmatchedPattern("Some")).with_span(&scrutinee_pair)
+                    }
                     (MatchPattern::Some(..), MatchPattern::None) => (second_arm, first_arm),
+                    (MatchPattern::Some(..), _) => {
+                        return Err(Error::UnmatchedPattern("None")).with_span(&scrutinee_pair)
+                    }
                     (MatchPattern::False, MatchPattern::True) => (first_arm, second_arm),
+                    (MatchPattern::False, _) => {
+                        return Err(Error::UnmatchedPattern("true")).with_span(&scrutinee_pair)
+                    }
                     (MatchPattern::True, MatchPattern::False) => (second_arm, first_arm),
-                    _ => panic!("Non-exhaustive match expression"),
+                    (MatchPattern::True, _) => {
+                        return Err(Error::UnmatchedPattern("false")).with_span(&scrutinee_pair)
+                    }
                 };
 
                 SingleExpressionInner::Match {
@@ -958,48 +982,51 @@ impl PestParse for SingleExpression {
                 }
             }
             Rule::array_expr => {
-                let elements: Arc<_> = inner_pair
+                let elements = inner_pair
+                    .clone()
                     .into_inner()
                     .map(|inner| Expression::parse(inner))
-                    .collect();
-                assert!(!elements.is_empty(), "Array must be nonempty");
+                    .collect::<Result<Arc<_>, _>>()?;
+                if elements.is_empty() {
+                    return Err(Error::ArraySizeZero).with_span(&inner_pair);
+                }
                 SingleExpressionInner::Array(elements)
             }
             Rule::list_expr => {
-                let elements: Arc<_> = inner_pair
+                let elements = inner_pair
                     .into_inner()
                     .map(|inner| Expression::parse(inner))
-                    .collect();
+                    .collect::<Result<Arc<_>, _>>()?;
                 SingleExpressionInner::List(elements)
             }
             _ => unreachable!("Corrupt grammar"),
         };
 
-        SingleExpression {
+        Ok(SingleExpression {
             inner,
             source_text,
             span,
-        }
+        })
     }
 }
 
 impl PestParse for UnsignedDecimal {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::unsigned_integer));
         let decimal = Arc::from(pair.as_str());
-        Self(decimal)
+        Ok(Self(decimal))
     }
 }
 
 impl PestParse for Bits {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::bit_string));
         let bit_string = pair.as_str();
-        assert_eq!(&bit_string[0..2], "0b");
+        debug_assert!(&bit_string[0..2] == "0b");
 
         let bits = &bit_string[2..];
         if !bits.len().is_power_of_two() {
-            panic!("Length of bit strings must be a power of two");
+            return Err(Error::BitStringPow2).with_span(&pair);
         }
 
         let byte_len = (bits.len() + 7) / 8;
@@ -1020,85 +1047,88 @@ impl PestParse for Bits {
         match bits.len() {
             1 => {
                 debug_assert!(bytes[0] < 2);
-                Bits::U1(bytes[0])
+                Ok(Bits::U1(bytes[0]))
             }
             2 => {
                 debug_assert!(bytes[0] < 4);
-                Bits::U2(bytes[0])
+                Ok(Bits::U2(bytes[0]))
             }
             4 => {
                 debug_assert!(bytes[0] < 16);
-                Bits::U4(bytes[0])
+                Ok(Bits::U4(bytes[0]))
             }
-            _ => Bits::Long(bytes.into_iter().collect()),
+            _ => Ok(Bits::Long(bytes.into_iter().collect())),
         }
     }
 }
 
 impl PestParse for Bytes {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::byte_string));
         let hex_string = pair.as_str();
-        assert_eq!(&hex_string[0..2], "0x");
+        debug_assert!(&hex_string[0..2] == "0x");
 
         let hex_digits = &hex_string[2..];
         if !hex_digits.len().is_power_of_two() {
-            panic!("Length of hex strings must be a power of two");
+            return Err(Error::HexStringPow2).with_span(&pair);
         }
 
-        let bytes = Vec::<u8>::from_hex(hex_digits).unwrap();
-        Bytes(bytes.into_iter().collect())
+        Vec::<u8>::from_hex(hex_digits)
+            .map_err(Error::from)
+            .with_span(&pair)
+            .map(Arc::from)
+            .map(Bytes)
     }
 }
 
 impl PestParse for WitnessName {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::witness_name));
         let name = Arc::from(pair.as_str());
-        WitnessName(name)
+        Ok(WitnessName(name))
     }
 }
 
 impl PestParse for MatchArm {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::match_arm));
         let mut it = pair.into_inner();
-        let pattern = MatchPattern::parse(it.next().unwrap());
-        let expression = Arc::new(Expression::parse(it.next().unwrap()));
-        MatchArm {
+        let pattern = MatchPattern::parse(it.next().unwrap())?;
+        let expression = Arc::new(Expression::parse(it.next().unwrap())?);
+        Ok(MatchArm {
             pattern,
             expression,
-        }
+        })
     }
 }
 
 impl PestParse for MatchPattern {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::match_pattern));
         let inner_pair = pair.into_inner().next().unwrap();
         let rule = inner_pair.as_rule();
         match rule {
             Rule::left_pattern | Rule::right_pattern | Rule::some_pattern => {
                 let identifier_pair = inner_pair.into_inner().next().unwrap();
-                let identifier = Identifier::parse(identifier_pair);
+                let identifier = Identifier::parse(identifier_pair)?;
 
                 match rule {
-                    Rule::left_pattern => MatchPattern::Left(identifier),
-                    Rule::right_pattern => MatchPattern::Right(identifier),
-                    Rule::some_pattern => MatchPattern::Some(identifier),
+                    Rule::left_pattern => Ok(MatchPattern::Left(identifier)),
+                    Rule::right_pattern => Ok(MatchPattern::Right(identifier)),
+                    Rule::some_pattern => Ok(MatchPattern::Some(identifier)),
                     _ => unreachable!("Covered by outer match"),
                 }
             }
-            Rule::none_pattern => MatchPattern::None,
-            Rule::false_pattern => MatchPattern::False,
-            Rule::true_pattern => MatchPattern::True,
+            Rule::none_pattern => Ok(MatchPattern::None),
+            Rule::false_pattern => Ok(MatchPattern::False),
+            Rule::true_pattern => Ok(MatchPattern::True),
             _ => unreachable!("Corrupt grammar"),
         }
     }
 }
 
 impl PestParse for Type {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         enum Item {
             Type(Type),
             Size(NonZeroUsize),
@@ -1136,7 +1166,7 @@ impl PestParse for Type {
             match data.node.0.as_rule() {
                 Rule::unit_type => output.push(Item::Type(Type::Unit)),
                 Rule::unsigned_type => {
-                    let uint_ty = UIntType::parse(data.node.0);
+                    let uint_ty = UIntType::parse(data.node.0)?;
                     output.push(Item::Type(Type::UInt(uint_ty)));
                 }
                 Rule::sum_type => {
@@ -1165,7 +1195,8 @@ impl PestParse for Type {
                     let size_str = data.node.0.as_str();
                     let size = size_str
                         .parse::<NonZeroUsize>()
-                        .expect("Array size must be nonzero");
+                        .map_err(|_| Error::ArraySizeZero)
+                        .with_span(&data.node.0)?;
                     output.push(Item::Size(size));
                 }
                 Rule::list_type => {
@@ -1177,7 +1208,8 @@ impl PestParse for Type {
                     let bound_str = data.node.0.as_str();
                     let bound = bound_str
                         .parse::<NonZeroPow2Usize>()
-                        .expect("List bound must be a power of two greater than 1");
+                        .map_err(|_| Error::ListBoundPow2)
+                        .with_span(&data.node.0)?;
                     output.push(Item::Bound(bound));
                 }
                 Rule::ty => {}
@@ -1186,14 +1218,14 @@ impl PestParse for Type {
         }
 
         debug_assert!(output.len() == 1);
-        output.pop().unwrap().unwrap_type()
+        Ok(output.pop().unwrap().unwrap_type())
     }
 }
 
 impl PestParse for UIntType {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Self {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::unsigned_type));
-        match pair.as_str() {
+        let ty = match pair.as_str() {
             "u1" => UIntType::U1,
             "u2" => UIntType::U2,
             "u4" => UIntType::U4,
@@ -1204,7 +1236,8 @@ impl PestParse for UIntType {
             "u128" => UIntType::U128,
             "u256" => UIntType::U256,
             _ => unreachable!("Corrupt grammar"),
-        }
+        };
+        Ok(ty)
     }
 }
 

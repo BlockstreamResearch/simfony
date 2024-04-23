@@ -27,6 +27,7 @@ pub extern crate simplicity;
 pub use simplicity::elements;
 
 use crate::{
+    error::{RichError, WithFile},
     named::{NamedCommitNode, NamedExt},
     parse::{PestParse, Program},
     scope::GlobalScope,
@@ -36,25 +37,26 @@ use crate::{
 #[grammar = "minimal.pest"]
 pub struct IdentParser;
 
-pub fn _compile(file: &Path) -> Arc<Node<Named<Commit<Elements>>>> {
-    let file = std::fs::read_to_string(file).unwrap();
-    let mut pairs = IdentParser::parse(Rule::program, &file).unwrap_or_else(|e| panic!("{}", e));
-
-    let prog = Program::parse(pairs.next().unwrap());
+pub fn compile_named(program: Arc<str>) -> Result<Arc<Node<Named<Commit<Elements>>>>, String> {
+    let simfony_program = IdentParser::parse(Rule::program, &program)
+        .map_err(RichError::from)
+        .and_then(|mut pairs| Program::parse(pairs.next().unwrap()))
+        .with_file(program.clone())?;
 
     let mut scope = GlobalScope::new();
-    let simplicity_prog = prog.eval(&mut scope);
-    simplicity_prog
+    let simplicity_program = simfony_program.eval(&mut scope);
+    let named_commit = simplicity_program
         .finalize_types_main()
-        .expect("Type check error")
+        .expect("Type check error");
+    Ok(named_commit)
 }
 
-pub fn compile(file: &Path) -> CommitNode<Elements> {
-    let node = _compile(file);
-    Arc::try_unwrap(node.to_commit_node()).unwrap()
+pub fn compile(file: Arc<str>) -> Result<CommitNode<Elements>, String> {
+    let named_commit = compile_named(file)?;
+    Ok(Arc::try_unwrap(named_commit.to_commit_node()).unwrap())
 }
 
-pub fn satisfy(prog: &Path, wit_file: &Path) -> RedeemNode<Elements> {
+pub fn satisfy(program: Arc<str>, wit_file: &Path) -> Result<RedeemNode<Elements>, String> {
     #[derive(serde::Serialize, serde::Deserialize)]
     #[serde(transparent)]
     struct WitFileData {
@@ -127,7 +129,7 @@ pub fn satisfy(prog: &Path, wit_file: &Path) -> RedeemNode<Elements> {
         }
     }
 
-    let commit_node = _compile(prog);
+    let commit_node = compile_named(program)?;
     let simplicity_prog =
         Arc::<_>::try_unwrap(commit_node).expect("Only one reference to commit node");
 
@@ -139,7 +141,7 @@ pub fn satisfy(prog: &Path, wit_file: &Path) -> RedeemNode<Elements> {
     let redeem_prog = simplicity_prog
         .convert::<NoSharing, Redeem<Elements>, _>(&mut wit_data)
         .unwrap();
-    Arc::try_unwrap(redeem_prog).unwrap()
+    Ok(Arc::try_unwrap(redeem_prog).unwrap())
 }
 
 #[cfg(test)]
@@ -148,7 +150,7 @@ mod tests {
     use base64::engine::general_purpose::STANDARD;
     use simplicity::{encode, BitMachine, BitWriter, Cmr, Value};
 
-    use crate::{named::ProgExt, parse::Statement, *};
+    use crate::{named::ProgExt, *};
 
     #[test]
     fn test_progs() {
@@ -164,28 +166,8 @@ mod tests {
     }
 
     fn _test_progs(file: &str) {
-        let file = std::fs::read_to_string(file).unwrap();
-        let pairs = IdentParser::parse(Rule::program, &file).unwrap_or_else(|e| panic!("{}", e));
-
-        let mut stmts = Vec::new();
-        for pair in pairs {
-            for inner_pair in pair.into_inner() {
-                match inner_pair.as_rule() {
-                    Rule::statement => stmts.push(Statement::parse(inner_pair)),
-                    Rule::EOI => println!("EOI:     {}", inner_pair.as_str()),
-                    _ => unreachable!(),
-                };
-            }
-        }
-        let prog = Program { statements: stmts };
-        let mut scope = GlobalScope::new();
-        let simplicity_prog = prog.eval(&mut scope);
-        let commit_node = simplicity_prog
-            .finalize_types_main()
-            .expect("Type check error");
-        // let commit_node = commit_node.to_commit_node();
-        let simplicity_prog =
-            Arc::<_>::try_unwrap(commit_node).expect("Only one reference to commit node");
+        let program_str = Arc::from(std::fs::read_to_string(file).unwrap());
+        let simplicity_prog = compile_named(program_str).unwrap();
 
         struct MyConverter;
 
