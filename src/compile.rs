@@ -2,6 +2,7 @@
 
 use std::str::FromStr;
 
+use simplicity::node::{CoreConstructible as _, JetConstructible as _};
 use simplicity::{jet::Elements, Cmr, FailEntropy};
 
 use crate::array::{BTreeSlice, Partition};
@@ -30,22 +31,22 @@ fn eval_blk(
         Statement::Assignment(assignment) => {
             let expr = assignment.expression.eval(scope, assignment.ty.as_ref());
             scope.insert(assignment.pattern.clone());
-            let left = ProgNode::pair(expr, ProgNode::iden());
+            let left = ProgNode::pair(&expr, &ProgNode::iden()).unwrap();
             let right = eval_blk(stmts, scope, index + 1, last_expr);
-            ProgNode::comp(left, right)
+            ProgNode::comp(&left, &right).unwrap()
         }
         Statement::FuncCall(func_call) => {
             let left = func_call.eval(scope, None);
             let right = eval_blk(stmts, scope, index + 1, last_expr);
-            combine_seq(left, right)
+            combine_seq(&left, &right).unwrap()
         }
     }
 }
 
-fn combine_seq(a: ProgNode, b: ProgNode) -> ProgNode {
-    let pair = ProgNode::pair(a, b);
-    let drop_iden = ProgNode::drop_(ProgNode::iden());
-    ProgNode::comp(pair, drop_iden)
+fn combine_seq(a: &ProgNode, b: &ProgNode) -> Result<ProgNode, simplicity::types::Error> {
+    let pair = ProgNode::pair(a, b)?;
+    let drop_iden = ProgNode::drop_(&ProgNode::iden());
+    ProgNode::comp(&pair, &drop_iden)
 }
 
 impl Program {
@@ -62,36 +63,36 @@ impl FuncCall {
                     .args
                     .iter()
                     .map(|e| e.eval(scope, None)) // TODO: Pass the jet source type here.
-                    .reduce(ProgNode::pair);
+                    .reduce(|a, b| ProgNode::pair(&a, &b).unwrap());
                 let jet = Elements::from_str(jet_name).expect("Invalid jet name");
                 let jet = ProgNode::jet(jet);
                 match args {
                     Some(param) => {
                         // println!("param: {}", param.arrow());
                         // println!("jet: {}", jet.arrow());
-                        ProgNode::comp(param, jet)
+                        ProgNode::comp(&param, &jet).unwrap()
                     }
-                    None => ProgNode::comp(ProgNode::unit(), jet),
+                    None => ProgNode::comp(&ProgNode::unit(), &jet).unwrap(),
                 }
             }
             FuncType::BuiltIn(..) => unimplemented!("Builtins are not supported yet"),
             FuncType::UnwrapLeft => {
                 debug_assert!(self.args.len() == 1);
                 let b = self.args[0].eval(scope, None);
-                let left_and_unit = ProgNode::pair(b, ProgNode::unit());
+                let left_and_unit = ProgNode::pair(&b, &ProgNode::unit()).unwrap();
                 let fail_cmr = Cmr::fail(FailEntropy::ZERO);
-                let take_iden = ProgNode::take(ProgNode::iden());
-                let get_inner = ProgNode::assertl(take_iden, fail_cmr);
-                ProgNode::comp(left_and_unit, get_inner)
+                let take_iden = ProgNode::take(&ProgNode::iden());
+                let get_inner = ProgNode::assertl(&take_iden, fail_cmr).unwrap();
+                ProgNode::comp(&left_and_unit, &get_inner).unwrap()
             }
             FuncType::UnwrapRight | FuncType::Unwrap => {
                 debug_assert!(self.args.len() == 1);
                 let c = self.args[0].eval(scope, None);
-                let right_and_unit = ProgNode::pair(c, ProgNode::unit());
+                let right_and_unit = ProgNode::pair(&c, &ProgNode::unit()).unwrap();
                 let fail_cmr = Cmr::fail(FailEntropy::ZERO);
-                let take_iden = ProgNode::take(ProgNode::iden());
-                let get_inner = ProgNode::assertr(fail_cmr, take_iden);
-                ProgNode::comp(right_and_unit, get_inner)
+                let take_iden = ProgNode::take(&ProgNode::iden());
+                let get_inner = ProgNode::assertr(fail_cmr, &take_iden).unwrap();
+                ProgNode::comp(&right_and_unit, &get_inner).unwrap()
             }
         }
     }
@@ -117,19 +118,19 @@ impl SingleExpressionInner {
             SingleExpressionInner::Unit => ProgNode::unit(),
             SingleExpressionInner::Left(l) => {
                 let l = l.eval(scope, None);
-                ProgNode::injl(l)
+                ProgNode::injl(&l)
             }
-            SingleExpressionInner::None => ProgNode::injl(ProgNode::unit()),
+            SingleExpressionInner::None => ProgNode::_false(),
             SingleExpressionInner::Right(r) | SingleExpressionInner::Some(r) => {
                 let r = r.eval(scope, None);
-                ProgNode::injr(r)
+                ProgNode::injr(&r)
             }
-            SingleExpressionInner::False => ProgNode::injl(ProgNode::unit()),
-            SingleExpressionInner::True => ProgNode::injr(ProgNode::unit()),
+            SingleExpressionInner::False => ProgNode::_false(),
+            SingleExpressionInner::True => ProgNode::_true(),
             SingleExpressionInner::Product(l, r) => {
                 let l = l.eval(scope, None);
                 let r = r.eval(scope, None);
-                ProgNode::pair(l, r)
+                ProgNode::pair(&l, &r).unwrap()
             }
             SingleExpressionInner::UnsignedInteger(decimal) => {
                 let ty = reqd_ty
@@ -137,15 +138,15 @@ impl SingleExpressionInner {
                     .to_uint()
                     .expect("Not an integer type");
                 let value = ty.parse_decimal(decimal);
-                ProgNode::comp(ProgNode::unit(), ProgNode::const_word(value))
+                ProgNode::comp(&ProgNode::unit(), &ProgNode::const_word(value)).unwrap()
             }
             SingleExpressionInner::BitString(bits) => {
                 let value = bits.to_simplicity();
-                ProgNode::comp(ProgNode::unit(), ProgNode::const_word(value))
+                ProgNode::comp(&ProgNode::unit(), &ProgNode::const_word(value)).unwrap()
             }
             SingleExpressionInner::ByteString(bytes) => {
                 let value = bytes.to_simplicity();
-                ProgNode::comp(ProgNode::unit(), ProgNode::const_word(value))
+                ProgNode::comp(&ProgNode::unit(), &ProgNode::const_word(value)).unwrap()
             }
             SingleExpressionInner::Witness(name) => {
                 scope.insert_witness(name.clone());
@@ -186,9 +187,9 @@ impl SingleExpressionInner {
 
                 // TODO: Enforce target type A + B for m_expr
                 let scrutinized_input = scrutinee.eval(scope, None);
-                let input = ProgNode::pair(scrutinized_input, ProgNode::iden());
-                let output = ProgNode::case(l_compiled, r_compiled);
-                ProgNode::comp(input, output)
+                let input = ProgNode::pair(&scrutinized_input, &ProgNode::iden()).unwrap();
+                let output = ProgNode::case(&l_compiled, &r_compiled).unwrap();
+                ProgNode::comp(&input, &output).unwrap()
             }
             SingleExpressionInner::Array(elements) => {
                 let el_type = if let Some(Type::Array(ty, _)) = reqd_ty {
@@ -198,7 +199,7 @@ impl SingleExpressionInner {
                 };
                 let nodes: Vec<_> = elements.iter().map(|e| e.eval(scope, el_type)).collect();
                 let tree = BTreeSlice::from_slice(&nodes);
-                tree.fold(ProgNode::pair)
+                tree.fold(|a, b| ProgNode::pair(&a, &b).unwrap())
             }
             SingleExpressionInner::List(elements) => {
                 let el_type = if let Some(Type::List(ty, _)) = reqd_ty {
@@ -216,15 +217,15 @@ impl SingleExpressionInner {
                 let partition = Partition::from_slice(&nodes, bound.get() / 2);
                 let process = |block: &[ProgNode]| -> ProgNode {
                     if block.is_empty() {
-                        ProgNode::injl(ProgNode::unit())
+                        ProgNode::_false()
                     } else {
                         let tree = BTreeSlice::from_slice(block);
-                        let array = tree.fold(ProgNode::pair);
-                        ProgNode::injr(array)
+                        let array = tree.fold(|a, b| ProgNode::pair(&a, &b).unwrap());
+                        ProgNode::injr(&array)
                     }
                 };
 
-                partition.fold(process, ProgNode::pair)
+                partition.fold(process, |a, b| ProgNode::pair(&a, &b).unwrap())
             }
         };
         if let Some(reqd_ty) = reqd_ty {

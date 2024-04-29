@@ -145,36 +145,8 @@ impl node::Marker for Named<Construct<Elements>> {
     }
 }
 
-pub trait ProgExt: Sized {
-    fn unit() -> Self;
-
-    fn iden() -> Self;
-
-    fn pair(a: Self, b: Self) -> Self;
-
-    fn injl(a: Self) -> Self;
-
-    fn injr(a: Self) -> Self;
-
-    fn take(a: Self) -> Self;
-
-    fn drop_(a: Self) -> Self;
-
-    fn comp(a: Self, b: Self) -> Self;
-
-    fn case(a: Self, b: Self) -> Self;
-
-    fn assertl(a: Self, b: Cmr) -> Self;
-
-    fn assertr(a: Cmr, b: Self) -> Self;
-
+pub trait ProgExt: CoreConstructible + Sized {
     fn witness(ident: Arc<str>) -> Self;
-
-    fn fail(entropy: FailEntropy) -> Self;
-
-    fn jet(jet: Elements) -> Self;
-
-    fn const_word(v: Arc<Value>) -> Self;
 
     fn o() -> SelectorBuilder<Self> {
         SelectorBuilder::default().o()
@@ -185,11 +157,11 @@ pub trait ProgExt: Sized {
     }
 
     fn _false() -> Self {
-        Self::injl(Self::unit())
+        Self::injl(&Self::unit())
     }
 
     fn _true() -> Self {
-        Self::injr(Self::unit())
+        Self::injr(&Self::unit())
     }
 }
 
@@ -223,8 +195,8 @@ impl<P: ProgExt> SelectorBuilder<P> {
         let mut ret = P::iden();
         for bit in self.selection.into_iter().rev() {
             match bit {
-                false => ret = P::take(ret),
-                true => ret = P::drop_(ret),
+                false => ret = P::take(&ret),
+                true => ret = P::drop_(&ret),
             }
         }
 
@@ -233,50 +205,6 @@ impl<P: ProgExt> SelectorBuilder<P> {
 }
 
 impl ProgExt for ProgNode {
-    fn unit() -> Self {
-        CoreConstructible::unit()
-    }
-
-    fn iden() -> Self {
-        CoreConstructible::iden()
-    }
-
-    fn pair(a: Self, b: Self) -> Self {
-        CoreConstructible::pair(&a, &b).unwrap() // FIXME
-    }
-
-    fn injl(a: Self) -> Self {
-        CoreConstructible::injl(&a)
-    }
-
-    fn injr(a: Self) -> Self {
-        CoreConstructible::injr(&a)
-    }
-
-    fn take(a: Self) -> Self {
-        CoreConstructible::take(&a)
-    }
-
-    fn drop_(a: Self) -> Self {
-        CoreConstructible::drop_(&a)
-    }
-
-    fn comp(a: Self, b: Self) -> Self {
-        CoreConstructible::comp(&a, &b).unwrap() // FIXME
-    }
-
-    fn case(a: Self, b: Self) -> Self {
-        CoreConstructible::case(&a, &b).unwrap() // FIXME
-    }
-
-    fn assertl(a: Self, b: Cmr) -> Self {
-        CoreConstructible::assertl(&a, b).unwrap() // FIXME
-    }
-
-    fn assertr(a: Cmr, b: Self) -> Self {
-        CoreConstructible::assertr(a, &b).unwrap() // FIXME
-    }
-
     fn witness(ident: Arc<str>) -> Self {
         Arc::new(
             NamedConstructNode::new(
@@ -288,18 +216,6 @@ impl ProgExt for ProgNode {
             )
             .unwrap(),
         )
-    }
-
-    fn fail(entropy: FailEntropy) -> Self {
-        CoreConstructible::fail(entropy)
-    }
-
-    fn jet(jet: Elements) -> Self {
-        JetConstructible::jet(jet)
-    }
-
-    fn const_word(v: Arc<Value>) -> Self {
-        CoreConstructible::const_word(v)
     }
 }
 

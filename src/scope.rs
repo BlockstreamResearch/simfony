@@ -1,6 +1,7 @@
 use crate::array::{DirectedTree, Direction};
 use crate::parse::{Identifier, Pattern, WitnessName};
-use crate::{named::ProgExt, ProgNode};
+use crate::ProgNode;
+use simplicity::node::CoreConstructible as _;
 
 /// Tracker of variable bindings and witness names.
 ///
@@ -112,9 +113,9 @@ impl GlobalScope {
             {
                 pos += pattern_pos;
 
-                expr = ProgNode::take(expr);
+                expr = ProgNode::take(&expr);
                 for _ in 0..pos {
-                    expr = ProgNode::drop_(expr);
+                    expr = ProgNode::drop_(&expr);
                 }
 
                 return expr;
@@ -149,8 +150,8 @@ impl Pattern {
         let mut output = ProgNode::iden();
         while let Some(direction) = path.pop() {
             match direction {
-                Direction::Left => output = ProgNode::take(output),
-                Direction::Right => output = ProgNode::drop_(output),
+                Direction::Left => output = ProgNode::take(&output),
+                Direction::Right => output = ProgNode::drop_(&output),
                 Direction::Down => unreachable!("There are no unary patterns"),
                 Direction::Index(..) => unreachable!("Base patterns exclude arrays"),
             }

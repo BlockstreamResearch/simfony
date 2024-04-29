@@ -145,9 +145,10 @@ pub fn satisfy(prog: &Path, wit_file: &Path) -> RedeemNode<Elements> {
 mod tests {
     use base64::display::Base64Display;
     use base64::engine::general_purpose::STANDARD;
+    use simplicity::node::{CoreConstructible as _, JetConstructible as _};
     use simplicity::{encode, BitMachine, BitWriter, Cmr, Value};
 
-    use crate::{named::ProgExt, parse::Statement, *};
+    use crate::{parse::Statement, *};
 
     #[test]
     fn test_progs() {
@@ -254,15 +255,15 @@ mod tests {
         let inp = ProgNode::const_word(Value::u32(10));
         let node = ProgNode::jet(Elements::ParseLock);
         println!("l1: {}", node.arrow());
-        let node = ProgNode::comp(inp, node);
+        let node = ProgNode::comp(&inp, &node).unwrap();
         println!("l2: {}", node.arrow());
-        let node = ProgNode::pair(node, ProgNode::unit());
+        let node = ProgNode::pair(&node, &ProgNode::unit()).unwrap();
         println!("l3: {}", node.arrow());
-        let later_operation = ProgNode::take(ProgNode::unit());
+        let later_operation = ProgNode::take(&ProgNode::unit());
         println!("l4: {}", later_operation.arrow());
-        let assert_node = ProgNode::assertl(later_operation, Cmr::unit());
+        let assert_node = ProgNode::assertl(&later_operation, Cmr::unit()).unwrap();
         println!("l5: {}", assert_node.arrow());
-        let comp = ProgNode::comp(node, assert_node);
+        let comp = ProgNode::comp(&node, &assert_node).unwrap();
         println!("l6: {}", comp.arrow());
         // let node2 = ProgNode::assert(&node, Cmr::unit()).unwrap();
         // println!("l3: {}", node2.arrow());
