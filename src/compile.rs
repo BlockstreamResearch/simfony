@@ -1,14 +1,14 @@
 //! Compile the parsed ast into a simplicity program
 
-use std::{str::FromStr, sync::Arc};
+use std::str::FromStr;
 
-use simplicity::{jet::Elements, node, Cmr, FailEntropy};
+use simplicity::{jet::Elements, Cmr, FailEntropy};
 
 use crate::array::{BTreeSlice, Partition};
 use crate::num::NonZeroPow2Usize;
 use crate::parse::{Pattern, SingleExpressionInner, UIntType};
 use crate::{
-    named::{ConstructExt, NamedConstructNode, ProgExt},
+    named::{ConstructExt, ProgExt},
     parse::{Expression, ExpressionInner, FuncCall, FuncType, Program, Statement, Type},
     scope::GlobalScope,
     ProgNode,
@@ -23,7 +23,7 @@ fn eval_blk(
     if index >= stmts.len() {
         return match last_expr {
             Some(expr) => expr.eval(scope, None),
-            None => Arc::new(NamedConstructNode::_new(node::Inner::Unit).unwrap()),
+            None => ProgNode::unit(),
         };
     }
     match &stmts[index] {
