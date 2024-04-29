@@ -1,6 +1,6 @@
-pub extern crate s_lang;
+pub extern crate simfony;
 
-pub use s_lang::elements;
+pub use simfony::elements;
 use std::str::FromStr;
 
 use elements::encode::{deserialize, serialize_hex};

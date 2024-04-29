@@ -1,7 +1,7 @@
 use base64::display::Base64Display;
 use base64::engine::general_purpose::STANDARD;
 
-use s_lang::{compile, satisfy};
+use simfony::{compile, satisfy};
 
 use std::env;
 

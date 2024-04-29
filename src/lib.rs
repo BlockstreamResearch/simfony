@@ -1,4 +1,4 @@
-/// Library for parsing and compiling s-lang
+/// Library for parsing and compiling simfony
 
 pub type ProgNode = Arc<named::NamedConstructNode>;
 
