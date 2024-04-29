@@ -163,6 +163,18 @@ pub trait ProgExt: CoreConstructible + Sized {
     fn _true() -> Self {
         Self::injr(&Self::unit())
     }
+
+    fn unit_comp(&self) -> Self {
+        Self::comp(&Self::unit(), self).unwrap() // composing with unit always typechecks
+    }
+
+    fn pair_iden(&self) -> Self {
+        Self::pair(self, &Self::iden()).unwrap() // pairing with iden always typechecks
+    }
+
+    fn pair_unit(&self) -> Self {
+        Self::pair(self, &Self::unit()).unwrap() // pairing with unit always typechecks
+    }
 }
 
 #[derive(Debug, Clone, Hash)]

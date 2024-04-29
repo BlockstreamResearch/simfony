@@ -31,7 +31,7 @@ fn eval_blk(
         Statement::Assignment(assignment) => {
             let expr = assignment.expression.eval(scope, assignment.ty.as_ref());
             scope.insert(assignment.pattern.clone());
-            let left = ProgNode::pair(&expr, &ProgNode::iden()).unwrap();
+            let left = ProgNode::pair_iden(&expr);
             let right = eval_blk(stmts, scope, index + 1, last_expr);
             ProgNode::comp(&left, &right).unwrap()
         }
@@ -72,14 +72,14 @@ impl FuncCall {
                         // println!("jet: {}", jet.arrow());
                         ProgNode::comp(&param, &jet).unwrap()
                     }
-                    None => ProgNode::comp(&ProgNode::unit(), &jet).unwrap(),
+                    None => ProgNode::unit_comp(&jet),
                 }
             }
             FuncType::BuiltIn(..) => unimplemented!("Builtins are not supported yet"),
             FuncType::UnwrapLeft => {
                 debug_assert!(self.args.len() == 1);
                 let b = self.args[0].eval(scope, None);
-                let left_and_unit = ProgNode::pair(&b, &ProgNode::unit()).unwrap();
+                let left_and_unit = ProgNode::pair_unit(&b);
                 let fail_cmr = Cmr::fail(FailEntropy::ZERO);
                 let take_iden = ProgNode::take(&ProgNode::iden());
                 let get_inner = ProgNode::assertl(&take_iden, fail_cmr).unwrap();
@@ -88,7 +88,7 @@ impl FuncCall {
             FuncType::UnwrapRight | FuncType::Unwrap => {
                 debug_assert!(self.args.len() == 1);
                 let c = self.args[0].eval(scope, None);
-                let right_and_unit = ProgNode::pair(&c, &ProgNode::unit()).unwrap();
+                let right_and_unit = ProgNode::pair_unit(&c);
                 let fail_cmr = Cmr::fail(FailEntropy::ZERO);
                 let take_iden = ProgNode::take(&ProgNode::iden());
                 let get_inner = ProgNode::assertr(fail_cmr, &take_iden).unwrap();
@@ -138,15 +138,15 @@ impl SingleExpressionInner {
                     .to_uint()
                     .expect("Not an integer type");
                 let value = ty.parse_decimal(decimal);
-                ProgNode::comp(&ProgNode::unit(), &ProgNode::const_word(value)).unwrap()
+                ProgNode::unit_comp(&ProgNode::const_word(value))
             }
             SingleExpressionInner::BitString(bits) => {
                 let value = bits.to_simplicity();
-                ProgNode::comp(&ProgNode::unit(), &ProgNode::const_word(value)).unwrap()
+                ProgNode::unit_comp(&ProgNode::const_word(value))
             }
             SingleExpressionInner::ByteString(bytes) => {
                 let value = bytes.to_simplicity();
-                ProgNode::comp(&ProgNode::unit(), &ProgNode::const_word(value)).unwrap()
+                ProgNode::unit_comp(&ProgNode::const_word(value))
             }
             SingleExpressionInner::Witness(name) => {
                 scope.insert_witness(name.clone());
@@ -187,7 +187,7 @@ impl SingleExpressionInner {
 
                 // TODO: Enforce target type A + B for m_expr
                 let scrutinized_input = scrutinee.eval(scope, None);
-                let input = ProgNode::pair(&scrutinized_input, &ProgNode::iden()).unwrap();
+                let input = ProgNode::pair_iden(&scrutinized_input);
                 let output = ProgNode::case(&l_compiled, &r_compiled).unwrap();
                 ProgNode::comp(&input, &output).unwrap()
             }
