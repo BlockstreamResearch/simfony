@@ -8,34 +8,20 @@ However, using syntax that is already familiar every Rust developer out there wi
 
 Rust has everything we need for Simplicity, so let's define a subset of Rust—called Simphony—that translates to Simplicity.
 
-# Types
+# [Structural Types](https://en.wikipedia.org/wiki/Structural_type_system)
 
-| Type           | Equivalent to    | Description                  |
-|----------------|------------------|------------------------------|
-| `()`           |                  | Unit type                    |
-| `(A, B)`       |                  | Product of types `A` and `B` |
-| `Either<A, B>` |                  | Sum of types `A` and `B`     |
-| `Option<A>`    | `Either<(), A>`  | Option of type `A`           |
-| `bool`         | `Either<(), ()>` | Boolean                      |
-| `u1`           | `Either<(), ()>` | 1-bit unsigned integer       |
-| `u2`           | `(u1, u1)`       | 2-bit unsigned integer       |
-| `u4`           | `(u2, u2)`       | 4-bit unsigned integer       |
-| `u8`           | `(u4, u4)`       | 8-bit unsigned integer       |
-| `u16`          | `(u8, u8)`       | 16-bit unsigned integer      |
-| `u32`          | `(u16, u16)`     | 32-bit unsigned integer      |
-| `u64`          | `(u32, u32)`     | 64-bit unsigned integer      |
-| `u128`         | `(u64, u64)`     | 128-bit unsigned integer     |
-| `u256`         | `(u128, u128)`   | 256-bit unsigned integer     |
+| Type           | Description                  | Values     | Description                  |
+|----------------|------------------------------|------------|------------------------------|
+| `()`           | Unit type                    | `()`       | Unit value                   |
+| `Either<A, B>` | Sum of types `A` and `B`     | `Left(a)`  | Left value of `a`            |
+|                |                              | `Right(b)` | Right value of `b`           |
+| `(A, B)`       | Product of types `A` and `B` | `(a, b)`   | Product value of `a` and `b` |
 
-The option type is a macro for a sum of unit and another type.
-
-The Boolean type is a macro for a sum of two units.
-
-The unsigned integer types are macros for product types.
-
-During compilation, macros are resolved to the equivalent base type.
+Simfony currently adopts Simplicity's type system of units, sum and products. Simfony units are equivalent to Simplicity units, Simfony sums to Simplicity sum, and Simfony products to Simplicity products.
 
 # Expressions
+
+Expressions return values. Every expression has a translation into Simplicity.
 
 ## None literal
 
@@ -51,7 +37,7 @@ If `b` is an expression
 
 Then `(a, b)` is an expression
 
-> Wrap the output of `a` and of `b` in a product.
+> Wrap the output of `a` and of `b` in a product value.
 
 ## Left constructor
 
@@ -68,66 +54,6 @@ If `b` is an expression
 Then `Right(b)` is an expression
 
 > Wrap the output of `b` in a right value.
-
-## None constructor
-
-`None` is an expression
-
-> Return the null value.
-
-Equivalent to
-
-`Left(())`
-
-## Some constructor
-
-If `b` is an expression
-
-Then `Some(b)` is an expression
-
-> Wrap the output of `b` in a some value.
-
-Equivalent to
-
-`Right(b)`
-
-_(We might want to add compiler checks that the output type is indeed 𝟙 + B and not A + B for some A ≠ 𝟙.)_
-
-## False constructor
-
-`false` is an expression
-
-> Return the false value.
-
-Equivalent to
-
-`Left(())`
-
-## True constructor
-
-`true` is an expression
-
-> Return the true value.
-
-Equivalent to
-
-`Right(())`
-
-## Bit string literal
-
-If `s` is a bit string of 2^n bits
-
-Then `0bs` is an expression
-
-> Return the given bit string.
-
-## Byte string literal
-
-If `s` is a hex string of 2^n digits
-
-Then `0xs` is an expression
-
-> Return the given byte string.
 
 ## Variable
 
@@ -157,17 +83,17 @@ Then `jet_j(e)` is an expression
 
 > Take the output of `e` as input to jet `j` and return the jet's output.
 
-## Scoping
+## Block
+
+If `s1`, ..., `sN` are statements
 
 If `e` is an expression
 
-Then `{e}` is an expression
+Then `{s1; ...; sN; e}` is an expression
 
-`{e}` is equivalent to `e`
+> Execute statements `s1` to `sN` in a local scope and return output of expression `e`.
 
-FIXME: Does scoping do anything besides aesthetics?
-
-## Chaining
+## Chain
 
 If `a` is an expression
 
@@ -177,45 +103,7 @@ Then `a; b` is an expression
 
 > Run `a` and `b` in parallel, ignore the output of `a` and return the output of `b`.
 
-## Pattern
-
-If `v` is a variable name
-
-Then `v` is a pattern
-
-> The variable pattern binds the output of an expression to the variable.
-
-`_` is a pattern
-
-> The empty pattern is ignored.
-
-If `p1` is a pattern
-
-If `p2` is a pattern.
-
-Then `(p1, p2)` is a pattern
-
-> The product pattern splits the output of an expression that returns product values. The first component is bound to `p1` and the second component is bound to `p2`.
-
-## Let statement
-
-If `p` is a pattern
-
-If `T` is a type
-
-If `a` is an expression
-
-If `b` is an expression
-
-Then `let p: T = a; b` is an expression
-
-> Bind the output of `a` to the variables in `p` and return the output of `b`.
-
-`T` is a type which is checked at compile time. Omit `T` to disable the check:
-
-Then `let p = a; b` is an expression
-
-## Match statement
+## Match
 
 If `a` is an expression
 
@@ -253,7 +141,149 @@ Then `c.unwrap_right()` is an expression
 >
 > If `c` returns a right value, then return this value.
 
-## Option match statement
+# Statements
+
+Statements are components of a [block](https://github.com/BlockstreamResearch/simfony/blob/master/doc/new-syntax.md#block).
+
+Every expression is a statement. Additionally, there are let statements.
+
+## [Pattern Matching](https://doc.rust-lang.org/book/ch18-00-patterns.html)
+
+We use patterns to match values against the structure of a type.
+
+If `v` is a variable name
+
+Then `v` is a pattern
+
+> The variable pattern binds the value to the variable.
+
+`_` is a pattern
+
+> The ignore pattern does nothing.
+
+If `p1` is a pattern
+
+If `p2` is a pattern.
+
+Then `(p1, p2)` is a pattern
+
+> The product pattern splits product values. The first component is matched against pattern `p1` and the second component is matched against pattern `p2`.
+
+## Let statement
+
+If `p` is a pattern
+
+If `T` is a type
+
+If `a` is an expression
+
+If `b` is an expression
+
+Then `let p: T = a; b` is an expression
+
+> Bind the output of `a` to the variables in `p` and return the output of `b`.
+
+`T` is a type which is checked at compile time. Omit `T` to disable the check:
+
+Then `let p = a; b` is an expression
+
+# Macro Types
+
+| Type           | Equivalent to    | Description                  | Values                                |
+|----------------|------------------|------------------------------|---------------------------------------|
+| `Option<A>`    | `Either<(), A>`  | Option of type `A`           | `None`, `Some(a)`                     |
+| `bool`         | `Either<(), ()>` | Boolean                      | `false`, `true`                       |
+| `u1`           | `Either<(), ()>` | 1-bit unsigned integer       | `0`, `1`                              |
+| `u2`           | `(u1, u1)`       | 2-bit unsigned integer       | `0`, `1`, `2`, `3`                    |
+| `u4`           | `(u2, u2)`       | 4-bit unsigned integer       | `0`, `1`, ..., `15`                   |
+| `u8`           | `(u4, u4)`       | 8-bit unsigned integer       | `0`, `1`, ..., `255`                  |
+| `u16`          | `(u8, u8)`       | 16-bit unsigned integer      | `0`, `1`, ..., `65535`                |
+| `u32`          | `(u16, u16)`     | 32-bit unsigned integer      | `0`, `1`, ..., `4294967295`           |
+| `u64`          | `(u32, u32)`     | 64-bit unsigned integer      | `0`, `1`, ..., `18446744073709551615` |
+| `u128`         | `(u64, u64)`     | 128-bit unsigned integer     | strings of 32 hex digits              |
+| `u256`         | `(u128, u128)`   | 256-bit unsigned integer     | strings of 64 hex digits              |
+
+Simfony supports only structural types, i.e., units, sums and products. We provide support for familar types like Boolean and unsigned integers via type macros that are resolved to structural types during compilation.
+
+For instance, `bool` is equivalent to the sum `Either<(), ()>` of two units. `bool` values are actually `Either<(), ()>` values. `bool` can be used anywhere `Either<(), ()>` can be used.
+
+# Macro Expressions
+
+We provide expressions that work on type macros. These macro expressions are resolved to equivalent expressions during compilation.
+
+## Bit string literal
+
+If `s` is a bit string of 2^n bits
+
+Then `0bs` is an expression
+
+> Return the given bit string.
+
+We translate bit string literals using word jets because this is more compact.
+
+> Translated as `word(0bs)`.
+
+## Byte string literal
+
+If `s` is a hex string of 2^n digits
+
+Then `0xs` is an expression
+
+> Return the given byte string.
+
+We translate byte string literals using word jets because this is more compact.
+
+> Translated as `word(0xs)`.
+
+## Integer literal (u1 | u2 | u4 | u8 | u16 | u32 | u64)
+
+If `n` is a decimal string in range of the integer type (u1 | u2 | u4 | u8 | u16 | u32 | u64)
+
+Then `n` is an expression
+
+> Return the given integer.
+
+Integer literals are not available for `u128` and `u256`. Use byte string literals.
+
+> Equivalent to `word(0xs)` where `s` is the hex encoding for integer `n`.
+
+## None constructor
+
+`None` is an expression
+
+> Return the null value.
+
+> Equivalent to `Left(())`.
+
+## Some constructor
+
+If `b` is an expression
+
+Then `Some(b)` is an expression
+
+> Wrap the output of `b` in a some value.
+
+> Equivalent to `Right(b)`.
+
+_(We might want to add compiler checks that the output type is indeed 𝟙 + B and not A + B for some A ≠ 𝟙.)_
+
+## False constructor
+
+`false` is an expression
+
+> Return the false value.
+
+> Equivalent to `Left(())`.
+
+## True constructor
+
+`true` is an expression
+
+> Return the true value.
+
+> Equivalent to `Right(())`.
+
+## Option match
 
 If `a` is an expression
 
@@ -269,9 +299,7 @@ Then `match a { None => b, Some(y) => c, }` is an expression
 >
 > If `b` returns a some value, then bind this value to `y` and return the output of `c`.
 
-Equivalent to
-
-`match a { Left(_) => b, Right(y) => c, }`
+> Equivalent to `match a { Left(_) => b, Right(y) => c, }`.
 
 ## Some unwrap
 
@@ -283,11 +311,9 @@ Then `c.unwrap()` is an expression
 >
 > If `c` returns a some value, then return this value.
 
-Equivalent to
+> Equivalent to `c.unwrap_right()`.
 
-`c.unwrap_right()`
-
-## Boolean match statement
+## Boolean match
 
 If `a` is an expression
 
@@ -301,6 +327,4 @@ Then `match a { false => b, true => c, }` is an expression
 >
 > If `b` returns a true value, then return the output of `c`.
 
-Equivalent to
-
-`match a { Left(_) => b, Right(_) => c, }`
+> Equivalent to `match a { Left(_) => b, Right(_) => c, }`.
