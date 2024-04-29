@@ -81,7 +81,7 @@ impl NamedExt for NamedCommitNode {
         struct Forgetter;
 
         impl Converter<Named<Commit<Elements>>, Commit<Elements>> for Forgetter {
-            type Error = ();
+            type Error = std::convert::Infallible;
             fn convert_witness(
                 &mut self,
                 _: &PostOrderIterItem<&NamedCommitNode>,

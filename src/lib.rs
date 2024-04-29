@@ -61,7 +61,7 @@ pub fn satisfy(prog: &Path, wit_file: &Path) -> RedeemNode<Elements> {
     }
 
     impl Converter<Named<Commit<Elements>>, Redeem<Elements>> for WitFileData {
-        type Error = ();
+        type Error = std::convert::Infallible;
 
         fn convert_witness(
             &mut self,
@@ -190,7 +190,7 @@ mod tests {
         struct MyConverter;
 
         impl Converter<Named<Commit<Elements>>, Redeem<Elements>> for MyConverter {
-            type Error = ();
+            type Error = std::convert::Infallible;
 
             fn convert_witness(
                 &mut self,
