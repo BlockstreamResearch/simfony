@@ -1,16 +1,20 @@
 [package]
-name = "s-lang"
+name = "simfony"
 version = "0.1.0"
 authors = ["sanket1729 <sanket1729@gmail.com>"]
+license = "CC0-1.0"
+homepage = "https://github.com/BlockstreamResearch/simfony/"
+repository = "https://github.com/BlockstreamResearch/simfony/"
+description = "Rust-like language that compiles to Simplicity bytecode."
 edition = "2021"
 rust-version = "1.61.0"
 
 [lib]
-name = "s_lang"
+name = "simfony"
 path = "src/lib.rs"
 
 [[bin]]
-name = "simpc"
+name = "simc"
 path = "src/main.rs"
 
 [dependencies]

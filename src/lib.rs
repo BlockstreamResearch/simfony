@@ -1,4 +1,4 @@
-/// Library for parsing and compiling s-lang
+/// Library for parsing and compiling simfony
 
 pub type ProgNode = Arc<named::NamedConstructNode>;
 
@@ -151,15 +151,15 @@ mod tests {
 
     #[test]
     fn test_progs() {
-        _test_progs("./example_progs/test.simpl");
-        _test_progs("./example_progs/assertr.simpl");
-        _test_progs("./example_progs/scopes.simpl");
-        _test_progs("./example_progs/nesting.simpl");
-        _test_progs("./example_progs/add.simpl");
-        _test_progs("./example_progs/cat.simpl");
-        _test_progs("./example_progs/match.simpl");
-        _test_progs("./example_progs/array.simpl");
-        _test_progs("./example_progs/list.simpl");
+        _test_progs("./example_progs/test.simf");
+        _test_progs("./example_progs/unwrap.simf");
+        _test_progs("./example_progs/scopes.simf");
+        _test_progs("./example_progs/nesting.simf");
+        _test_progs("./example_progs/add.simf");
+        _test_progs("./example_progs/cat.simf");
+        _test_progs("./example_progs/match.simf");
+        _test_progs("./example_progs/array.simf");
+        _test_progs("./example_progs/list.simf");
     }
 
     fn _test_progs(file: &str) {

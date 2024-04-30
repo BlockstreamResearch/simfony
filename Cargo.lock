@@ -352,21 +352,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e86697c916019a8588c99b5fac3cead74ec0b4b819707a682fd4d23fa0ce1ba1"
 
 [[package]]
-name = "s-lang"
-version = "0.1.0"
-dependencies = [
- "base64",
- "getrandom",
- "hex-conservative",
- "miniscript",
- "pest",
- "pest_derive",
- "serde",
- "serde_json",
- "simplicity-lang",
-]
-
-[[package]]
 name = "santiago"
 version = "1.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -457,6 +442,21 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest",
+]
+
+[[package]]
+name = "simfony"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "getrandom",
+ "hex-conservative",
+ "miniscript",
+ "pest",
+ "pest_derive",
+ "serde",
+ "serde_json",
+ "simplicity-lang",
 ]
 
 [[package]]
