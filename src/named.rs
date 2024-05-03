@@ -148,6 +148,10 @@ impl node::Marker for Named<Construct<Elements>> {
 pub trait ProgExt: CoreConstructible + Sized {
     fn witness(ident: Arc<str>) -> Self;
 
+    fn h() -> PairBuilder<Self> {
+        PairBuilder(Self::iden())
+    }
+
     fn o() -> SelectorBuilder<Self> {
         SelectorBuilder::default().o()
     }
@@ -177,6 +181,10 @@ pub trait ProgExt: CoreConstructible + Sized {
     }
 }
 
+/// Builder of expressions that contain
+/// `take`, `drop` and `iden` only.
+///
+/// These expressions always type-check.
 #[derive(Debug, Clone, Hash)]
 pub struct SelectorBuilder<P> {
     selection: Vec<bool>,
@@ -193,26 +201,74 @@ impl<P> Default for SelectorBuilder<P> {
 }
 
 impl<P: ProgExt> SelectorBuilder<P> {
+    /// Select the first component '0' of the input pair.
     pub fn o(mut self) -> Self {
         self.selection.push(false);
         self
     }
 
+    /// Select the second component '1' of the input pair.
     pub fn i(mut self) -> Self {
         self.selection.push(true);
         self
     }
 
-    pub fn h(self) -> P {
-        let mut ret = P::iden();
+    /// Select the current input value.
+    pub fn h(self) -> PairBuilder<P> {
+        let mut expr = P::iden();
         for bit in self.selection.into_iter().rev() {
             match bit {
-                false => ret = P::take(&ret),
-                true => ret = P::drop_(&ret),
+                false => expr = P::take(&expr),
+                true => expr = P::drop_(&expr),
             }
         }
 
-        ret
+        PairBuilder(expr)
+    }
+}
+
+/// Builder of expressions that contain
+/// `pair`, `take`, `drop` and `iden` only.
+///
+/// These expressions always type-check.
+#[derive(Debug, Clone, Hash)]
+pub struct PairBuilder<P>(P);
+
+impl<P: ProgExt> PairBuilder<P> {
+    /// Pair two expressions.
+    ///
+    /// ## Left-associative:
+    ///
+    /// `a.pair(b).pair(c)` = `pair (pair a b) c`
+    ///
+    /// `a.pair(b.pair(c))` = `pair a (pair b c)`
+    pub fn pair(self, other: Self) -> Self {
+        // Expressions that consist of `take`, `drop` and `iden` have a source type
+        // that consists of nested products of type variables.
+        // Their source type does not contain any units, sums or other concrete types.
+        //
+        // s : A → B
+        // t : A → C
+        // ---------
+        // pair s t : A → B × C
+        //
+        // The pair combinator unifies the source type of both subexpressions.
+        // Two nested products of type variables can always be unified into
+        // a nested product of type variables.
+        //
+        // Unification errors occur only when products are unified with sums,
+        // which is impossible here.
+        //
+        // By induction, expressions that consist of `pair`, `take`, `drop` and `iden`
+        // have a source type that consists of nested products of type variables.
+        Self(P::pair(&self.0, &other.0).unwrap())
+    }
+}
+
+impl<P> PairBuilder<P> {
+    /// Build the expression.
+    pub fn get(self) -> P {
+        self.0
     }
 }
 
