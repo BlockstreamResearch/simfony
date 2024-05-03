@@ -4,7 +4,9 @@ use simplicity::jet::{Elements, Jet};
 use simplicity::node::{
     self, Commit, CommitData, CommitNode, Converter, Inner, NoDisconnect, NoWitness, Node,
 };
-use simplicity::node::{Construct, ConstructData, Constructible};
+use simplicity::node::{
+    Construct, ConstructData, Constructible, CoreConstructible, JetConstructible,
+};
 use simplicity::types;
 use simplicity::types::arrow::{Arrow, FinalArrow};
 use simplicity::{encode, FailEntropy, Value};
@@ -79,7 +81,7 @@ impl NamedExt for NamedCommitNode {
         struct Forgetter;
 
         impl Converter<Named<Commit<Elements>>, Commit<Elements>> for Forgetter {
-            type Error = ();
+            type Error = std::convert::Infallible;
             fn convert_witness(
                 &mut self,
                 _: &PostOrderIterItem<&NamedCommitNode>,
@@ -143,36 +145,8 @@ impl node::Marker for Named<Construct<Elements>> {
     }
 }
 
-pub trait ProgExt: Sized {
-    fn unit() -> Self;
-
-    fn iden() -> Self;
-
-    fn pair(a: Self, b: Self) -> Self;
-
-    fn injl(a: Self) -> Self;
-
-    fn injr(a: Self) -> Self;
-
-    fn take(a: Self) -> Self;
-
-    fn drop_(a: Self) -> Self;
-
-    fn comp(a: Self, b: Self) -> Self;
-
-    fn case(a: Self, b: Self) -> Self;
-
-    fn assertl(a: Self, b: Cmr) -> Self;
-
-    fn assertr(a: Cmr, b: Self) -> Self;
-
+pub trait ProgExt: CoreConstructible + Sized {
     fn witness(ident: Arc<str>) -> Self;
-
-    fn fail(entropy: FailEntropy) -> Self;
-
-    fn jet(jet: Elements) -> Self;
-
-    fn const_word(v: Arc<Value>) -> Self;
 
     fn o() -> SelectorBuilder<Self> {
         SelectorBuilder::default().o()
@@ -183,11 +157,23 @@ pub trait ProgExt: Sized {
     }
 
     fn _false() -> Self {
-        Self::injl(Self::unit())
+        Self::injl(&Self::unit())
     }
 
     fn _true() -> Self {
-        Self::injr(Self::unit())
+        Self::injr(&Self::unit())
+    }
+
+    fn unit_comp(&self) -> Self {
+        Self::comp(&Self::unit(), self).unwrap() // composing with unit always typechecks
+    }
+
+    fn pair_iden(&self) -> Self {
+        Self::pair(self, &Self::iden()).unwrap() // pairing with iden always typechecks
+    }
+
+    fn pair_unit(&self) -> Self {
+        Self::pair(self, &Self::unit()).unwrap() // pairing with unit always typechecks
     }
 }
 
@@ -221,8 +207,8 @@ impl<P: ProgExt> SelectorBuilder<P> {
         let mut ret = P::iden();
         for bit in self.selection.into_iter().rev() {
             match bit {
-                false => ret = P::take(ret),
-                true => ret = P::drop_(ret),
+                false => ret = P::take(&ret),
+                true => ret = P::drop_(&ret),
             }
         }
 
@@ -231,50 +217,6 @@ impl<P: ProgExt> SelectorBuilder<P> {
 }
 
 impl ProgExt for ProgNode {
-    fn unit() -> Self {
-        Arc::new(NamedConstructNode::_new(Inner::Unit).unwrap())
-    }
-
-    fn iden() -> Self {
-        Arc::new(NamedConstructNode::_new(Inner::Iden).unwrap())
-    }
-
-    fn pair(a: Self, b: Self) -> Self {
-        Arc::new(NamedConstructNode::_new(Inner::Pair(a, b)).unwrap())
-    }
-
-    fn injl(a: Self) -> Self {
-        Arc::new(NamedConstructNode::_new(Inner::InjL(a)).unwrap())
-    }
-
-    fn injr(a: Self) -> Self {
-        Arc::new(NamedConstructNode::_new(Inner::InjR(a)).unwrap())
-    }
-
-    fn take(a: Self) -> Self {
-        Arc::new(NamedConstructNode::_new(Inner::Take(a)).unwrap())
-    }
-
-    fn drop_(a: Self) -> Self {
-        Arc::new(NamedConstructNode::_new(Inner::Drop(a)).unwrap())
-    }
-
-    fn comp(a: Self, b: Self) -> Self {
-        Arc::new(NamedConstructNode::_new(Inner::Comp(a, b)).unwrap())
-    }
-
-    fn case(a: Self, b: Self) -> Self {
-        Arc::new(NamedConstructNode::_new(Inner::Case(a, b)).unwrap())
-    }
-
-    fn assertl(a: Self, b: Cmr) -> Self {
-        Arc::new(NamedConstructNode::_new(Inner::AssertL(a, b)).unwrap())
-    }
-
-    fn assertr(a: Cmr, b: Self) -> Self {
-        Arc::new(NamedConstructNode::_new(Inner::AssertR(a, b)).unwrap())
-    }
-
     fn witness(ident: Arc<str>) -> Self {
         Arc::new(
             NamedConstructNode::new(
@@ -286,18 +228,6 @@ impl ProgExt for ProgNode {
             )
             .unwrap(),
         )
-    }
-
-    fn fail(entropy: FailEntropy) -> Self {
-        Arc::new(NamedConstructNode::_new(Inner::Fail(entropy)).unwrap())
-    }
-
-    fn jet(jet: Elements) -> Self {
-        Arc::new(NamedConstructNode::_new(Inner::Jet(jet)).unwrap())
-    }
-
-    fn const_word(v: Arc<Value>) -> Self {
-        Arc::new(NamedConstructNode::_new(Inner::Word(v)).unwrap())
     }
 }
 
@@ -353,6 +283,66 @@ pub trait ConstructExt: Sized {
     fn finalize_types_inner(&self, for_main: bool) -> Result<Arc<NamedCommitNode>, ErrorSet>;
 }
 
+fn unnamed_data(construct_data: ConstructData<Elements>) -> NamedConstructData {
+    NamedConstructData {
+        internal: construct_data,
+        name: Arc::from("NOT NAMED YET!"),
+        position: Position::default(),
+        user_source_types: Arc::new([]),
+        user_target_types: Arc::new([]),
+    }
+}
+
+impl CoreConstructible for NamedConstructData {
+    fn unit() -> Self {
+        unnamed_data(ConstructData::unit())
+    }
+    fn iden() -> Self {
+        unnamed_data(ConstructData::iden())
+    }
+    fn injl(inner: &Self) -> Self {
+        unnamed_data(ConstructData::injl(&inner.internal))
+    }
+    fn injr(inner: &Self) -> Self {
+        unnamed_data(ConstructData::injr(&inner.internal))
+    }
+    fn take(inner: &Self) -> Self {
+        unnamed_data(ConstructData::take(&inner.internal))
+    }
+    fn drop_(inner: &Self) -> Self {
+        unnamed_data(ConstructData::drop_(&inner.internal))
+    }
+    fn comp(left: &Self, right: &Self) -> Result<Self, types::Error> {
+        ConstructData::comp(&left.internal, &right.internal).map(unnamed_data)
+    }
+    fn case(left: &Self, right: &Self) -> Result<Self, types::Error> {
+        ConstructData::case(&left.internal, &right.internal).map(unnamed_data)
+    }
+
+    fn assertl(left: &Self, right: Cmr) -> Result<Self, types::Error> {
+        ConstructData::assertl(&left.internal, right).map(unnamed_data)
+    }
+    fn assertr(left: Cmr, right: &Self) -> Result<Self, types::Error> {
+        ConstructData::assertr(left, &right.internal).map(unnamed_data)
+    }
+    fn pair(left: &Self, right: &Self) -> Result<Self, types::Error> {
+        ConstructData::pair(&left.internal, &right.internal).map(unnamed_data)
+    }
+
+    fn fail(entropy: FailEntropy) -> Self {
+        unnamed_data(ConstructData::fail(entropy))
+    }
+    fn const_word(value: Arc<Value>) -> Self {
+        unnamed_data(ConstructData::const_word(value))
+    }
+}
+
+impl JetConstructible<Elements> for NamedConstructData {
+    fn jet(j: Elements) -> Self {
+        unnamed_data(ConstructData::jet(j))
+    }
+}
+
 impl ConstructExt for NamedConstructNode {
     /// Construct a named construct node from parts.
     fn _new(
@@ -365,14 +355,7 @@ impl ConstructExt for NamedConstructNode {
                 .map_disconnect(|_| &None)
                 .copy_witness(),
         )?;
-        let named_data = NamedConstructData {
-            internal: construct_data,
-            name: Arc::from("NOT NAMED YET!"),
-            position: Position::default(),
-            user_source_types: Arc::new([]),
-            user_target_types: Arc::new([]),
-        };
-        Ok(Node::from_parts(inner, named_data))
+        Ok(Node::from_parts(inner, unnamed_data(construct_data)))
     }
 
     /// Construct a named construct node from parts.
