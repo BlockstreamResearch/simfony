@@ -18,6 +18,8 @@ jet_verify(jet_eq_32(b, 7));
 
 Take a look at the [example programs](https://github.com/BlockstreamResearch/simfony/tree/master/example_progs).
 
+Learn about [Simfony's syntax](https://github.com/BlockstreamResearch/simfony/tree/master/doc/syntax.md). There is [experimental syntax](https://github.com/BlockstreamResearch/simfony/blob/master/doc/experimental-syntax.md) that is not supported by master yet.
+
 ## MSRV
 
 This crate should compile with any feature combination on **Rust 1.61.0** or higher.

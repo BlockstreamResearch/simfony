@@ -5,8 +5,8 @@
 | `[A; 1]`             | `A`                                | Array of size one                    | `[a]`                           |
 | `[A; 2*N]`           | `([A;N], [A;N])`                   | Array of size 2*N where N > 0        | `[a, b, ..., z]`                |
 | `[A; 2*N+1]`         | `([A;N+1], [A;N])`                 | Array of size 2*N+1 where N > 0      | `[a, b, ..., z]`                |
-| `List<A; 2>`         | `Option<A>`                        | List of less than 2 elements         | `list!()`, `list!(a)`           |
-| `List<A; 2^(N + 1)>` | `(Option<[A; 2^N]>, List<A; 2^N>)` | List of less than 2^(N + 1) elements | `list()`, `list!(a, b, ..., z)` |
+| `List<A; 2>`         | `Option<A>`                        | List of less than 2 elements         | `list![]`, `list![a]`           |
+| `List<A; 2^(N + 1)>` | `(Option<[A; 2^N]>, List<A; 2^N>)` | List of less than 2^(N + 1) elements | `list[]`, `list![a, b, ..., z]` |
 
 ## Array
 
