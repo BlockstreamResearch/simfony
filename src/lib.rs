@@ -170,6 +170,7 @@ mod tests {
     }
 
     fn _test_progs(file: &str) {
+        println!("Testing {file}");
         let file = std::fs::read_to_string(file).unwrap();
         let pairs = IdentParser::parse(Rule::program, &file).unwrap_or_else(|e| panic!("{}", e));
 
