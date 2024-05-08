@@ -172,7 +172,7 @@ mod tests {
             for inner_pair in pair.into_inner() {
                 match inner_pair.as_rule() {
                     Rule::statement => stmts.push(Statement::parse(inner_pair)),
-                    Rule::EOI => println!("EOI:     {}", inner_pair.as_str()),
+                    Rule::EOI => {}
                     _ => unreachable!(),
                 };
             }
