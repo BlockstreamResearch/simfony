@@ -152,15 +152,21 @@ mod tests {
 
     #[test]
     fn test_progs() {
+        _test_progs("./example_progs/add.simf");
+        _test_progs("./example_progs/array.simf");
+        _test_progs("./example_progs/cat.simf");
+        _test_progs("./example_progs/checksigfromstackverify.simf");
+        _test_progs("./example_progs/ctv.simf");
+        _test_progs("./example_progs/list.simf");
+        _test_progs("./example_progs/match.simf");
+        _test_progs("./example_progs/nesting.simf");
+        _test_progs("./example_progs/recursive-covenant.simf");
+        _test_progs("./example_progs/scopes.simf");
+        _test_progs("./example_progs/sighash_all.simf");
+        _test_progs("./example_progs/sighash_all_anyprevoutanyscript.simf");
+        _test_progs("./example_progs/sighash_none.simf");
         _test_progs("./example_progs/test.simf");
         _test_progs("./example_progs/unwrap.simf");
-        _test_progs("./example_progs/scopes.simf");
-        _test_progs("./example_progs/nesting.simf");
-        _test_progs("./example_progs/add.simf");
-        _test_progs("./example_progs/cat.simf");
-        _test_progs("./example_progs/match.simf");
-        _test_progs("./example_progs/array.simf");
-        _test_progs("./example_progs/list.simf");
     }
 
     fn _test_progs(file: &str) {
