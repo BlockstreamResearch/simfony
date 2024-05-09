@@ -152,11 +152,7 @@ impl SingleExpressionInner {
                 scope.insert_witness(name.clone());
                 ProgNode::witness(name.as_inner().clone())
             }
-            SingleExpressionInner::Variable(identifier) => {
-                let res = scope.get(identifier);
-                println!("Identifier {}: {}", identifier, res.arrow());
-                res
-            }
+            SingleExpressionInner::Variable(identifier) => scope.get(identifier),
             SingleExpressionInner::FuncCall(call) => call.eval(scope, reqd_ty),
             SingleExpressionInner::Expression(expression) => expression.eval(scope, reqd_ty),
             SingleExpressionInner::Match {
