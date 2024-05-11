@@ -152,7 +152,7 @@ mod tests {
     use simplicity::node::{CoreConstructible as _, JetConstructible as _};
     use simplicity::{encode, BitMachine, BitWriter, Cmr, Value};
 
-    use crate::{parse::Statement, *};
+    use crate::*;
 
     #[test]
     fn test_progs() {
@@ -175,28 +175,8 @@ mod tests {
 
     fn _test_progs(file: &str) {
         println!("Testing {file}");
-        let file = std::fs::read_to_string(file).unwrap();
-        let pairs = IdentParser::parse(Rule::program, &file).unwrap_or_else(|e| panic!("{}", e));
-
-        let mut stmts = Vec::new();
-        for pair in pairs {
-            for inner_pair in pair.into_inner() {
-                match inner_pair.as_rule() {
-                    Rule::statement => stmts.push(Statement::parse(inner_pair).unwrap()),
-                    Rule::EOI => {}
-                    _ => unreachable!(),
-                };
-            }
-        }
-        let prog = Program { statements: stmts };
-        let mut scope = GlobalScope::new();
-        let simplicity_prog = prog.eval(&mut scope);
-        let commit_node = simplicity_prog
-            .finalize_types_main()
-            .expect("Type check error");
-        // let commit_node = commit_node.to_commit_node();
-        let simplicity_prog =
-            Arc::<_>::try_unwrap(commit_node).expect("Only one reference to commit node");
+        let file = Path::new(file);
+        let simplicity_named_commit = _compile(file).unwrap();
 
         struct MyConverter;
 
@@ -244,7 +224,7 @@ mod tests {
             }
         }
 
-        let redeem_prog = simplicity_prog
+        let redeem_prog = simplicity_named_commit
             .convert::<NoSharing, Redeem<Elements>, _>(&mut MyConverter)
             .unwrap();
 
