@@ -41,7 +41,7 @@ pub fn _compile(file: &Path) -> Result<Arc<Node<Named<Commit<Elements>>>>, Strin
     let file = Arc::from(std::fs::read_to_string(file).unwrap());
     let simfony_program = IdentParser::parse(Rule::program, &file)
         .map_err(RichError::from)
-        .map(|mut pairs| Program::parse(pairs.next().unwrap()))
+        .and_then(|mut pairs| Program::parse(pairs.next().unwrap()))
         .with_file(file.clone())?;
 
     let mut scope = GlobalScope::new();
@@ -182,7 +182,7 @@ mod tests {
         for pair in pairs {
             for inner_pair in pair.into_inner() {
                 match inner_pair.as_rule() {
-                    Rule::statement => stmts.push(Statement::parse(inner_pair)),
+                    Rule::statement => stmts.push(Statement::parse(inner_pair).unwrap()),
                     Rule::EOI => {}
                     _ => unreachable!(),
                 };
