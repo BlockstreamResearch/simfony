@@ -5,7 +5,16 @@ use simfony::{compile, satisfy};
 
 use std::env;
 
+// Directly returning Result<(), String> prints the error using Debug
+// Add indirection via run() to print errors using Display
 fn main() {
+    if let Err(error) = run() {
+        eprintln!("{error}");
+        std::process::exit(1);
+    }
+}
+
+fn run() -> Result<(), String> {
     // Get the command-line arguments as a Vec<String>.
     let args: Vec<String> = env::args().collect();
 
@@ -14,7 +23,7 @@ fn main() {
         println!("Usage: {} <prog.simpl> [sig.wit (optional)]", args[0]);
         println!("If no witness file is provided, the program will be compiled and printed.");
         println!("If a witness file is provided, the program will be satisfied and printed.");
-        return;
+        return Ok(());
     }
 
     // Extract the first argument (arg1).
@@ -25,13 +34,15 @@ fn main() {
     if args.len() >= 3 {
         let witness_file = &args[2];
         let wit_path = std::path::Path::new(witness_file);
-        let res = satisfy(prog_path, wit_path);
+        let res = satisfy(prog_path, wit_path)?;
         let redeem_bytes = res.encode_to_vec();
         println!("{}", Base64Display::new(&redeem_bytes, &STANDARD));
     } else {
         // No second argument is provided. Just compile the program.
-        let prog = compile(prog_path);
+        let prog = compile(prog_path)?;
         let res = prog.encode_to_vec();
         println!("{}", Base64Display::new(&res, &STANDARD));
     }
+
+    Ok(())
 }
