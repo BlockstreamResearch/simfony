@@ -137,7 +137,7 @@ impl SingleExpressionInner {
                     .unwrap_or(&Type::UInt(UIntType::U32))
                     .to_uint()
                     .expect("Not an integer type");
-                let value = ty.parse_decimal(decimal);
+                let value = ty.parse_decimal(decimal).unwrap();
                 ProgNode::unit_comp(&ProgNode::const_word(value))
             }
             SingleExpressionInner::BitString(bits) => {
