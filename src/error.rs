@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use simplicity::elements;
 
-use crate::parse::{Position, Span};
+use crate::parse::{Identifier, Position, Span, Type, UIntType};
 use crate::Rule;
 
 /// Helper trait to convert `Result<T, E>` into `Result<T, RichError>`.
@@ -141,6 +141,14 @@ pub enum Error {
     CannotParse(String),
     Grammar(String),
     UnmatchedPattern(String),
+    // TODO: Remove CompileError once Simfony has a type system
+    // The Simfony compiler should never produce ill-typed Simplicity code
+    // The compiler can only be this precise if it knows a type system at least as expressive as Simplicity's
+    CannotCompile(String),
+    JetDoesNotExist(Arc<str>),
+    TypeValueMismatch(Type),
+    InvalidDecimal(UIntType),
+    UndefinedVariable(Identifier),
 }
 
 #[rustfmt::skip]
@@ -175,6 +183,26 @@ impl fmt::Display for Error {
                 f,
                 "Pattern `{pattern}` not covered in match"
             ),
+            Error::CannotCompile(description) => write!(
+                f,
+                "Failed to compile to Simplicity: {description}"
+            ),
+            Error::JetDoesNotExist(name) => write!(
+                f,
+                "Jet `{name}` does not exist"
+            ),
+            Error::TypeValueMismatch(ty) => write!(
+                f,
+                "Value does not match the assigned type `{ty}`"
+            ),
+            Error::InvalidDecimal(ty) => write!(
+                f,
+                "Use bit strings or hex strings for values of type `{ty}`"
+            ),
+            Error::UndefinedVariable(identifier) => write!(
+                f,
+                "Variable `{identifier}` is not defined"
+            ),
         }
     }
 }
@@ -197,6 +225,12 @@ impl From<elements::hex::Error> for Error {
 impl From<std::num::ParseIntError> for Error {
     fn from(error: std::num::ParseIntError) -> Self {
         Self::CannotParse(error.to_string())
+    }
+}
+
+impl From<simplicity::types::Error> for Error {
+    fn from(error: simplicity::types::Error) -> Self {
+        Self::CannotCompile(error.to_string())
     }
 }
 
