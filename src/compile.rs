@@ -64,7 +64,7 @@ impl FuncCall {
                     .iter()
                     .map(|e| e.eval(scope, None)) // TODO: Pass the jet source type here.
                     .reduce(|a, b| ProgNode::pair(&a, &b).unwrap());
-                let jet = Elements::from_str(jet_name).expect("Invalid jet name");
+                let jet = Elements::from_str(jet_name.as_inner()).expect("Invalid jet name");
                 let jet = ProgNode::jet(jet);
                 match args {
                     Some(param) => {
