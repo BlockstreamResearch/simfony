@@ -217,12 +217,15 @@ impl SingleExpressionInner {
                 } else {
                     None
                 };
-                let nodes: Vec<_> = elements
-                    .iter()
-                    .map(|e| e.eval(scope, el_type).unwrap())
-                    .collect();
+                // FIXME: Constructing pairs should never fail because when Simfony is translated to
+                // Simplicity the input type is variable. However, the fact that pairs always unify
+                // is hard to prove at the moment, while Simfony lacks a type system.
+                let nodes: Vec<Result<ProgNode, RichError>> =
+                    elements.iter().map(|e| e.eval(scope, el_type)).collect();
                 let tree = BTreeSlice::from_slice(&nodes);
-                tree.fold(|a, b| ProgNode::pair(&a, &b).unwrap())
+                tree.fold(|res_a, res_b| {
+                    res_a.and_then(|a| res_b.and_then(|b| ProgNode::pair(&a, &b).with_span(span)))
+                })?
             }
             SingleExpressionInner::List(elements) => {
                 let el_type = if let Some(Type::List(ty, _)) = reqd_ty {
@@ -230,28 +233,39 @@ impl SingleExpressionInner {
                 } else {
                     None
                 };
-                let nodes: Vec<_> = elements
-                    .iter()
-                    .map(|e| e.eval(scope, el_type).unwrap())
-                    .collect();
-                let bound = if let Some(Type::List(_, bound)) = reqd_ty {
+                let nodes: Vec<Result<ProgNode, RichError>> =
+                    elements.iter().map(|e| e.eval(scope, el_type)).collect();
+                let bound = if let Some(list_type @ Type::List(_, bound)) = reqd_ty {
+                    if bound.get() <= nodes.len() {
+                        return Err(Error::TypeValueMismatch(list_type.clone())).with_span(span);
+                    }
                     *bound
                 } else {
                     NonZeroPow2Usize::next(elements.len().saturating_add(1))
                 };
 
+                // FIXME: Constructing pairs should never fail because when Simfony is translated to
+                // Simplicity the input type is variable. However, the fact that pairs always unify
+                // is hard to prove at the moment, while Simfony lacks a type system.
                 let partition = Partition::from_slice(&nodes, bound.get() / 2);
-                let process = |block: &[ProgNode]| -> ProgNode {
-                    if block.is_empty() {
-                        ProgNode::_false()
-                    } else {
-                        let tree = BTreeSlice::from_slice(block);
-                        let array = tree.fold(|a, b| ProgNode::pair(&a, &b).unwrap());
-                        ProgNode::injr(&array)
-                    }
-                };
+                let process =
+                    |block: &[Result<ProgNode, RichError>]| -> Result<ProgNode, RichError> {
+                        if block.is_empty() {
+                            Ok(ProgNode::_false())
+                        } else {
+                            let tree = BTreeSlice::from_slice(block);
+                            let array = tree.fold(|res_a, res_b| {
+                                res_a.and_then(|a| {
+                                    res_b.and_then(|b| ProgNode::pair(&a, &b).with_span(span))
+                                })
+                            })?;
+                            Ok(ProgNode::injr(&array))
+                        }
+                    };
 
-                partition.fold(process, |a, b| ProgNode::pair(&a, &b).unwrap())
+                partition.fold(process, |res_a, res_b| {
+                    res_a.and_then(|a| res_b.and_then(|b| ProgNode::pair(&a, &b).with_span(span)))
+                })?
             }
         };
         if let Some(reqd_ty) = reqd_ty {
