@@ -179,6 +179,26 @@ pub trait ProgExt: CoreConstructible + Sized {
     fn pair_unit(&self) -> Self {
         Self::pair(self, &Self::unit()).unwrap() // pairing with unit always typechecks
     }
+
+    /// `assertl (take s) cmr` always type checks.
+    fn assertl_take(&self, cmr: Cmr) -> Self {
+        Self::assertl(&Self::take(self), cmr).unwrap()
+    }
+
+    /// `assertl (drop s) cmr` always type checks.
+    fn assertl_drop(&self, cmr: Cmr) -> Self {
+        Self::assertl(&Self::drop_(self), cmr).unwrap()
+    }
+
+    /// `assertr cmr (drop s)` always type checks.
+    fn assertr_take(cmr: Cmr, right: &Self) -> Self {
+        Self::assertr(cmr, &Self::take(right)).unwrap()
+    }
+
+    /// `assertr cmr (take s)` always type checks.
+    fn assertr_drop(cmr: Cmr, right: &Self) -> Self {
+        Self::assertr(cmr, &Self::drop_(right)).unwrap()
+    }
 }
 
 /// Builder of expressions that contain
