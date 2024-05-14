@@ -85,10 +85,7 @@ impl FuncCall {
                 let b = self.args[0].eval(scope, None)?;
                 let left_and_unit = ProgNode::pair_unit(&b);
                 let fail_cmr = Cmr::fail(FailEntropy::ZERO);
-                let take_iden = ProgNode::take(&ProgNode::iden());
-                // FIXME: Assertions never fail to unify
-                // Fix upstream
-                let get_inner = ProgNode::assertl(&take_iden, fail_cmr).unwrap();
+                let get_inner = ProgNode::assertl_take(&ProgNode::iden(), fail_cmr);
                 ProgNode::comp(&left_and_unit, &get_inner).with_span(self.span)
             }
             FuncType::UnwrapRight | FuncType::Unwrap => {
@@ -96,10 +93,7 @@ impl FuncCall {
                 let c = self.args[0].eval(scope, None)?;
                 let right_and_unit = ProgNode::pair_unit(&c);
                 let fail_cmr = Cmr::fail(FailEntropy::ZERO);
-                let take_iden = ProgNode::take(&ProgNode::iden());
-                // FIXME: Assertions never fail to unify
-                // Fix upstream
-                let get_inner = ProgNode::assertr(fail_cmr, &take_iden).unwrap();
+                let get_inner = ProgNode::assertr_take(fail_cmr, &ProgNode::iden());
                 ProgNode::comp(&right_and_unit, &get_inner).with_span(self.span)
             }
         }
