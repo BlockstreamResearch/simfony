@@ -45,7 +45,7 @@ pub fn _compile(file: &Path) -> Result<Arc<Node<Named<Commit<Elements>>>>, Strin
         .with_file(file.clone())?;
 
     let mut scope = GlobalScope::new();
-    let simplicity_named_commit = simfony_program.eval(&mut scope);
+    let simplicity_named_commit = simfony_program.eval(&mut scope).with_file(file)?;
     let simplicity_redeem = simplicity_named_commit
         .finalize_types_main()
         .expect("Type check error");

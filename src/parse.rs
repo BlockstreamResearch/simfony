@@ -260,7 +260,7 @@ pub struct FuncCall {
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum FuncType {
     /// A jet name.
-    Jet(Arc<str>),
+    Jet(JetName),
     /// Left unwrap function
     UnwrapLeft,
     /// Right unwrap function
@@ -269,6 +269,23 @@ pub enum FuncType {
     Unwrap,
     /// A builtin function name.
     BuiltIn(Arc<str>),
+}
+
+/// String that is a jet name.
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct JetName(Arc<str>);
+
+impl JetName {
+    /// Access the inner jet name.
+    pub fn as_inner(&self) -> &Arc<str> {
+        &self.0
+    }
+}
+
+impl fmt::Display for JetName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
 }
 
 /// An expression is something that returns a value.
@@ -683,18 +700,22 @@ impl UIntType {
     }
 
     /// Parse a decimal string for the type.
-    pub fn parse_decimal(&self, decimal: &UnsignedDecimal) -> Arc<Value> {
-        match self {
-            UIntType::U1 => Value::u1(decimal.as_inner().parse::<u8>().unwrap()),
-            UIntType::U2 => Value::u2(decimal.as_inner().parse::<u8>().unwrap()),
-            UIntType::U4 => Value::u4(decimal.as_inner().parse::<u8>().unwrap()),
-            UIntType::U8 => Value::u8(decimal.as_inner().parse::<u8>().unwrap()),
-            UIntType::U16 => Value::u16(decimal.as_inner().parse::<u16>().unwrap()),
-            UIntType::U32 => Value::u32(decimal.as_inner().parse::<u32>().unwrap()),
-            UIntType::U64 => Value::u64(decimal.as_inner().parse::<u64>().unwrap()),
-            UIntType::U128 => panic!("Use bit or hex strings for u128"),
-            UIntType::U256 => panic!("Use bit or hex strings for u256"),
+    pub fn parse_decimal(&self, decimal: &UnsignedDecimal) -> Result<Arc<Value>, Error> {
+        if let UIntType::U128 | UIntType::U256 = self {
+            return Err(Error::InvalidDecimal(*self));
         }
+
+        match self {
+            UIntType::U1 => decimal.as_inner().parse::<u8>().map(Value::u1),
+            UIntType::U2 => decimal.as_inner().parse::<u8>().map(Value::u2),
+            UIntType::U4 => decimal.as_inner().parse::<u8>().map(Value::u4),
+            UIntType::U8 => decimal.as_inner().parse::<u8>().map(Value::u8),
+            UIntType::U16 => decimal.as_inner().parse::<u16>().map(Value::u16),
+            UIntType::U32 => decimal.as_inner().parse::<u32>().map(Value::u32),
+            UIntType::U64 => decimal.as_inner().parse::<u64>().map(Value::u64),
+            _ => unreachable!("Covered by outer match"),
+        }
+        .map_err(Error::from)
     }
 
     /// Convert the type into a Simplicity type.
@@ -856,18 +877,24 @@ impl PestParse for FuncCall {
 
 impl PestParse for FuncType {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        let ret = match pair.as_rule() {
+        match pair.as_rule() {
             Rule::jet_expr => {
                 let jet_pair = pair.into_inner().next().unwrap();
-                let jet_name = jet_pair.as_str().strip_prefix("jet_").unwrap();
-                FuncType::Jet(Arc::from(jet_name))
+                JetName::parse(jet_pair).map(FuncType::Jet)
             }
-            Rule::unwrap_left_expr => FuncType::UnwrapLeft,
-            Rule::unwrap_right_expr => FuncType::UnwrapRight,
-            Rule::unwrap_expr => FuncType::Unwrap,
+            Rule::unwrap_left_expr => Ok(FuncType::UnwrapLeft),
+            Rule::unwrap_right_expr => Ok(FuncType::UnwrapRight),
+            Rule::unwrap_expr => Ok(FuncType::Unwrap),
             _ => unreachable!("Corrupt grammar"),
-        };
-        Ok(ret)
+        }
+    }
+}
+
+impl PestParse for JetName {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
+        assert!(matches!(pair.as_rule(), Rule::jet));
+        let jet_name = pair.as_str().strip_prefix("jet_").unwrap();
+        Ok(Self(Arc::from(jet_name)))
     }
 }
 

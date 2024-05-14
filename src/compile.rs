@@ -7,8 +7,9 @@ use simplicity::{jet::Elements, Cmr, FailEntropy};
 
 use crate::array::{BTreeSlice, Partition};
 use crate::num::NonZeroPow2Usize;
-use crate::parse::{Pattern, SingleExpressionInner, UIntType};
+use crate::parse::{Pattern, SingleExpressionInner, Span, UIntType};
 use crate::{
+    error::{Error, RichError, WithSpan},
     named::{ConstructExt, ProgExt},
     parse::{Expression, ExpressionInner, FuncCall, FuncType, Program, Statement, Type},
     scope::GlobalScope,
@@ -20,25 +21,25 @@ fn eval_blk(
     scope: &mut GlobalScope,
     index: usize,
     last_expr: Option<&Expression>,
-) -> ProgNode {
+) -> Result<ProgNode, RichError> {
     if index >= stmts.len() {
         return match last_expr {
             Some(expr) => expr.eval(scope, None),
-            None => ProgNode::unit(),
+            None => Ok(ProgNode::unit()),
         };
     }
     match &stmts[index] {
         Statement::Assignment(assignment) => {
-            let expr = assignment.expression.eval(scope, assignment.ty.as_ref());
+            let expr = assignment.expression.eval(scope, assignment.ty.as_ref())?;
             scope.insert(assignment.pattern.clone());
             let left = ProgNode::pair_iden(&expr);
-            let right = eval_blk(stmts, scope, index + 1, last_expr);
-            ProgNode::comp(&left, &right).unwrap()
+            let right = eval_blk(stmts, scope, index + 1, last_expr)?;
+            ProgNode::comp(&left, &right).with_span(assignment.span)
         }
         Statement::FuncCall(func_call) => {
-            let left = func_call.eval(scope, None);
-            let right = eval_blk(stmts, scope, index + 1, last_expr);
-            combine_seq(&left, &right).unwrap()
+            let left = func_call.eval(scope, None)?;
+            let right = eval_blk(stmts, scope, index + 1, last_expr)?;
+            combine_seq(&left, &right).with_span(func_call.span)
         }
     }
 }
@@ -50,56 +51,67 @@ fn combine_seq(a: &ProgNode, b: &ProgNode) -> Result<ProgNode, simplicity::types
 }
 
 impl Program {
-    pub fn eval(&self, scope: &mut GlobalScope) -> ProgNode {
+    pub fn eval(&self, scope: &mut GlobalScope) -> Result<ProgNode, RichError> {
         eval_blk(&self.statements, scope, 0, None)
     }
 }
 
 impl FuncCall {
-    pub fn eval(&self, scope: &mut GlobalScope, _reqd_ty: Option<&Type>) -> ProgNode {
+    pub fn eval(
+        &self,
+        scope: &mut GlobalScope,
+        _reqd_ty: Option<&Type>,
+    ) -> Result<ProgNode, RichError> {
         match &self.func_type {
-            FuncType::Jet(jet_name) => {
-                let args = self
-                    .args
-                    .iter()
-                    .map(|e| e.eval(scope, None)) // TODO: Pass the jet source type here.
-                    .reduce(|a, b| ProgNode::pair(&a, &b).unwrap());
-                let jet = Elements::from_str(jet_name).expect("Invalid jet name");
-                let jet = ProgNode::jet(jet);
-                match args {
-                    Some(param) => {
-                        // println!("param: {}", param.arrow());
-                        // println!("jet: {}", jet.arrow());
-                        ProgNode::comp(&param, &jet).unwrap()
-                    }
-                    None => ProgNode::unit_comp(&jet),
-                }
+            FuncType::Jet(name) => {
+                let args = match self.args.is_empty() {
+                    true => SingleExpressionInner::Unit,
+                    false => SingleExpressionInner::Array(self.args.clone()),
+                };
+                // TODO: Pass the jet source type here.
+                // FIXME: Constructing pairs should never fail because when Simfony is translated to
+                // Simplicity the input type is variable. However, the fact that pairs always unify
+                // is hard to prove at the moment, while Simfony lacks a type system.
+                let args_expr = args.eval(scope, None, self.span)?;
+                let jet = Elements::from_str(name.as_inner())
+                    .map_err(|_| Error::JetDoesNotExist(name.as_inner().clone()))
+                    .with_span(self.span)?;
+                let jet_expr = ProgNode::jet(jet);
+                ProgNode::comp(&args_expr, &jet_expr).with_span(self.span)
             }
             FuncType::BuiltIn(..) => unimplemented!("Builtins are not supported yet"),
             FuncType::UnwrapLeft => {
                 debug_assert!(self.args.len() == 1);
-                let b = self.args[0].eval(scope, None);
+                let b = self.args[0].eval(scope, None)?;
                 let left_and_unit = ProgNode::pair_unit(&b);
                 let fail_cmr = Cmr::fail(FailEntropy::ZERO);
                 let take_iden = ProgNode::take(&ProgNode::iden());
+                // FIXME: Assertions never fail to unify
+                // Fix upstream
                 let get_inner = ProgNode::assertl(&take_iden, fail_cmr).unwrap();
-                ProgNode::comp(&left_and_unit, &get_inner).unwrap()
+                ProgNode::comp(&left_and_unit, &get_inner).with_span(self.span)
             }
             FuncType::UnwrapRight | FuncType::Unwrap => {
                 debug_assert!(self.args.len() == 1);
-                let c = self.args[0].eval(scope, None);
+                let c = self.args[0].eval(scope, None)?;
                 let right_and_unit = ProgNode::pair_unit(&c);
                 let fail_cmr = Cmr::fail(FailEntropy::ZERO);
                 let take_iden = ProgNode::take(&ProgNode::iden());
+                // FIXME: Assertions never fail to unify
+                // Fix upstream
                 let get_inner = ProgNode::assertr(fail_cmr, &take_iden).unwrap();
-                ProgNode::comp(&right_and_unit, &get_inner).unwrap()
+                ProgNode::comp(&right_and_unit, &get_inner).with_span(self.span)
             }
         }
     }
 }
 
 impl Expression {
-    pub fn eval(&self, scope: &mut GlobalScope, reqd_ty: Option<&Type>) -> ProgNode {
+    pub fn eval(
+        &self,
+        scope: &mut GlobalScope,
+        reqd_ty: Option<&Type>,
+    ) -> Result<ProgNode, RichError> {
         match &self.inner {
             ExpressionInner::BlockExpression(stmts, expr) => {
                 scope.push_scope();
@@ -107,37 +119,46 @@ impl Expression {
                 scope.pop_scope();
                 res
             }
-            ExpressionInner::SingleExpression(e) => e.inner.eval(scope, reqd_ty),
+            ExpressionInner::SingleExpression(e) => e.inner.eval(scope, reqd_ty, self.span),
         }
     }
 }
 
 impl SingleExpressionInner {
-    pub fn eval(&self, scope: &mut GlobalScope, reqd_ty: Option<&Type>) -> ProgNode {
-        let res = match self {
+    pub fn eval(
+        &self,
+        scope: &mut GlobalScope,
+        reqd_ty: Option<&Type>,
+        span: Span,
+    ) -> Result<ProgNode, RichError> {
+        let expr = match self {
             SingleExpressionInner::Unit => ProgNode::unit(),
             SingleExpressionInner::Left(l) => {
-                let l = l.eval(scope, None);
+                let l = l.eval(scope, None)?;
                 ProgNode::injl(&l)
             }
             SingleExpressionInner::None => ProgNode::_false(),
             SingleExpressionInner::Right(r) | SingleExpressionInner::Some(r) => {
-                let r = r.eval(scope, None);
+                let r = r.eval(scope, None)?;
                 ProgNode::injr(&r)
             }
             SingleExpressionInner::False => ProgNode::_false(),
             SingleExpressionInner::True => ProgNode::_true(),
             SingleExpressionInner::Product(l, r) => {
-                let l = l.eval(scope, None);
-                let r = r.eval(scope, None);
-                ProgNode::pair(&l, &r).unwrap()
+                let l = l.eval(scope, None)?;
+                let r = r.eval(scope, None)?;
+                // FIXME: Constructing pairs should never fail because when Simfony is translated to
+                // Simplicity the input type is variable. However, the fact that pairs always unify
+                // is hard to prove at the moment, while Simfony lacks a type system.
+                ProgNode::pair(&l, &r).with_span(span)?
             }
             SingleExpressionInner::UnsignedInteger(decimal) => {
+                let reqd_ty = reqd_ty.cloned().unwrap_or(Type::UInt(UIntType::U32));
                 let ty = reqd_ty
-                    .unwrap_or(&Type::UInt(UIntType::U32))
                     .to_uint()
-                    .expect("Not an integer type");
-                let value = ty.parse_decimal(decimal);
+                    .ok_or(Error::TypeValueMismatch(reqd_ty))
+                    .with_span(span)?;
+                let value = ty.parse_decimal(decimal).with_span(span)?;
                 ProgNode::unit_comp(&ProgNode::const_word(value))
             }
             SingleExpressionInner::BitString(bits) => {
@@ -152,9 +173,12 @@ impl SingleExpressionInner {
                 scope.insert_witness(name.clone());
                 ProgNode::witness(name.as_inner().clone())
             }
-            SingleExpressionInner::Variable(identifier) => scope.get(identifier),
-            SingleExpressionInner::FuncCall(call) => call.eval(scope, reqd_ty),
-            SingleExpressionInner::Expression(expression) => expression.eval(scope, reqd_ty),
+            SingleExpressionInner::Variable(identifier) => scope
+                .get(identifier)
+                .ok_or(Error::UndefinedVariable(identifier.clone()))
+                .with_span(span)?,
+            SingleExpressionInner::FuncCall(call) => call.eval(scope, reqd_ty)?,
+            SingleExpressionInner::Expression(expression) => expression.eval(scope, reqd_ty)?,
             SingleExpressionInner::Match {
                 scrutinee,
                 left,
@@ -168,7 +192,7 @@ impl SingleExpressionInner {
                         .map(Pattern::Identifier)
                         .unwrap_or(Pattern::Ignore),
                 );
-                let l_compiled = left.expression.eval(&mut l_scope, reqd_ty);
+                let l_compiled = left.expression.eval(&mut l_scope, reqd_ty)?;
 
                 let mut r_scope = scope.clone();
                 r_scope.insert(
@@ -179,13 +203,13 @@ impl SingleExpressionInner {
                         .map(Pattern::Identifier)
                         .unwrap_or(Pattern::Ignore),
                 );
-                let r_compiled = right.expression.eval(&mut r_scope, reqd_ty);
+                let r_compiled = right.expression.eval(&mut r_scope, reqd_ty)?;
 
                 // TODO: Enforce target type A + B for m_expr
-                let scrutinized_input = scrutinee.eval(scope, None);
+                let scrutinized_input = scrutinee.eval(scope, None)?;
                 let input = ProgNode::pair_iden(&scrutinized_input);
-                let output = ProgNode::case(&l_compiled, &r_compiled).unwrap();
-                ProgNode::comp(&input, &output).unwrap()
+                let output = ProgNode::case(&l_compiled, &r_compiled).with_span(span)?;
+                ProgNode::comp(&input, &output).with_span(span)?
             }
             SingleExpressionInner::Array(elements) => {
                 let el_type = if let Some(Type::Array(ty, _)) = reqd_ty {
@@ -193,9 +217,15 @@ impl SingleExpressionInner {
                 } else {
                     None
                 };
-                let nodes: Vec<_> = elements.iter().map(|e| e.eval(scope, el_type)).collect();
+                // FIXME: Constructing pairs should never fail because when Simfony is translated to
+                // Simplicity the input type is variable. However, the fact that pairs always unify
+                // is hard to prove at the moment, while Simfony lacks a type system.
+                let nodes: Vec<Result<ProgNode, RichError>> =
+                    elements.iter().map(|e| e.eval(scope, el_type)).collect();
                 let tree = BTreeSlice::from_slice(&nodes);
-                tree.fold(|a, b| ProgNode::pair(&a, &b).unwrap())
+                tree.fold(|res_a, res_b| {
+                    res_a.and_then(|a| res_b.and_then(|b| ProgNode::pair(&a, &b).with_span(span)))
+                })?
             }
             SingleExpressionInner::List(elements) => {
                 let el_type = if let Some(Type::List(ty, _)) = reqd_ty {
@@ -203,36 +233,48 @@ impl SingleExpressionInner {
                 } else {
                     None
                 };
-                let nodes: Vec<_> = elements.iter().map(|e| e.eval(scope, el_type)).collect();
-                let bound = if let Some(Type::List(_, bound)) = reqd_ty {
+                let nodes: Vec<Result<ProgNode, RichError>> =
+                    elements.iter().map(|e| e.eval(scope, el_type)).collect();
+                let bound = if let Some(list_type @ Type::List(_, bound)) = reqd_ty {
+                    if bound.get() <= nodes.len() {
+                        return Err(Error::TypeValueMismatch(list_type.clone())).with_span(span);
+                    }
                     *bound
                 } else {
                     NonZeroPow2Usize::next(elements.len().saturating_add(1))
                 };
 
+                // FIXME: Constructing pairs should never fail because when Simfony is translated to
+                // Simplicity the input type is variable. However, the fact that pairs always unify
+                // is hard to prove at the moment, while Simfony lacks a type system.
                 let partition = Partition::from_slice(&nodes, bound.get() / 2);
-                let process = |block: &[ProgNode]| -> ProgNode {
-                    if block.is_empty() {
-                        ProgNode::_false()
-                    } else {
-                        let tree = BTreeSlice::from_slice(block);
-                        let array = tree.fold(|a, b| ProgNode::pair(&a, &b).unwrap());
-                        ProgNode::injr(&array)
-                    }
-                };
+                let process =
+                    |block: &[Result<ProgNode, RichError>]| -> Result<ProgNode, RichError> {
+                        if block.is_empty() {
+                            Ok(ProgNode::_false())
+                        } else {
+                            let tree = BTreeSlice::from_slice(block);
+                            let array = tree.fold(|res_a, res_b| {
+                                res_a.and_then(|a| {
+                                    res_b.and_then(|b| ProgNode::pair(&a, &b).with_span(span))
+                                })
+                            })?;
+                            Ok(ProgNode::injr(&array))
+                        }
+                    };
 
-                partition.fold(process, |a, b| ProgNode::pair(&a, &b).unwrap())
+                partition.fold(process, |res_a, res_b| {
+                    res_a.and_then(|a| res_b.and_then(|b| ProgNode::pair(&a, &b).with_span(span)))
+                })?
             }
         };
         if let Some(reqd_ty) = reqd_ty {
-            res.arrow()
+            expr.arrow()
                 .target
-                .unify(
-                    &reqd_ty.to_simplicity(),
-                    "Type mismatch for user provided type",
-                )
-                .unwrap();
+                .unify(&reqd_ty.to_simplicity(), "")
+                .map_err(|_| Error::TypeValueMismatch(reqd_ty.clone()))
+                .with_span(span)?;
         }
-        res
+        Ok(expr)
     }
 }
