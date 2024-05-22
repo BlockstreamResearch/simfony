@@ -3,7 +3,6 @@ use crate::named::{PairBuilder, SelectorBuilder};
 use crate::parse::{Identifier, Pattern, WitnessName};
 use crate::ProgNode;
 use miniscript::iter::{Tree, TreeLike};
-use simplicity::node::CoreConstructible as _;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -54,10 +53,16 @@ impl GlobalScope {
         self.witnesses.last_mut().unwrap().push(key);
     }
 
-    /// Get a Simplicity expression that returns the value of the given `identifier`.
-    ///
-    /// The expression is a sequence of `take` and `drop` followed by `iden`,
-    /// which extracts the seeked value from the environment.
+    /// Get a pattern that matches the input value.
+    fn to_pattern(&self) -> Pattern {
+        let mut it = self.variables.iter().flat_map(|scope| scope.iter());
+        let first = it.next().unwrap();
+        it.cloned()
+            .fold(first.clone(), |acc, next| Pattern::product(next, acc))
+    }
+
+    /// Compute a Simplicity expression that takes the input value
+    /// and that produces as output a value that matches the `target` pattern.
     ///
     /// ## Example
     ///
@@ -83,27 +88,8 @@ impl GlobalScope {
     /// ```
     ///
     /// To extract `a`, we need the expression `drop drop take iden`.
-    ///
-    /// ## Error
-    ///
-    /// The `identifier` is undefined.
-    pub fn get(&self, identifier: &Identifier) -> Option<ProgNode> {
-        self.variables
-            .iter()
-            .rev() // Innermost scope has precedence
-            .flat_map(|scope| scope.iter().rev()) // Last assignment has precedence
-            .enumerate()
-            .find_map(|(idx, pattern)| {
-                pattern.get_program(identifier).map(|mut expr| {
-                    if idx + 1 < self.variables.iter().map(|scope| scope.len()).sum() {
-                        expr = ProgNode::take(&expr);
-                    }
-                    for _ in 0..idx {
-                        expr = ProgNode::drop_(&expr);
-                    }
-                    expr
-                })
-            })
+    pub fn get(&self, target: &BasePattern) -> Option<ProgNode> {
+        BasePattern::from(&self.to_pattern()).translate(target)
     }
 }
 
@@ -386,15 +372,6 @@ impl From<&Pattern> for BasePattern {
         }
 
         to_base.remove(&binary).unwrap()
-    }
-}
-
-impl Pattern {
-    pub fn get_program(&self, identifier: &Identifier) -> Option<ProgNode> {
-        BasePattern::from(self)
-            .get(identifier)
-            .map(SelectorBuilder::h)
-            .map(PairBuilder::get)
     }
 }
 
