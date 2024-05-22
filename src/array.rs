@@ -413,6 +413,7 @@ impl<T: TreeLike> TreeLike for DirectedTree<T> {
 mod tests {
     use super::*;
     use crate::parse::{Identifier, Pattern};
+    use crate::scope::BasePattern;
 
     #[test]
     #[rustfmt::skip]
@@ -502,31 +503,35 @@ mod tests {
         let b = Pattern::Identifier(Identifier::from_str_unchecked("b"));
         let c = Pattern::Identifier(Identifier::from_str_unchecked("c"));
         let d = Pattern::Identifier(Identifier::from_str_unchecked("d"));
+        let a_ = BasePattern::Identifier(Identifier::from_str_unchecked("a"));
+        let b_ = BasePattern::Identifier(Identifier::from_str_unchecked("b"));
+        let c_ = BasePattern::Identifier(Identifier::from_str_unchecked("c"));
+        let d_ = BasePattern::Identifier(Identifier::from_str_unchecked("d"));
 
         let pattern_string = [
             // a = a
-            (a.clone(), a.clone()),
+            (a.clone(), a_.clone()),
             // (a, b) = (a, b)
             (
                 Pattern::product(a.clone(), b.clone()),
-                Pattern::product(a.clone(), b.clone()),
+                BasePattern::product(a_.clone(), b_.clone()),
             ),
             // [a] = a
-            (Pattern::array([a.clone()]).unwrap(), a.clone()),
+            (Pattern::array([a.clone()]).unwrap(), a_.clone()),
             // [[a]] = a
             (
                 Pattern::array([Pattern::array([a.clone()]).unwrap()]).unwrap(),
-                a.clone(),
+                a_.clone(),
             ),
             // [a b] = (a, b)
             (
                 Pattern::array([a.clone(), b.clone()]).unwrap(),
-                Pattern::product(a.clone(), b.clone()),
+                BasePattern::product(a_.clone(), b_.clone()),
             ),
             // [a b c] = ((a, b), c)
             (
                 Pattern::array([a.clone(), b.clone(), c.clone()]).unwrap(),
-                Pattern::product(Pattern::product(a.clone(), b.clone()), c.clone()),
+                BasePattern::product(BasePattern::product(a_.clone(), b_.clone()), c_.clone()),
             ),
             // [[a, b], [c, d]] = ((a, b), (c, d))
             (
@@ -535,12 +540,12 @@ mod tests {
                     Pattern::array([c.clone(), d.clone()]).unwrap(),
                 ])
                 .unwrap(),
-                Pattern::product(Pattern::product(a, b), Pattern::product(c, d)),
+                BasePattern::product(BasePattern::product(a_, b_), BasePattern::product(c_, d_)),
             ),
         ];
 
         for (pattern, expected_base_pattern) in pattern_string {
-            let base_pattern = pattern.to_base();
+            let base_pattern = BasePattern::from(&pattern);
             assert_eq!(expected_base_pattern, base_pattern);
         }
     }

@@ -1,8 +1,9 @@
-use crate::array::{DirectedTree, Direction};
+use crate::array::{BinaryTree, DirectedTree, Direction};
 use crate::parse::{Identifier, Pattern, WitnessName};
 use crate::ProgNode;
 use miniscript::iter::{Tree, TreeLike};
 use simplicity::node::CoreConstructible as _;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Tracker of variable bindings and witness names.
@@ -157,6 +158,36 @@ impl BasePattern {
     }
 }
 
+impl From<&Pattern> for BasePattern {
+    fn from(pattern: &Pattern) -> Self {
+        let binary = BinaryTree::from_tree(pattern);
+        let mut to_base = HashMap::new();
+
+        for data in binary.clone().post_order_iter() {
+            match data.node.as_node() {
+                Tree::Nullary => {
+                    let pattern = match &data.node.as_normal().unwrap() {
+                        Pattern::Identifier(id) => BasePattern::Identifier(id.clone()),
+                        Pattern::Ignore => BasePattern::Ignore,
+                        Pattern::Product(..) | Pattern::Array(..) => unreachable!("Nullary node"),
+                    };
+                    to_base.insert(data.node, pattern);
+                }
+                Tree::Binary(l, r) => {
+                    let l_converted = to_base.get(&l).unwrap().clone();
+                    let r_converted = to_base.get(&r).unwrap().clone();
+                    let pattern = BasePattern::product(l_converted, r_converted);
+                    to_base.insert(data.node, pattern);
+                }
+                Tree::Unary(..) => unreachable!("There are no unary patterns"),
+                Tree::Nary(..) => unreachable!("Binary trees have no arrays"),
+            }
+        }
+
+        to_base.remove(&binary).unwrap()
+    }
+}
+
 impl Pattern {
     pub fn get_identifier(&self) -> Option<&Identifier> {
         match self {
@@ -166,18 +197,18 @@ impl Pattern {
     }
 
     pub fn get_program(&self, identifier: &Identifier) -> Option<ProgNode> {
-        let base_pattern = self.to_base();
+        let base_pattern = BasePattern::from(self);
         let directed_tree = DirectedTree::from(&base_pattern);
-        let equals_identifier = |pattern: &Pattern| {
+        let equals_identifier = |pattern: &BasePattern| {
             pattern
-                .get_identifier()
+                .as_identifier()
                 .map(|i| i == identifier)
                 .unwrap_or(false)
         };
-        let (_, mut path) = directed_tree.find(equals_identifier)?;
+        let path = directed_tree.find(equals_identifier)?.1;
 
         let mut output = ProgNode::iden();
-        while let Some(direction) = path.pop() {
+        for direction in path.iter().rev() {
             match direction {
                 Direction::Left => output = ProgNode::take(&output),
                 Direction::Right => output = ProgNode::drop_(&output),
