@@ -1,4 +1,5 @@
-use crate::array::{BinaryTree, DirectedTree, Direction};
+use crate::array::BinaryTree;
+use crate::named::{PairBuilder, SelectorBuilder};
 use crate::parse::{Identifier, Pattern, WitnessName};
 use crate::ProgNode;
 use miniscript::iter::{Tree, TreeLike};
@@ -156,6 +157,42 @@ impl BasePattern {
             _ => None,
         }
     }
+
+    /// Check if the `identifier` is contained inside the pattern.
+    pub fn contains(&self, identifier: &Identifier) -> bool {
+        self.pre_order_iter().any(|sub_pattern| {
+            sub_pattern
+                .as_identifier()
+                .map(|sub_id| sub_id == identifier)
+                .unwrap_or(false)
+        })
+    }
+
+    /// Compute a Simplicity expression that returns the value of the given `identifier`.
+    /// The expression takes as input a value that matches the `self` pattern.
+    ///
+    /// The expression is a sequence of `take` and `drop` followed by `iden`.
+    fn get(mut self: &Self, identifier: &Identifier) -> Option<SelectorBuilder<ProgNode>> {
+        let mut selector = SelectorBuilder::default();
+        loop {
+            // Termination: self becomes strictly smaller in each iteration
+            match self {
+                BasePattern::Identifier(self_id) if self_id == identifier => return Some(selector),
+                BasePattern::Identifier(_) | BasePattern::Ignore => return None,
+                BasePattern::Product(self_left, self_right) => {
+                    if self_left.contains(identifier) {
+                        selector = selector.o();
+                        self = self_left;
+                    } else if self_right.contains(identifier) {
+                        selector = selector.i();
+                        self = self_right;
+                    } else {
+                        return None;
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl From<&Pattern> for BasePattern {
@@ -189,34 +226,10 @@ impl From<&Pattern> for BasePattern {
 }
 
 impl Pattern {
-    pub fn get_identifier(&self) -> Option<&Identifier> {
-        match self {
-            Pattern::Identifier(i) => Some(i),
-            _ => None,
-        }
-    }
-
     pub fn get_program(&self, identifier: &Identifier) -> Option<ProgNode> {
-        let base_pattern = BasePattern::from(self);
-        let directed_tree = DirectedTree::from(&base_pattern);
-        let equals_identifier = |pattern: &BasePattern| {
-            pattern
-                .as_identifier()
-                .map(|i| i == identifier)
-                .unwrap_or(false)
-        };
-        let path = directed_tree.find(equals_identifier)?.1;
-
-        let mut output = ProgNode::iden();
-        for direction in path.iter().rev() {
-            match direction {
-                Direction::Left => output = ProgNode::take(&output),
-                Direction::Right => output = ProgNode::drop_(&output),
-                Direction::Down => unreachable!("There are no unary patterns"),
-                Direction::Index(..) => unreachable!("Base patterns exclude arrays"),
-            }
-        }
-
-        Some(output)
+        BasePattern::from(self)
+            .get(identifier)
+            .map(SelectorBuilder::h)
+            .map(PairBuilder::get)
     }
 }
