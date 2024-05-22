@@ -1,7 +1,9 @@
 use crate::array::{DirectedTree, Direction};
 use crate::parse::{Identifier, Pattern, WitnessName};
 use crate::ProgNode;
+use miniscript::iter::{Tree, TreeLike};
 use simplicity::node::CoreConstructible as _;
+use std::sync::Arc;
 
 /// Tracker of variable bindings and witness names.
 ///
@@ -115,6 +117,43 @@ impl GlobalScope {
                     expr
                 })
             })
+    }
+}
+
+/// Basic structure of a Simfony value for pattern matching.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum BasePattern {
+    /// Ignore: Match any value.
+    ///
+    /// Used for matching values that are not assigned to a variable.
+    Ignore,
+    /// Variable identifier: Match any value and bind it to an identifier.
+    Identifier(Identifier),
+    /// Product: Match product value component-wise.
+    Product(Arc<Self>, Arc<Self>),
+}
+
+impl<'a> TreeLike for &'a BasePattern {
+    fn as_node(&self) -> Tree<Self> {
+        match self {
+            BasePattern::Ignore | BasePattern::Identifier(_) => Tree::Nullary,
+            BasePattern::Product(l, r) => Tree::Binary(l, r),
+        }
+    }
+}
+
+impl BasePattern {
+    /// Construct a product of patterns `left` and `right`.
+    pub fn product(left: Self, right: Self) -> Self {
+        Self::Product(Arc::new(left), Arc::new(right))
+    }
+
+    /// Access the identifier inside an identifier pattern.
+    pub fn as_identifier(&self) -> Option<&Identifier> {
+        match self {
+            Self::Identifier(identifier) => Some(identifier),
+            _ => None,
+        }
     }
 }
 
