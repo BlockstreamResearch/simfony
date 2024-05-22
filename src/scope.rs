@@ -412,3 +412,34 @@ impl Pattern {
             .map(PairBuilder::get)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn translate_pattern() {
+        let a = BasePattern::Identifier(Identifier::from_str_unchecked("a"));
+        let b = BasePattern::Identifier(Identifier::from_str_unchecked("b"));
+        let c = BasePattern::Identifier(Identifier::from_str_unchecked("c"));
+        let env = BasePattern::product(BasePattern::product(a.clone(), b.clone()), c.clone());
+
+        let target_expr = [
+            (a.clone(), "OOH"),
+            (b.clone(), "OIH"),
+            (c.clone(), "IH"),
+            (BasePattern::product(a.clone(), b.clone()), "OH"),
+            (BasePattern::product(a.clone(), c.clone()), "OOH & IH"),
+            (BasePattern::product(b.clone(), a.clone()), "take (IH & OH)"),
+            (BasePattern::product(b.clone(), c.clone()), "OIH & IH"),
+            (BasePattern::product(c.clone(), a.clone()), "IH & OOH"),
+            (BasePattern::product(c.clone(), b.clone()), "IH & OIH"),
+            (env.clone(), "iden"),
+        ];
+
+        for (target, expected_expr) in target_expr {
+            let expr = env.translate(&target).unwrap();
+            assert_eq!(expected_expr, &expr.display_expr().to_string());
+        }
+    }
+}
