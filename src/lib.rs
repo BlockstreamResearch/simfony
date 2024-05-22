@@ -29,7 +29,7 @@ pub use simplicity::elements;
 use crate::{
     error::{RichError, WithFile},
     named::{NamedCommitNode, NamedExt},
-    parse::{PestParse, Program},
+    parse::{Pattern, PestParse, Program},
     scope::GlobalScope,
 };
 
@@ -44,7 +44,7 @@ pub fn _compile(file: &Path) -> Result<Arc<Node<Named<Commit<Elements>>>>, Strin
         .and_then(|mut pairs| Program::parse(pairs.next().unwrap()))
         .with_file(file.clone())?;
 
-    let mut scope = GlobalScope::new();
+    let mut scope = GlobalScope::new(Pattern::Ignore);
     let simplicity_named_commit = simfony_program.eval(&mut scope).with_file(file)?;
     let simplicity_redeem = simplicity_named_commit
         .finalize_types_main()

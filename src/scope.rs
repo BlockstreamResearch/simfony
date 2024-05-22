@@ -19,18 +19,12 @@ pub struct GlobalScope {
     witnesses: Vec<Vec<WitnessName>>,
 }
 
-impl Default for GlobalScope {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl GlobalScope {
-    /// Creates a new [`GlobalScope`].
-    pub fn new() -> Self {
+    /// Create a new [`GlobalScope`] for an `input` value that matches the pattern.
+    pub fn new(input: Pattern) -> Self {
         GlobalScope {
-            variables: vec![Vec::new()],
-            witnesses: vec![Vec::new()],
+            variables: vec![vec![input]],
+            witnesses: vec![vec![]],
         }
     }
 
@@ -65,13 +59,6 @@ impl GlobalScope {
     /// The expression is a sequence of `take` and `drop` followed by `iden`,
     /// which extracts the seeked value from the environment.
     ///
-    /// The environment starts as the unit value.
-    ///
-    /// Each let statement updates the environment to become
-    /// the product of the assigned value (left) and of the previous environment (right).
-    ///
-    /// (Block) expressions consume the environment and return their output.
-    ///
     /// ## Example
     ///
     /// ```
@@ -82,10 +69,6 @@ impl GlobalScope {
     ///     a  // here we seek the value of `a`
     /// };
     /// ```
-    ///
-    /// The stack of scopes looks like this:
-    ///
-    /// `[a] [b c]`
     ///
     /// The environment looks like this:
     ///
@@ -112,7 +95,9 @@ impl GlobalScope {
             .enumerate()
             .find_map(|(idx, pattern)| {
                 pattern.get_program(identifier).map(|mut expr| {
-                    expr = ProgNode::take(&expr);
+                    if idx + 1 < self.variables.iter().map(|scope| scope.len()).sum() {
+                        expr = ProgNode::take(&expr);
+                    }
                     for _ in 0..idx {
                         expr = ProgNode::drop_(&expr);
                     }
