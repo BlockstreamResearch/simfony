@@ -193,6 +193,38 @@ impl BasePattern {
             }
         }
     }
+
+    /// Check if `self` subsumes the `other` pattern.
+    ///
+    /// ## Subsumption
+    ///
+    /// - Ignore: `_` subsumes every pattern.
+    /// - Identifier: `a` subsumes `b` iff `a` = `b`
+    /// - Product: `(a1, a2)` subsumes `(b1, b2)` iff `a1` subsumes `b1` and `a2` subsumes `b2`.
+    ///
+    /// ## Matching
+    ///
+    /// If value `v` matches pattern `p` and pattern `p'` subsumes `p`,
+    /// then `v` matches `p'`.
+    ///
+    /// The subsuming pattern is more general than the subsumed pattern.
+    pub fn subsumes(&self, other: &Self) -> bool {
+        let mut check_subsumes = vec![(self, other)];
+
+        while let Some((a, b)) = check_subsumes.pop() {
+            match (a, b) {
+                (BasePattern::Ignore, _) => {}
+                (BasePattern::Identifier(a_id), BasePattern::Identifier(b_id)) if a_id == b_id => {}
+                (BasePattern::Product(a1, a2), BasePattern::Product(b1, b2)) => {
+                    check_subsumes.push((a2, b2));
+                    check_subsumes.push((a1, b1));
+                }
+                _ => return false,
+            }
+        }
+
+        true
+    }
 }
 
 impl From<&Pattern> for BasePattern {
