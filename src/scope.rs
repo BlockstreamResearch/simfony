@@ -6,14 +6,43 @@ use miniscript::iter::{Tree, TreeLike};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-/// Tracker of variable bindings and witness names.
+/// Each Simfony expression expects an _input value_.
+/// A Simfony expression is translated into a Simplicity expression
+/// that similarly expects an _input value_.
 ///
-/// Internally there is a stack of scopes.
-/// A new scope is pushed for each (nested) block expression.
+/// Simfony variable names are translated into Simplicity expressions
+/// that extract the seeked value from the _input value_.
 ///
-/// Bindings from higher scopes (in the stack) overwrite bindings from lower scopes.
+/// Each (nested) block expression introduces a new scope.
+/// Bindings from inner scopes overwrite bindings from outer scopes.
+/// Bindings live as long as their scope.
 #[derive(Debug, Clone)]
 pub struct GlobalScope {
+    /// For each scope, the set of assigned variables.
+    ///
+    /// A stack of scopes. Each scope is a stack of patterns.
+    /// New patterns are pushed onto the top _(current, innermost)_ scope.
+    ///
+    /// ## Input pattern
+    ///
+    /// The stack of scopes corresponds to an _input pattern_.
+    /// All valid input values match the input pattern.
+    ///
+    /// ## Example
+    ///
+    /// The stack `[[p1], [p2, p3]]` corresponds to a nested product pattern:
+    ///
+    /// ```text
+    ///    .
+    ///   / \
+    /// p3   .
+    ///     / \
+    ///   p2   p1
+    /// ```
+    ///
+    /// Inner scopes occur higher in the tree than outer scopes.
+    /// Later assignments occur higher in the tree than earlier assignments.
+    /// ```
     variables: Vec<Vec<Pattern>>,
 }
 
@@ -25,34 +54,55 @@ impl GlobalScope {
         }
     }
 
-    /// Pushes a new scope to the stack.
+    /// Push a new scope onto the stack.
     pub fn push_scope(&mut self) {
         self.variables.push(Vec::new());
     }
 
-    /// Pops the latest scope from the stack.
+    /// Pop the current scope from the stack.
     ///
     /// # Panics
     ///
-    /// Panics if the stack is empty.
+    /// The stack is empty.
     pub fn pop_scope(&mut self) {
-        self.variables.pop().expect("Popping scope zero");
+        self.variables.pop().expect("Empty stack");
     }
 
-    /// Pushes a new variable to the latest scope.
+    /// Push an assignment to the current scope.
+    ///
+    /// Update the input pattern accordingly:
+    ///
+    /// ```text
+    ///   .
+    ///  / \
+    /// p   previous
+    /// ```
+    ///
+    /// ## Panics
+    ///
+    /// The stack is empty.
     pub fn insert(&mut self, pattern: Pattern) {
-        self.variables.last_mut().unwrap().push(pattern);
+        self.variables
+            .last_mut()
+            .expect("Empty stack")
+            .push(pattern);
     }
 
-    /// Get a pattern that matches the input value.
-    fn to_pattern(&self) -> Pattern {
+    /// Get the input pattern.
+    ///
+    /// All valid input values match the input pattern.
+    ///
+    /// ## Panics
+    ///
+    /// The stack is empty.
+    fn get_input_pattern(&self) -> Pattern {
         let mut it = self.variables.iter().flat_map(|scope| scope.iter());
-        let first = it.next().unwrap();
+        let first = it.next().expect("Empty stack");
         it.cloned()
             .fold(first.clone(), |acc, next| Pattern::product(next, acc))
     }
 
-    /// Compute a Simplicity expression that takes the input value
+    /// Compute a Simplicity expression that takes a valid input value (that matches the input pattern)
     /// and that produces as output a value that matches the `target` pattern.
     ///
     /// ## Example
@@ -62,25 +112,25 @@ impl GlobalScope {
     /// let b = {
     ///     let b: u8 = 1;
     ///     let c: u8 = 2;
-    ///     a  // here we seek the value of `a`
+    ///     (a, b)  // here we seek the value of `(a, b)`
     /// };
     /// ```
     ///
-    /// The environment looks like this:
+    /// The input pattern looks like this:
     ///
     /// ```text
     ///   .
     ///  / \
-    /// C   .
+    /// c   .
     ///    / \
-    ///   B   .
+    ///   b   .
     ///      / \
-    ///     A   1
+    ///     a   _
     /// ```
     ///
-    /// To extract `a`, we need the expression `drop drop take iden`.
+    /// The expression `drop (IOH & OH)` returns the seeked value.
     pub fn get(&self, target: &BasePattern) -> Option<ProgNode> {
-        BasePattern::from(&self.to_pattern()).translate(target)
+        BasePattern::from(&self.get_input_pattern()).translate(target)
     }
 }
 
