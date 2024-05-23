@@ -1,6 +1,6 @@
 use crate::array::BinaryTree;
 use crate::named::{PairBuilder, SelectorBuilder};
-use crate::parse::{Identifier, Pattern, WitnessName};
+use crate::parse::{Identifier, Pattern};
 use crate::ProgNode;
 use miniscript::iter::{Tree, TreeLike};
 use std::collections::HashMap;
@@ -15,7 +15,6 @@ use std::sync::Arc;
 #[derive(Debug, Clone)]
 pub struct GlobalScope {
     variables: Vec<Vec<Pattern>>,
-    witnesses: Vec<Vec<WitnessName>>,
 }
 
 impl GlobalScope {
@@ -23,14 +22,12 @@ impl GlobalScope {
     pub fn new(input: Pattern) -> Self {
         GlobalScope {
             variables: vec![vec![input]],
-            witnesses: vec![vec![]],
         }
     }
 
     /// Pushes a new scope to the stack.
     pub fn push_scope(&mut self) {
         self.variables.push(Vec::new());
-        self.witnesses.push(Vec::new());
     }
 
     /// Pops the latest scope from the stack.
@@ -40,17 +37,11 @@ impl GlobalScope {
     /// Panics if the stack is empty.
     pub fn pop_scope(&mut self) {
         self.variables.pop().expect("Popping scope zero");
-        self.witnesses.pop().expect("Popping scope zero");
     }
 
     /// Pushes a new variable to the latest scope.
     pub fn insert(&mut self, pattern: Pattern) {
         self.variables.last_mut().unwrap().push(pattern);
-    }
-
-    /// Pushes a new witness to the latest scope.
-    pub fn insert_witness(&mut self, key: WitnessName) {
-        self.witnesses.last_mut().unwrap().push(key);
     }
 
     /// Get a pattern that matches the input value.
