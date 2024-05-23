@@ -3,20 +3,20 @@
  * SIGHASH_NONE.
  */
 
-let ctx = jet_sha_256_ctx_8_init();
+let ctx: (List<u8, 64>, (u64, u256)) = jet_sha_256_ctx_8_init();
 // Blockchain
-let ctx = jet_sha_256_ctx_8_add_32(ctx, jet_genesis_block_hash());
-let ctx = jet_sha_256_ctx_8_add_32(ctx, jet_genesis_block_hash());
+let ctx: (List<u8, 64>, (u64, u256)) = jet_sha_256_ctx_8_add_32(ctx, jet_genesis_block_hash());
+let ctx: (List<u8, 64>, (u64, u256)) = jet_sha_256_ctx_8_add_32(ctx, jet_genesis_block_hash());
 // Transaction
-let ctx = jet_sha_256_ctx_8_add_4(ctx, jet_version());
-let ctx = jet_sha_256_ctx_8_add_4(ctx, jet_lock_time());
-let ctx = jet_sha_256_ctx_8_add_32(ctx, jet_tap_env_hash());
+let ctx: (List<u8, 64>, (u64, u256)) = jet_sha_256_ctx_8_add_4(ctx, jet_version());
+let ctx: (List<u8, 64>, (u64, u256)) = jet_sha_256_ctx_8_add_4(ctx, jet_lock_time());
+let ctx: (List<u8, 64>, (u64, u256)) = jet_sha_256_ctx_8_add_32(ctx, jet_tap_env_hash());
 // All inputs
-let ctx = jet_sha_256_ctx_8_add_32(ctx, jet_inputs_hash());
-let ctx = jet_sha_256_ctx_8_add_32(ctx, jet_input_utxos_hash());
+let ctx: (List<u8, 64>, (u64, u256)) = jet_sha_256_ctx_8_add_32(ctx, jet_inputs_hash());
+let ctx: (List<u8, 64>, (u64, u256)) = jet_sha_256_ctx_8_add_32(ctx, jet_input_utxos_hash());
 // No outputs
 // Current index
-let ctx = jet_sha_256_ctx_8_add_4(ctx, jet_current_index());
+let ctx: (List<u8, 64>, (u64, u256)) = jet_sha_256_ctx_8_add_4(ctx, jet_current_index());
 // Message
 let msg: u256 = jet_sha_256_ctx_8_finalize(ctx);
 
