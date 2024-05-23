@@ -19,7 +19,7 @@ ignore_pattern    = @{ "_" }
 product_pattern   =  { "(" ~ pattern ~ "," ~ pattern ~ ")" }
 array_pattern     =  { "[" ~ pattern ~ ("," ~ pattern)* ~ ","? ~ "]" }
 pattern           =  { ignore_pattern | product_pattern | array_pattern | variable_pattern }
-assignment        =  { "let" ~ pattern ~ (":" ~ ty)? ~ "=" ~ expression }
+assignment        =  { "let" ~ pattern ~ ":" ~ ty ~ "=" ~ expression }
 
 left_pattern      =  { "Left(" ~ identifier ~ ")" }
 right_pattern     =  { "Right(" ~ identifier ~ ")" }
