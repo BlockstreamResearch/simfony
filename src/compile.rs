@@ -31,7 +31,7 @@ fn eval_blk(
     }
     match &stmts[index] {
         Statement::Assignment(assignment) => {
-            let expr = assignment.expression.eval(scope, assignment.ty.as_ref())?;
+            let expr = assignment.expression.eval(scope, Some(&assignment.ty))?;
             scope.insert(assignment.pattern.clone());
             let left = ProgNode::pair_iden(&expr);
             let right = eval_blk(stmts, scope, index + 1, last_expr)?;

@@ -197,7 +197,7 @@ pub struct Assignment {
     /// The pattern.
     pub pattern: Pattern,
     /// The return type of the expression.
-    pub ty: Option<Type>,
+    pub ty: Type,
     /// The expression.
     pub expression: Expression,
     /// The source text associated with this assignment.
@@ -801,15 +801,11 @@ impl PestParse for Assignment {
         let span = Span::from(&pair);
         let mut inner_pair = pair.into_inner();
         let pattern = Pattern::parse(inner_pair.next().unwrap())?;
-        let reqd_ty = if let Rule::ty = inner_pair.peek().unwrap().as_rule() {
-            Some(Type::parse(inner_pair.next().unwrap())?)
-        } else {
-            None
-        };
+        let ty = Type::parse(inner_pair.next().unwrap())?;
         let expression = Expression::parse(inner_pair.next().unwrap())?;
         Ok(Assignment {
             pattern,
-            ty: reqd_ty,
+            ty,
             expression,
             source_text,
             span,
