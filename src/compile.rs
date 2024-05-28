@@ -8,6 +8,7 @@ use simplicity::{jet::Elements, Cmr, FailEntropy};
 use crate::array::{BTreeSlice, Partition};
 use crate::num::NonZeroPow2Usize;
 use crate::parse::{Pattern, SingleExpressionInner, Span, UIntType};
+use crate::scope::BasePattern;
 use crate::{
     error::{Error, RichError, WithSpan},
     named::{ConstructExt, ProgExt},
@@ -163,12 +164,9 @@ impl SingleExpressionInner {
                 let value = bytes.to_simplicity();
                 ProgNode::unit_comp(&ProgNode::const_word(value))
             }
-            SingleExpressionInner::Witness(name) => {
-                scope.insert_witness(name.clone());
-                ProgNode::witness(name.as_inner().clone())
-            }
+            SingleExpressionInner::Witness(name) => ProgNode::witness(name.as_inner().clone()),
             SingleExpressionInner::Variable(identifier) => scope
-                .get(identifier)
+                .get(&BasePattern::Identifier(identifier.clone()))
                 .ok_or(Error::UndefinedVariable(identifier.clone()))
                 .with_span(span)?,
             SingleExpressionInner::FuncCall(call) => call.eval(scope, reqd_ty)?,

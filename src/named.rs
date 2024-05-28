@@ -255,6 +255,16 @@ impl<P: ProgExt> SelectorBuilder<P> {
 pub struct PairBuilder<P>(P);
 
 impl<P: ProgExt> PairBuilder<P> {
+    /// Take the expression.
+    pub fn take(self) -> Self {
+        Self(P::take(&self.0))
+    }
+
+    /// Drop the expression.
+    pub fn drop_(self) -> Self {
+        Self(P::drop_(&self.0))
+    }
+
     /// Pair two expressions.
     ///
     /// ## Left-associative:

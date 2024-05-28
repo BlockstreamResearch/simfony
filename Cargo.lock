@@ -462,7 +462,7 @@ dependencies = [
 [[package]]
 name = "simplicity-lang"
 version = "0.2.0"
-source = "git+https://github.com/BlockstreamResearch/rust-simplicity?rev=e3866e82001f8b62f0bdcd65dc2d0ec56462d5d7#e3866e82001f8b62f0bdcd65dc2d0ec56462d5d7"
+source = "git+https://github.com/BlockstreamResearch/rust-simplicity?rev=8f25e8e89407ce29e33124995928e61661775222#8f25e8e89407ce29e33124995928e61661775222"
 dependencies = [
  "bitcoin",
  "bitcoin_hashes",
@@ -478,7 +478,7 @@ dependencies = [
 [[package]]
 name = "simplicity-sys"
 version = "0.2.0"
-source = "git+https://github.com/BlockstreamResearch/rust-simplicity?rev=e3866e82001f8b62f0bdcd65dc2d0ec56462d5d7#e3866e82001f8b62f0bdcd65dc2d0ec56462d5d7"
+source = "git+https://github.com/BlockstreamResearch/rust-simplicity?rev=8f25e8e89407ce29e33124995928e61661775222#8f25e8e89407ce29e33124995928e61661775222"
 dependencies = [
  "bitcoin_hashes",
  "cc",
