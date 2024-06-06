@@ -22,17 +22,26 @@ pub enum ResolvedType {
     List(Arc<Self>, NonZeroPow2Usize),
 }
 
-/// Normalized unsigned integer type.
+/// Unsigned integer type.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub enum UIntType {
+    /// 1-bit unsigned integer
     U1,
+    /// 2-bit unsigned integer
     U2,
+    /// 4-bit unsigned integer
     U4,
+    /// 8-bit unsigned integer
     U8,
+    /// 16-bit unsigned integer
     U16,
+    /// 32-bit unsigned integer
     U32,
+    /// 64-bit unsigned integer
     U64,
+    /// 128-bit unsigned integer
     U128,
+    /// 256-bit unsigned integer
     U256,
 }
 
