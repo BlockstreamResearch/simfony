@@ -12,7 +12,7 @@ use simplicity::Value;
 
 use crate::error::{Error, RichError, WithSpan};
 use crate::num::NonZeroPow2Usize;
-use crate::types::{Type, UIntType};
+use crate::types::{ResolvedType, UIntType};
 use crate::Rule;
 
 /// Position of an object inside a file.
@@ -196,7 +196,7 @@ pub struct Assignment {
     /// The pattern.
     pub pattern: Pattern,
     /// The return type of the expression.
-    pub ty: Type,
+    pub ty: ResolvedType,
     /// The expression.
     pub expression: Expression,
     /// The source text associated with this assignment.
@@ -547,7 +547,7 @@ impl PestParse for Assignment {
         let span = Span::from(&pair);
         let mut inner_pair = pair.into_inner();
         let pattern = Pattern::parse(inner_pair.next().unwrap())?;
-        let ty = Type::parse(inner_pair.next().unwrap())?;
+        let ty = ResolvedType::parse(inner_pair.next().unwrap())?;
         let expression = Expression::parse(inner_pair.next().unwrap())?;
         Ok(Assignment {
             pattern,
@@ -888,16 +888,16 @@ impl PestParse for MatchPattern {
     }
 }
 
-impl PestParse for Type {
+impl PestParse for ResolvedType {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         enum Item {
-            Type(Type),
+            Type(ResolvedType),
             Size(NonZeroUsize),
             Bound(NonZeroPow2Usize),
         }
 
         impl Item {
-            fn unwrap_type(self) -> Type {
+            fn unwrap_type(self) -> ResolvedType {
                 match self {
                     Item::Type(ty) => ty,
                     _ => panic!("Not a type"),
@@ -925,32 +925,32 @@ impl PestParse for Type {
 
         for data in pair.post_order_iter() {
             match data.node.0.as_rule() {
-                Rule::unit_type => output.push(Item::Type(Type::Unit)),
+                Rule::unit_type => output.push(Item::Type(ResolvedType::Unit)),
                 Rule::unsigned_type => {
                     let uint_ty = UIntType::parse(data.node.0)?;
-                    output.push(Item::Type(Type::UInt(uint_ty)));
+                    output.push(Item::Type(ResolvedType::UInt(uint_ty)));
                 }
                 Rule::sum_type => {
                     let r = output.pop().unwrap().unwrap_type();
                     let l = output.pop().unwrap().unwrap_type();
-                    output.push(Item::Type(Type::Either(Arc::new(l), Arc::new(r))));
+                    output.push(Item::Type(ResolvedType::Either(Arc::new(l), Arc::new(r))));
                 }
                 Rule::product_type => {
                     let r = output.pop().unwrap().unwrap_type();
                     let l = output.pop().unwrap().unwrap_type();
-                    output.push(Item::Type(Type::Product(Arc::new(l), Arc::new(r))));
+                    output.push(Item::Type(ResolvedType::Product(Arc::new(l), Arc::new(r))));
                 }
                 Rule::option_type => {
                     let r = output.pop().unwrap().unwrap_type();
-                    output.push(Item::Type(Type::Option(Arc::new(r))));
+                    output.push(Item::Type(ResolvedType::Option(Arc::new(r))));
                 }
                 Rule::boolean_type => {
-                    output.push(Item::Type(Type::Boolean));
+                    output.push(Item::Type(ResolvedType::Boolean));
                 }
                 Rule::array_type => {
                     let size = output.pop().unwrap().unwrap_size();
                     let el = output.pop().unwrap().unwrap_type();
-                    output.push(Item::Type(Type::Array(Arc::new(el), size)));
+                    output.push(Item::Type(ResolvedType::Array(Arc::new(el), size)));
                 }
                 Rule::array_size => {
                     let size_str = data.node.0.as_str();
@@ -963,7 +963,7 @@ impl PestParse for Type {
                 Rule::list_type => {
                     let bound = output.pop().unwrap().unwrap_bound();
                     let el = output.pop().unwrap().unwrap_type();
-                    output.push(Item::Type(Type::List(Arc::new(el), bound)));
+                    output.push(Item::Type(ResolvedType::List(Arc::new(el), bound)));
                 }
                 Rule::list_bound => {
                     let bound_str = data.node.0.as_str();

@@ -12,7 +12,7 @@ use crate::num::NonZeroPow2Usize;
 /// A Simphony type.
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 #[non_exhaustive]
-pub enum Type {
+pub enum ResolvedType {
     Unit,
     Either(Arc<Self>, Arc<Self>),
     Product(Arc<Self>, Arc<Self>),
@@ -86,31 +86,33 @@ impl fmt::Display for UIntType {
     }
 }
 
-impl<'a> TreeLike for &'a Type {
+impl<'a> TreeLike for &'a ResolvedType {
     fn as_node(&self) -> Tree<Self> {
         match self {
-            Type::Unit | Type::Boolean | Type::UInt(..) => Tree::Nullary,
-            Type::Option(l) | Type::Array(l, _) | Type::List(l, _) => Tree::Unary(l),
-            Type::Either(l, r) | Type::Product(l, r) => Tree::Binary(l, r),
+            ResolvedType::Unit | ResolvedType::Boolean | ResolvedType::UInt(..) => Tree::Nullary,
+            ResolvedType::Option(l) | ResolvedType::Array(l, _) | ResolvedType::List(l, _) => {
+                Tree::Unary(l)
+            }
+            ResolvedType::Either(l, r) | ResolvedType::Product(l, r) => Tree::Binary(l, r),
         }
     }
 }
 
-impl Type {
+impl ResolvedType {
     /// Convert the type into a normalized unsigned integer type.
     /// Return the empty value if the conversion failed.
     pub fn to_uint(&self) -> Option<UIntType> {
-        let mut integer_type = HashMap::<&Type, UIntType>::new();
+        let mut integer_type = HashMap::<&ResolvedType, UIntType>::new();
         for data in self.post_order_iter() {
             match data.node {
-                Type::Unit => {}
-                Type::Either(l, r) => match (l.as_ref(), r.as_ref()) {
-                    (Type::Unit, Type::Unit) => {
+                ResolvedType::Unit => {}
+                ResolvedType::Either(l, r) => match (l.as_ref(), r.as_ref()) {
+                    (ResolvedType::Unit, ResolvedType::Unit) => {
                         integer_type.insert(data.node, UIntType::U1);
                     }
                     _ => return None,
                 },
-                Type::Product(l, r) => {
+                ResolvedType::Product(l, r) => {
                     let uint_l = integer_type.get(l.as_ref())?;
                     let uint_r = integer_type.get(r.as_ref())?;
                     if uint_l != uint_r {
@@ -119,20 +121,20 @@ impl Type {
                     let uint_ty = uint_l.double()?;
                     integer_type.insert(data.node, uint_ty);
                 }
-                Type::Option(r) => match r.as_ref() {
+                ResolvedType::Option(r) => match r.as_ref() {
                     // Option<1> = u1
-                    Type::Unit => {
+                    ResolvedType::Unit => {
                         integer_type.insert(data.node, UIntType::U1);
                     }
                     _ => return None,
                 },
-                Type::Boolean => {
+                ResolvedType::Boolean => {
                     integer_type.insert(data.node, UIntType::U1);
                 }
-                Type::UInt(ty) => {
+                ResolvedType::UInt(ty) => {
                     integer_type.insert(data.node, *ty);
                 }
-                Type::Array(el, size) => {
+                ResolvedType::Array(el, size) => {
                     if !size.is_power_of_two() {
                         return None;
                     }
@@ -146,9 +148,9 @@ impl Type {
                     }
                     integer_type.insert(data.node, uint);
                 }
-                Type::List(el, bound) => match (el.as_ref(), *bound) {
+                ResolvedType::List(el, bound) => match (el.as_ref(), *bound) {
                     // List<1, 2> = Option<1> = u1
-                    (Type::Unit, NonZeroPow2Usize::TWO) => {
+                    (ResolvedType::Unit, NonZeroPow2Usize::TWO) => {
                         integer_type.insert(data.node, UIntType::U1);
                     }
                     _ => return None,
@@ -165,33 +167,33 @@ impl Type {
 
         for data in self.post_order_iter() {
             match data.node {
-                Type::Unit => output.push(SimType::unit()),
-                Type::Either(_, _) => {
+                ResolvedType::Unit => output.push(SimType::unit()),
+                ResolvedType::Either(_, _) => {
                     let r = output.pop().unwrap();
                     let l = output.pop().unwrap();
                     output.push(SimType::sum(l, r));
                 }
-                Type::Product(_, _) => {
+                ResolvedType::Product(_, _) => {
                     let r = output.pop().unwrap();
                     let l = output.pop().unwrap();
                     output.push(SimType::product(l, r));
                 }
-                Type::Option(_) => {
+                ResolvedType::Option(_) => {
                     let r = output.pop().unwrap();
                     output.push(SimType::sum(SimType::unit(), r));
                 }
-                Type::Boolean => {
+                ResolvedType::Boolean => {
                     output.push(SimType::two_two_n(0));
                 }
-                Type::UInt(ty) => output.push(ty.to_simplicity()),
-                Type::Array(_, size) => {
+                ResolvedType::UInt(ty) => output.push(ty.to_simplicity()),
+                ResolvedType::Array(_, size) => {
                     let el = output.pop().unwrap();
                     // Cheap clone because SimType consists of Arcs
                     let el_vector = vec![el; size.get()];
                     let tree = BTreeSlice::from_slice(&el_vector);
                     output.push(tree.fold(SimType::product));
                 }
-                Type::List(_, bound) => {
+                ResolvedType::List(_, bound) => {
                     let el = output.pop().unwrap();
                     // Cheap clone because SimType consists of Arcs
                     let el_vector = vec![el; bound.get() - 1];
@@ -213,12 +215,12 @@ impl Type {
     }
 }
 
-impl fmt::Display for Type {
+impl fmt::Display for ResolvedType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for data in self.verbose_pre_order_iter() {
             match data.node {
-                Type::Unit => f.write_str("()")?,
-                Type::Either(_, _) => match data.n_children_yielded {
+                ResolvedType::Unit => f.write_str("()")?,
+                ResolvedType::Either(_, _) => match data.n_children_yielded {
                     0 => f.write_str("Either<")?,
                     1 => f.write_str(",")?,
                     n => {
@@ -226,7 +228,7 @@ impl fmt::Display for Type {
                         f.write_str(">")?;
                     }
                 },
-                Type::Product(_, _) => match data.n_children_yielded {
+                ResolvedType::Product(_, _) => match data.n_children_yielded {
                     0 => f.write_str("(")?,
                     1 => f.write_str(", ")?,
                     n => {
@@ -234,23 +236,23 @@ impl fmt::Display for Type {
                         f.write_str(")")?;
                     }
                 },
-                Type::Option(_) => match data.n_children_yielded {
+                ResolvedType::Option(_) => match data.n_children_yielded {
                     0 => f.write_str("Option<")?,
                     n => {
                         debug_assert!(n == 1);
                         f.write_str(">")?;
                     }
                 },
-                Type::Boolean => f.write_str("bool")?,
-                Type::UInt(ty) => write!(f, "{ty}")?,
-                Type::Array(_, size) => match data.n_children_yielded {
+                ResolvedType::Boolean => f.write_str("bool")?,
+                ResolvedType::UInt(ty) => write!(f, "{ty}")?,
+                ResolvedType::Array(_, size) => match data.n_children_yielded {
                     0 => f.write_str("[")?,
                     n => {
                         debug_assert!(n == 1);
                         write!(f, "; {size}]")?;
                     }
                 },
-                Type::List(_, bound) => match data.n_children_yielded {
+                ResolvedType::List(_, bound) => match data.n_children_yielded {
                     0 => f.write_str("List<")?,
                     n => {
                         debug_assert!(n == 1);
