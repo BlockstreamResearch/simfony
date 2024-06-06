@@ -830,7 +830,7 @@ impl PestParse for Bytes {
             .strip_prefix("0x")
             .expect("Grammar enforces prefix")
             .replace('_', "");
-        if !hex_digits.len().is_power_of_two() {
+        if hex_digits.len() < 2 || !hex_digits.len().is_power_of_two() {
             return Err(Error::HexStringPow2).with_span(&pair);
         }
 

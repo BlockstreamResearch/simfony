@@ -170,7 +170,7 @@ impl fmt::Display for Error {
             ),
             Error::HexStringPow2 => write!(
                 f,
-                "Length of hex string must be a power of two: 1, 2, 4, 8, 16, ..."
+                "Length of hex string must be a power of two greater one: 2, 4, 8, 16, 32, ..."
             ),
             Error::CannotParse(description) => write!(
                 f,
