@@ -152,9 +152,8 @@ impl SingleExpressionInner {
                 let reqd_ty = reqd_ty
                     .cloned()
                     .unwrap_or(ResolvedType::uint(UIntType::U32));
-                let ty = reqd_ty
-                    .to_uint()
-                    .ok_or(Error::TypeValueMismatch(reqd_ty))
+                let ty = UIntType::try_from(&reqd_ty)
+                    .map_err(|_| Error::TypeValueMismatch(reqd_ty))
                     .with_span(span)?;
                 let value = ty.parse_decimal(decimal).with_span(span)?;
                 ProgNode::unit_comp(&ProgNode::const_word(value))

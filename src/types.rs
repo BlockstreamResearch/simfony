@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fmt;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -38,22 +37,6 @@ pub enum UIntType {
 }
 
 impl UIntType {
-    /// Double the bit width of the type.
-    /// Return the empty value upon overflow.
-    pub fn double(&self) -> Option<Self> {
-        match self {
-            UIntType::U1 => Some(UIntType::U2),
-            UIntType::U2 => Some(UIntType::U4),
-            UIntType::U4 => Some(UIntType::U8),
-            UIntType::U8 => Some(UIntType::U16),
-            UIntType::U16 => Some(UIntType::U32),
-            UIntType::U32 => Some(UIntType::U64),
-            UIntType::U64 => Some(UIntType::U128),
-            UIntType::U128 => Some(UIntType::U256),
-            UIntType::U256 => None,
-        }
-    }
-
     /// Take `n` and return the `2^n`-bit unsigned integer type.
     pub fn two_n(n: u32) -> Option<Self> {
         match n {
@@ -106,6 +89,14 @@ impl<'a> TryFrom<&'a StructuralType> for UIntType {
             }
         }
         Err(())
+    }
+}
+
+impl<'a> TryFrom<&'a ResolvedType> for UIntType {
+    type Error = ();
+
+    fn try_from(value: &ResolvedType) -> Result<Self, Self::Error> {
+        UIntType::try_from(&StructuralType::from(value))
     }
 }
 
@@ -179,70 +170,6 @@ impl<'a> TreeLike for &'a ResolvedType {
             }
             ResolvedType::Either(l, r) | ResolvedType::Product(l, r) => Tree::Binary(l, r),
         }
-    }
-}
-
-impl ResolvedType {
-    /// Convert the type into a normalized unsigned integer type.
-    /// Return the empty value if the conversion failed.
-    pub fn to_uint(&self) -> Option<UIntType> {
-        let mut integer_type = HashMap::<&ResolvedType, UIntType>::new();
-        for data in self.post_order_iter() {
-            match data.node {
-                ResolvedType::Unit => {}
-                ResolvedType::Either(l, r) => match (l.as_ref(), r.as_ref()) {
-                    (ResolvedType::Unit, ResolvedType::Unit) => {
-                        integer_type.insert(data.node, UIntType::U1);
-                    }
-                    _ => return None,
-                },
-                ResolvedType::Product(l, r) => {
-                    let uint_l = integer_type.get(l.as_ref())?;
-                    let uint_r = integer_type.get(r.as_ref())?;
-                    if uint_l != uint_r {
-                        return None;
-                    }
-                    let uint_ty = uint_l.double()?;
-                    integer_type.insert(data.node, uint_ty);
-                }
-                ResolvedType::Option(r) => match r.as_ref() {
-                    // Option<1> = u1
-                    ResolvedType::Unit => {
-                        integer_type.insert(data.node, UIntType::U1);
-                    }
-                    _ => return None,
-                },
-                ResolvedType::Boolean => {
-                    integer_type.insert(data.node, UIntType::U1);
-                }
-                ResolvedType::UInt(ty) => {
-                    integer_type.insert(data.node, *ty);
-                }
-                ResolvedType::Array(el, size) => {
-                    if !size.is_power_of_two() {
-                        return None;
-                    }
-
-                    let mut uint = *integer_type.get(el.as_ref())?;
-                    for _ in 0..size.trailing_zeros() {
-                        match uint.double() {
-                            Some(doubled_uint) => uint = doubled_uint,
-                            None => return None,
-                        }
-                    }
-                    integer_type.insert(data.node, uint);
-                }
-                ResolvedType::List(el, bound) => match (el.as_ref(), *bound) {
-                    // List<1, 2> = Option<1> = u1
-                    (ResolvedType::Unit, NonZeroPow2Usize::TWO) => {
-                        integer_type.insert(data.node, UIntType::U1);
-                    }
-                    _ => return None,
-                },
-            }
-        }
-
-        integer_type.remove(self)
     }
 }
 
