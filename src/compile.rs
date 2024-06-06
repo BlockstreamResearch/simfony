@@ -14,7 +14,7 @@ use crate::{
     named::{ConstructExt, ProgExt},
     parse::{Expression, ExpressionInner, FuncCall, FuncType, Program, Statement},
     scope::GlobalScope,
-    types::{ResolvedType, TypeConstructible, UIntType},
+    types::{ResolvedType, StructuralType, TypeConstructible, UIntType},
     ProgNode,
 };
 
@@ -266,7 +266,7 @@ impl SingleExpressionInner {
         if let Some(reqd_ty) = reqd_ty {
             expr.arrow()
                 .target
-                .unify(&reqd_ty.to_simplicity(), "")
+                .unify(&StructuralType::from(reqd_ty).to_unfinalized(), "")
                 .map_err(|_| Error::TypeValueMismatch(reqd_ty.clone()))
                 .with_span(span)?;
         }

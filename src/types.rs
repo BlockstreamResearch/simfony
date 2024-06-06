@@ -4,7 +4,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use miniscript::iter::{Tree, TreeLike};
-use simplicity::types::Type as SimType;
+use simplicity::types::{CompleteBound, Final};
 
 use crate::array::{BTreeSlice, Partition};
 use crate::num::NonZeroPow2Usize;
@@ -54,18 +54,19 @@ impl UIntType {
         }
     }
 
-    /// Convert the type into a Simplicity type.
-    pub fn to_simplicity(self) -> SimType {
-        match self {
-            UIntType::U1 => SimType::two_two_n(0),
-            UIntType::U2 => SimType::two_two_n(1),
-            UIntType::U4 => SimType::two_two_n(2),
-            UIntType::U8 => SimType::two_two_n(3),
-            UIntType::U16 => SimType::two_two_n(4),
-            UIntType::U32 => SimType::two_two_n(5),
-            UIntType::U64 => SimType::two_two_n(6),
-            UIntType::U128 => SimType::two_two_n(7),
-            UIntType::U256 => SimType::two_two_n(8),
+    /// Take `n` and return the `2^n`-bit unsigned integer type.
+    pub fn two_n(n: u32) -> Option<Self> {
+        match n {
+            0 => Some(UIntType::U1),
+            1 => Some(UIntType::U2),
+            2 => Some(UIntType::U4),
+            3 => Some(UIntType::U8),
+            4 => Some(UIntType::U16),
+            5 => Some(UIntType::U32),
+            6 => Some(UIntType::U64),
+            7 => Some(UIntType::U128),
+            8 => Some(UIntType::U256),
+            _ => None,
         }
     }
 }
@@ -83,6 +84,28 @@ impl fmt::Display for UIntType {
             UIntType::U128 => f.write_str("u128"),
             UIntType::U256 => f.write_str("u256"),
         }
+    }
+}
+
+impl<'a> TryFrom<&'a StructuralType> for UIntType {
+    type Error = ();
+
+    fn try_from(value: &StructuralType) -> Result<Self, Self::Error> {
+        let mut current = value.as_inner();
+        let mut n = 0;
+        while let Some((left, right)) = current.as_product() {
+            if left.tmr() != right.tmr() {
+                return Err(());
+            }
+            current = left;
+            n += 1;
+        }
+        if let Some((left, right)) = current.as_sum() {
+            if left.is_unit() && right.is_unit() {
+                return UIntType::two_n(n).ok_or(());
+            }
+        }
+        Err(())
     }
 }
 
@@ -221,59 +244,6 @@ impl ResolvedType {
 
         integer_type.remove(self)
     }
-
-    /// Convert the type into a Simplicity type.
-    pub fn to_simplicity(&self) -> SimType {
-        let mut output = vec![];
-
-        for data in self.post_order_iter() {
-            match data.node {
-                ResolvedType::Unit => output.push(SimType::unit()),
-                ResolvedType::Either(_, _) => {
-                    let r = output.pop().unwrap();
-                    let l = output.pop().unwrap();
-                    output.push(SimType::sum(l, r));
-                }
-                ResolvedType::Product(_, _) => {
-                    let r = output.pop().unwrap();
-                    let l = output.pop().unwrap();
-                    output.push(SimType::product(l, r));
-                }
-                ResolvedType::Option(_) => {
-                    let r = output.pop().unwrap();
-                    output.push(SimType::sum(SimType::unit(), r));
-                }
-                ResolvedType::Boolean => {
-                    output.push(SimType::two_two_n(0));
-                }
-                ResolvedType::UInt(ty) => output.push(ty.to_simplicity()),
-                ResolvedType::Array(_, size) => {
-                    let el = output.pop().unwrap();
-                    // Cheap clone because SimType consists of Arcs
-                    let el_vector = vec![el; size.get()];
-                    let tree = BTreeSlice::from_slice(&el_vector);
-                    output.push(tree.fold(SimType::product));
-                }
-                ResolvedType::List(_, bound) => {
-                    let el = output.pop().unwrap();
-                    // Cheap clone because SimType consists of Arcs
-                    let el_vector = vec![el; bound.get() - 1];
-                    let partition = Partition::from_slice(&el_vector, bound.get() / 2);
-                    debug_assert!(partition.is_complete());
-                    let process = |block: &[SimType]| -> SimType {
-                        debug_assert!(!block.is_empty());
-                        let tree = BTreeSlice::from_slice(block);
-                        let array = tree.fold(SimType::product);
-                        SimType::sum(SimType::unit(), array)
-                    };
-                    output.push(partition.fold(process, SimType::product));
-                }
-            }
-        }
-
-        debug_assert!(output.len() == 1);
-        output.pop().unwrap()
-    }
 }
 
 impl fmt::Display for ResolvedType {
@@ -324,5 +294,136 @@ impl fmt::Display for ResolvedType {
         }
 
         Ok(())
+    }
+}
+
+/// Internal structure of a Simfony type.
+/// 1:1 isomorphism to Simplicity.
+#[derive(Clone, PartialEq, Eq, Debug, Hash)]
+pub struct StructuralType(Arc<Final>);
+
+impl TreeLike for StructuralType {
+    fn as_node(&self) -> Tree<Self> {
+        match self.0.bound() {
+            CompleteBound::Unit => Tree::Nullary,
+            CompleteBound::Sum(l, r) | CompleteBound::Product(l, r) => {
+                Tree::Binary(Self(l.clone()), Self(r.clone()))
+            }
+        }
+    }
+}
+
+impl From<UIntType> for StructuralType {
+    fn from(value: UIntType) -> Self {
+        let inner = match value {
+            UIntType::U1 => Final::two_two_n(0),
+            UIntType::U2 => Final::two_two_n(1),
+            UIntType::U4 => Final::two_two_n(2),
+            UIntType::U8 => Final::two_two_n(3),
+            UIntType::U16 => Final::two_two_n(4),
+            UIntType::U32 => Final::two_two_n(5),
+            UIntType::U64 => Final::two_two_n(6),
+            UIntType::U128 => Final::two_two_n(7),
+            UIntType::U256 => Final::two_two_n(8),
+        };
+        Self(inner)
+    }
+}
+
+impl<'a> From<&'a ResolvedType> for StructuralType {
+    fn from(value: &ResolvedType) -> Self {
+        let mut output = vec![];
+        for data in value.post_order_iter() {
+            match &data.node {
+                ResolvedType::Unit => output.push(StructuralType::unit()),
+                ResolvedType::Either(_, _) => {
+                    let right = output.pop().unwrap();
+                    let left = output.pop().unwrap();
+                    output.push(StructuralType::either(left, right));
+                }
+                ResolvedType::Product(_, _) => {
+                    let right = output.pop().unwrap();
+                    let left = output.pop().unwrap();
+                    output.push(StructuralType::product(left, right));
+                }
+                ResolvedType::Option(_) => {
+                    let inner = output.pop().unwrap();
+                    output.push(StructuralType::option(inner));
+                }
+                ResolvedType::Boolean => output.push(StructuralType::boolean()),
+                ResolvedType::UInt(integer) => output.push(StructuralType::uint(*integer)),
+                ResolvedType::Array(_, size) => {
+                    let element = output.pop().unwrap();
+                    output.push(StructuralType::array(element, *size));
+                }
+                ResolvedType::List(_, bound) => {
+                    let element = output.pop().unwrap();
+                    output.push(StructuralType::list(element, *bound));
+                }
+            }
+        }
+        debug_assert_eq!(output.len(), 1);
+        output.pop().unwrap()
+    }
+}
+
+impl TypeConstructible for StructuralType {
+    fn unit() -> Self {
+        Self(Final::unit())
+    }
+
+    fn either(left: Self, right: Self) -> Self {
+        Self(Final::sum(left.0, right.0))
+    }
+
+    fn product(left: Self, right: Self) -> Self {
+        Self(Final::product(left.0, right.0))
+    }
+
+    fn option(inner: Self) -> Self {
+        Self::either(Self::unit(), inner)
+    }
+
+    fn boolean() -> Self {
+        Self::either(Self::unit(), Self::unit())
+    }
+
+    fn uint(integer: UIntType) -> Self {
+        Self::from(integer)
+    }
+
+    fn array(element: Self, size: NonZeroUsize) -> Self {
+        // Cheap clone because Arc<Final> consists of Arcs
+        let el_vector = vec![element.0; size.get()];
+        let tree = BTreeSlice::from_slice(&el_vector);
+        let inner = tree.fold(Final::product);
+        Self(inner)
+    }
+
+    fn list(element: Self, bound: NonZeroPow2Usize) -> Self {
+        // Cheap clone because Arc<Final> consists of Arcs
+        let el_vector = vec![element.0; bound.get() - 1];
+        let partition = Partition::from_slice(&el_vector, bound.get() / 2);
+        debug_assert!(partition.is_complete());
+        let process = |block: &[Arc<Final>]| -> Arc<Final> {
+            debug_assert!(!block.is_empty());
+            let tree = BTreeSlice::from_slice(block);
+            let array = tree.fold(Final::product);
+            Final::sum(Final::unit(), array)
+        };
+        let inner = partition.fold(process, Final::product);
+        Self(inner)
+    }
+}
+
+impl StructuralType {
+    /// Access the finalized Simplicity type.
+    pub fn as_inner(&self) -> &Final {
+        self.0.as_ref()
+    }
+
+    /// Convert into an unfinalized type that can be used in Simplicity's unification algorithm.
+    pub fn to_unfinalized(&self) -> simplicity::types::Type {
+        simplicity::types::Type::from(self.0.clone())
     }
 }
