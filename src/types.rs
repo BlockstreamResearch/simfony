@@ -8,18 +8,76 @@ use simplicity::types::{CompleteBound, Final};
 use crate::array::{BTreeSlice, Partition};
 use crate::num::NonZeroPow2Usize;
 
-/// A Simphony type.
+/// Primitives of the Simfony type system, excluding type aliases.
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 #[non_exhaustive]
-pub enum ResolvedType {
+pub enum TypeInner<A> {
+    /// Unit type
     Unit,
-    Either(Arc<Self>, Arc<Self>),
-    Product(Arc<Self>, Arc<Self>),
-    Option(Arc<Self>),
+    /// Sum of the left and right types
+    Either(A, A),
+    /// Product of the left and right types
+    Product(A, A),
+    /// Option of the inner type
+    Option(A),
+    /// Boolean type
     Boolean,
+    /// Unsigned integer type
     UInt(UIntType),
-    Array(Arc<Self>, NonZeroUsize),
-    List(Arc<Self>, NonZeroPow2Usize),
+    /// Array of the element type
+    Array(A, NonZeroUsize),
+    /// List of the element type
+    List(A, NonZeroPow2Usize),
+}
+
+impl<A> TypeInner<A> {
+    /// Helper method for displaying type primitives based on the number of yielded children.
+    ///
+    /// We cannot implement [`fmt::Display`] because `n_children_yielded` is an extra argument.
+    fn display(&self, f: &mut fmt::Formatter<'_>, n_children_yielded: usize) -> fmt::Result {
+        match self {
+            TypeInner::Unit => f.write_str("()"),
+            TypeInner::Either(_, _) => match n_children_yielded {
+                0 => f.write_str("Either<"),
+                1 => f.write_str(","),
+                n => {
+                    debug_assert_eq!(n, 2);
+                    f.write_str(">")
+                }
+            },
+            TypeInner::Product(_, _) => match n_children_yielded {
+                0 => f.write_str("("),
+                1 => f.write_str(", "),
+                n => {
+                    debug_assert_eq!(n, 2);
+                    f.write_str(")")
+                }
+            },
+            TypeInner::Option(_) => match n_children_yielded {
+                0 => f.write_str("Option<"),
+                n => {
+                    debug_assert_eq!(n, 1);
+                    f.write_str(">")
+                }
+            },
+            TypeInner::Boolean => f.write_str("bool"),
+            TypeInner::UInt(ty) => write!(f, "{ty}"),
+            TypeInner::Array(_, size) => match n_children_yielded {
+                0 => f.write_str("["),
+                n => {
+                    debug_assert_eq!(n, 1);
+                    write!(f, "; {size}]")
+                }
+            },
+            TypeInner::List(_, bound) => match n_children_yielded {
+                0 => f.write_str("List<"),
+                n => {
+                    debug_assert_eq!(n, 1);
+                    write!(f, ", {bound}>")
+                }
+            },
+        }
+    }
 }
 
 /// Unsigned integer type.
@@ -136,48 +194,57 @@ pub trait TypeConstructible: Sized {
     fn list(element: Self, bound: NonZeroPow2Usize) -> Self;
 }
 
+/// Simfony type without type aliases.
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub struct ResolvedType(TypeInner<Arc<Self>>);
+
+impl ResolvedType {
+    /// Access the inner type primitive.
+    pub fn as_inner(&self) -> &TypeInner<Arc<Self>> {
+        &self.0
+    }
+}
+
 impl TypeConstructible for ResolvedType {
     fn unit() -> Self {
-        Self::Unit
+        Self(TypeInner::Unit)
     }
 
     fn either(left: Self, right: Self) -> Self {
-        Self::Either(Arc::new(left), Arc::new(right))
+        Self(TypeInner::Either(Arc::new(left), Arc::new(right)))
     }
 
     fn product(left: Self, right: Self) -> Self {
-        Self::Product(Arc::new(left), Arc::new(right))
+        Self(TypeInner::Product(Arc::new(left), Arc::new(right)))
     }
 
     fn option(inner: Self) -> Self {
-        Self::Option(Arc::new(inner))
+        Self(TypeInner::Option(Arc::new(inner)))
     }
 
     fn boolean() -> Self {
-        Self::Boolean
+        Self(TypeInner::Boolean)
     }
 
     fn uint(integer: UIntType) -> Self {
-        Self::UInt(integer)
+        Self(TypeInner::UInt(integer))
     }
 
     fn array(element: Self, size: NonZeroUsize) -> Self {
-        Self::Array(Arc::new(element), size)
+        Self(TypeInner::Array(Arc::new(element), size))
     }
 
     fn list(element: Self, bound: NonZeroPow2Usize) -> Self {
-        Self::List(Arc::new(element), bound)
+        Self(TypeInner::List(Arc::new(element), bound))
     }
 }
 
 impl<'a> TreeLike for &'a ResolvedType {
     fn as_node(&self) -> Tree<Self> {
-        match self {
-            ResolvedType::Unit | ResolvedType::Boolean | ResolvedType::UInt(..) => Tree::Nullary,
-            ResolvedType::Option(l) | ResolvedType::Array(l, _) | ResolvedType::List(l, _) => {
-                Tree::Unary(l)
-            }
-            ResolvedType::Either(l, r) | ResolvedType::Product(l, r) => Tree::Binary(l, r),
+        match &self.0 {
+            TypeInner::Unit | TypeInner::Boolean | TypeInner::UInt(..) => Tree::Nullary,
+            TypeInner::Option(l) | TypeInner::Array(l, _) | TypeInner::List(l, _) => Tree::Unary(l),
+            TypeInner::Either(l, r) | TypeInner::Product(l, r) => Tree::Binary(l, r),
         }
     }
 }
@@ -185,50 +252,8 @@ impl<'a> TreeLike for &'a ResolvedType {
 impl fmt::Display for ResolvedType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for data in self.verbose_pre_order_iter() {
-            match data.node {
-                ResolvedType::Unit => f.write_str("()")?,
-                ResolvedType::Either(_, _) => match data.n_children_yielded {
-                    0 => f.write_str("Either<")?,
-                    1 => f.write_str(",")?,
-                    n => {
-                        debug_assert!(n == 2);
-                        f.write_str(">")?;
-                    }
-                },
-                ResolvedType::Product(_, _) => match data.n_children_yielded {
-                    0 => f.write_str("(")?,
-                    1 => f.write_str(", ")?,
-                    n => {
-                        debug_assert!(n == 2);
-                        f.write_str(")")?;
-                    }
-                },
-                ResolvedType::Option(_) => match data.n_children_yielded {
-                    0 => f.write_str("Option<")?,
-                    n => {
-                        debug_assert!(n == 1);
-                        f.write_str(">")?;
-                    }
-                },
-                ResolvedType::Boolean => f.write_str("bool")?,
-                ResolvedType::UInt(ty) => write!(f, "{ty}")?,
-                ResolvedType::Array(_, size) => match data.n_children_yielded {
-                    0 => f.write_str("[")?,
-                    n => {
-                        debug_assert!(n == 1);
-                        write!(f, "; {size}]")?;
-                    }
-                },
-                ResolvedType::List(_, bound) => match data.n_children_yielded {
-                    0 => f.write_str("List<")?,
-                    n => {
-                        debug_assert!(n == 1);
-                        write!(f, ", {bound}>")?;
-                    }
-                },
-            }
+            data.node.0.display(f, data.n_children_yielded)?;
         }
-
         Ok(())
     }
 }
@@ -270,29 +295,29 @@ impl<'a> From<&'a ResolvedType> for StructuralType {
     fn from(value: &ResolvedType) -> Self {
         let mut output = vec![];
         for data in value.post_order_iter() {
-            match &data.node {
-                ResolvedType::Unit => output.push(StructuralType::unit()),
-                ResolvedType::Either(_, _) => {
+            match &data.node.0 {
+                TypeInner::Unit => output.push(StructuralType::unit()),
+                TypeInner::Either(_, _) => {
                     let right = output.pop().unwrap();
                     let left = output.pop().unwrap();
                     output.push(StructuralType::either(left, right));
                 }
-                ResolvedType::Product(_, _) => {
+                TypeInner::Product(_, _) => {
                     let right = output.pop().unwrap();
                     let left = output.pop().unwrap();
                     output.push(StructuralType::product(left, right));
                 }
-                ResolvedType::Option(_) => {
+                TypeInner::Option(_) => {
                     let inner = output.pop().unwrap();
                     output.push(StructuralType::option(inner));
                 }
-                ResolvedType::Boolean => output.push(StructuralType::boolean()),
-                ResolvedType::UInt(integer) => output.push(StructuralType::uint(*integer)),
-                ResolvedType::Array(_, size) => {
+                TypeInner::Boolean => output.push(StructuralType::boolean()),
+                TypeInner::UInt(integer) => output.push(StructuralType::uint(*integer)),
+                TypeInner::Array(_, size) => {
                     let element = output.pop().unwrap();
                     output.push(StructuralType::array(element, *size));
                 }
-                ResolvedType::List(_, bound) => {
+                TypeInner::List(_, bound) => {
                     let element = output.pop().unwrap();
                     output.push(StructuralType::list(element, *bound));
                 }

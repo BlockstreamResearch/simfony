@@ -14,7 +14,7 @@ use crate::{
     named::{ConstructExt, ProgExt},
     parse::{Expression, ExpressionInner, FuncCall, FuncType, Program, Statement},
     scope::GlobalScope,
-    types::{ResolvedType, StructuralType, TypeConstructible, UIntType},
+    types::{ResolvedType, StructuralType, TypeConstructible, TypeInner, UIntType},
     ProgNode,
 };
 
@@ -206,10 +206,15 @@ impl SingleExpressionInner {
                 ProgNode::comp(&input, &output).with_span(span)?
             }
             SingleExpressionInner::Array(elements) => {
-                let el_type = if let Some(ResolvedType::Array(ty, _)) = reqd_ty {
-                    Some(ty.as_ref())
-                } else {
-                    None
+                let el_type = match reqd_ty.map(ResolvedType::as_inner) {
+                    Some(TypeInner::Array(el_type, size)) => {
+                        if size.get() != elements.len() {
+                            return Err(Error::TypeValueMismatch(reqd_ty.unwrap().clone()))
+                                .with_span(span);
+                        }
+                        Some(el_type.as_ref())
+                    }
+                    _ => None,
                 };
                 // FIXME: Constructing pairs should never fail because when Simfony is translated to
                 // Simplicity the input type is variable. However, the fact that pairs always unify
@@ -222,22 +227,19 @@ impl SingleExpressionInner {
                 })?
             }
             SingleExpressionInner::List(elements) => {
-                let el_type = if let Some(ResolvedType::List(ty, _)) = reqd_ty {
-                    Some(ty.as_ref())
-                } else {
-                    None
+                let el_type = match reqd_ty.map(ResolvedType::as_inner) {
+                    Some(TypeInner::List(el_type, _)) => Some(el_type.as_ref()),
+                    _ => None,
                 };
                 let nodes: Vec<Result<ProgNode, RichError>> =
                     elements.iter().map(|e| e.eval(scope, el_type)).collect();
-                let bound = if let Some(list_type @ ResolvedType::List(_, bound)) = reqd_ty {
-                    if bound.get() <= nodes.len() {
-                        return Err(Error::TypeValueMismatch(list_type.clone())).with_span(span);
-                    }
-                    *bound
-                } else {
-                    NonZeroPow2Usize::next(elements.len().saturating_add(1))
+                let bound = match reqd_ty.map(ResolvedType::as_inner) {
+                    Some(TypeInner::List(_, bound)) => *bound,
+                    _ => NonZeroPow2Usize::next(elements.len().saturating_add(1)),
                 };
-
+                if bound.get() <= nodes.len() {
+                    return Err(Error::TypeValueMismatch(reqd_ty.unwrap().clone())).with_span(span);
+                }
                 // FIXME: Constructing pairs should never fail because when Simfony is translated to
                 // Simplicity the input type is variable. However, the fact that pairs always unify
                 // is hard to prove at the moment, while Simfony lacks a type system.
