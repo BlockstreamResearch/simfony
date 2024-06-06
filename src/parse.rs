@@ -784,7 +784,7 @@ impl PestParse for Bits {
 
         let bits = &bit_string[2..];
         if !bits.len().is_power_of_two() {
-            return Err(Error::BitStringPow2).with_span(&pair);
+            return Err(Error::BitStringPow2(bits.len())).with_span(&pair);
         }
 
         let byte_len = (bits.len() + 7) / 8;
@@ -831,7 +831,7 @@ impl PestParse for Bytes {
             .expect("Grammar enforces prefix")
             .replace('_', "");
         if hex_digits.len() < 2 || !hex_digits.len().is_power_of_two() {
-            return Err(Error::HexStringPow2).with_span(&pair);
+            return Err(Error::HexStringPow2(hex_digits.len())).with_span(&pair);
         }
 
         Vec::<u8>::from_hex(&hex_digits)
@@ -968,9 +968,9 @@ impl PestParse for ResolvedType {
                 }
                 Rule::list_bound => {
                     let bound_str = data.node.0.as_str();
-                    let bound = bound_str
-                        .parse::<NonZeroPow2Usize>()
-                        .map_err(|_| Error::ListBoundPow2)
+                    let bound = bound_str.parse::<usize>().with_span(&data.node.0)?;
+                    let bound = NonZeroPow2Usize::new(bound)
+                        .ok_or(Error::ListBoundPow2(bound))
                         .with_span(&data.node.0)?;
                     output.push(Item::Bound(bound));
                 }
