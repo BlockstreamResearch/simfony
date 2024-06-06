@@ -12,7 +12,8 @@ identifier        = @{ !(reserved) ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
 jet               = @{ "jet_" ~ (ASCII_ALPHANUMERIC | "_")+ }
 builtin           = @{ "builtin_" ~ (ASCII_ALPHANUMERIC | "_")+ }
 witness_name      = @{ (ASCII_ALPHANUMERIC | "_")+ }
-reserved          = _{ jet | builtin }
+builtin_type      = @{ "Either" | "Option" | "bool" | unsigned_type | "List" }
+reserved          = @{ jet | builtin | builtin_type }
 
 variable_pattern  =  { identifier }
 ignore_pattern    = @{ "_" }
