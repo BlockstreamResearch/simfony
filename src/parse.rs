@@ -7,12 +7,11 @@ use std::sync::Arc;
 
 use miniscript::iter::{Tree, TreeLike};
 use simplicity::elements::hex::FromHex;
-
 use simplicity::Value;
 
 use crate::error::{Error, RichError, WithSpan};
 use crate::num::NonZeroPow2Usize;
-use crate::types::{ResolvedType, UIntType};
+use crate::types::{ResolvedType, TypeConstructible, UIntType};
 use crate::Rule;
 
 /// Position of an object inside a file.
@@ -925,32 +924,32 @@ impl PestParse for ResolvedType {
 
         for data in pair.post_order_iter() {
             match data.node.0.as_rule() {
-                Rule::unit_type => output.push(Item::Type(ResolvedType::Unit)),
+                Rule::unit_type => output.push(Item::Type(ResolvedType::unit())),
                 Rule::unsigned_type => {
                     let uint_ty = UIntType::parse(data.node.0)?;
-                    output.push(Item::Type(ResolvedType::UInt(uint_ty)));
+                    output.push(Item::Type(ResolvedType::uint(uint_ty)));
                 }
                 Rule::sum_type => {
                     let r = output.pop().unwrap().unwrap_type();
                     let l = output.pop().unwrap().unwrap_type();
-                    output.push(Item::Type(ResolvedType::Either(Arc::new(l), Arc::new(r))));
+                    output.push(Item::Type(ResolvedType::either(l, r)));
                 }
                 Rule::product_type => {
                     let r = output.pop().unwrap().unwrap_type();
                     let l = output.pop().unwrap().unwrap_type();
-                    output.push(Item::Type(ResolvedType::Product(Arc::new(l), Arc::new(r))));
+                    output.push(Item::Type(ResolvedType::product(l, r)));
                 }
                 Rule::option_type => {
                     let r = output.pop().unwrap().unwrap_type();
-                    output.push(Item::Type(ResolvedType::Option(Arc::new(r))));
+                    output.push(Item::Type(ResolvedType::option(r)));
                 }
                 Rule::boolean_type => {
-                    output.push(Item::Type(ResolvedType::Boolean));
+                    output.push(Item::Type(ResolvedType::boolean()));
                 }
                 Rule::array_type => {
                     let size = output.pop().unwrap().unwrap_size();
                     let el = output.pop().unwrap().unwrap_type();
-                    output.push(Item::Type(ResolvedType::Array(Arc::new(el), size)));
+                    output.push(Item::Type(ResolvedType::array(el, size)));
                 }
                 Rule::array_size => {
                     let size_str = data.node.0.as_str();
@@ -963,7 +962,7 @@ impl PestParse for ResolvedType {
                 Rule::list_type => {
                     let bound = output.pop().unwrap().unwrap_bound();
                     let el = output.pop().unwrap().unwrap_type();
-                    output.push(Item::Type(ResolvedType::List(Arc::new(el), bound)));
+                    output.push(Item::Type(ResolvedType::list(el, bound)));
                 }
                 Rule::list_bound => {
                     let bound_str = data.node.0.as_str();

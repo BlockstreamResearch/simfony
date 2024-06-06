@@ -86,6 +86,67 @@ impl fmt::Display for UIntType {
     }
 }
 
+/// Various type constructors.
+pub trait TypeConstructible: Sized {
+    /// Create the unit type.
+    fn unit() -> Self;
+
+    /// Create a sum of the given `left` and `right` types.
+    fn either(left: Self, right: Self) -> Self;
+
+    /// Create a product of the given `left` and `right` types.
+    fn product(left: Self, right: Self) -> Self;
+
+    /// Create an option of the given `inner` type.
+    fn option(inner: Self) -> Self;
+
+    /// Create the Boolean type.
+    fn boolean() -> Self;
+
+    /// Create an unsigned `integer` type.
+    fn uint(integer: UIntType) -> Self;
+
+    /// Create an array with `size` many values of the `element` type.
+    fn array(element: Self, size: NonZeroUsize) -> Self;
+
+    /// Create a list with less than `bound` many values of the `element` type.
+    fn list(element: Self, bound: NonZeroPow2Usize) -> Self;
+}
+
+impl TypeConstructible for ResolvedType {
+    fn unit() -> Self {
+        Self::Unit
+    }
+
+    fn either(left: Self, right: Self) -> Self {
+        Self::Either(Arc::new(left), Arc::new(right))
+    }
+
+    fn product(left: Self, right: Self) -> Self {
+        Self::Product(Arc::new(left), Arc::new(right))
+    }
+
+    fn option(inner: Self) -> Self {
+        Self::Option(Arc::new(inner))
+    }
+
+    fn boolean() -> Self {
+        Self::Boolean
+    }
+
+    fn uint(integer: UIntType) -> Self {
+        Self::UInt(integer)
+    }
+
+    fn array(element: Self, size: NonZeroUsize) -> Self {
+        Self::Array(Arc::new(element), size)
+    }
+
+    fn list(element: Self, bound: NonZeroPow2Usize) -> Self {
+        Self::List(Arc::new(element), bound)
+    }
+}
+
 impl<'a> TreeLike for &'a ResolvedType {
     fn as_node(&self) -> Tree<Self> {
         match self {

@@ -14,7 +14,7 @@ use crate::{
     named::{ConstructExt, ProgExt},
     parse::{Expression, ExpressionInner, FuncCall, FuncType, Program, Statement},
     scope::GlobalScope,
-    types::{ResolvedType, UIntType},
+    types::{ResolvedType, TypeConstructible, UIntType},
     ProgNode,
 };
 
@@ -151,7 +151,7 @@ impl SingleExpressionInner {
             SingleExpressionInner::UnsignedInteger(decimal) => {
                 let reqd_ty = reqd_ty
                     .cloned()
-                    .unwrap_or(ResolvedType::UInt(UIntType::U32));
+                    .unwrap_or(ResolvedType::uint(UIntType::U32));
                 let ty = reqd_ty
                     .to_uint()
                     .ok_or(Error::TypeValueMismatch(reqd_ty))
