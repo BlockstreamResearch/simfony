@@ -7,13 +7,14 @@ use simplicity::{jet::Elements, Cmr, FailEntropy};
 
 use crate::array::{BTreeSlice, Partition};
 use crate::num::NonZeroPow2Usize;
-use crate::parse::{Pattern, SingleExpressionInner, Span, UIntType};
+use crate::parse::{Pattern, SingleExpressionInner, Span};
 use crate::scope::BasePattern;
 use crate::{
     error::{Error, RichError, WithSpan},
     named::{ConstructExt, ProgExt},
-    parse::{Expression, ExpressionInner, FuncCall, FuncType, Program, Statement, Type},
+    parse::{Expression, ExpressionInner, FuncCall, FuncType, Program, Statement},
     scope::GlobalScope,
+    types::{Type, UIntType},
     ProgNode,
 };
 

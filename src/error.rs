@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use simplicity::elements;
 
-use crate::parse::{Identifier, Position, Span, Type, UIntType};
+use crate::parse::{Identifier, Position, Span};
+use crate::types::{Type, UIntType};
 use crate::Rule;
 
 /// Helper trait to convert `Result<T, E>` into `Result<T, RichError>`.
