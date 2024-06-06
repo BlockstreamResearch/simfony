@@ -1,10 +1,13 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use miniscript::iter::{Tree, TreeLike};
+
 use crate::array::BinaryTree;
 use crate::named::{PairBuilder, SelectorBuilder};
 use crate::parse::{Identifier, Pattern};
+use crate::types::{AliasedType, ResolvedType};
 use crate::ProgNode;
-use miniscript::iter::{Tree, TreeLike};
-use std::collections::HashMap;
-use std::sync::Arc;
 
 /// Each Simfony expression expects an _input value_.
 /// A Simfony expression is translated into a Simplicity expression
@@ -44,6 +47,8 @@ pub struct GlobalScope {
     /// Later assignments occur higher in the tree than earlier assignments.
     /// ```
     variables: Vec<Vec<Pattern>>,
+    /// For each scope, the mapping of type aliases to resolved types.
+    aliases: Vec<HashMap<Identifier, ResolvedType>>,
 }
 
 impl GlobalScope {
@@ -51,12 +56,14 @@ impl GlobalScope {
     pub fn new(input: Pattern) -> Self {
         GlobalScope {
             variables: vec![vec![input]],
+            aliases: vec![HashMap::new()],
         }
     }
 
     /// Push a new scope onto the stack.
     pub fn push_scope(&mut self) {
         self.variables.push(Vec::new());
+        self.aliases.push(HashMap::new());
     }
 
     /// Pop the current scope from the stack.
@@ -66,6 +73,7 @@ impl GlobalScope {
     /// The stack is empty.
     pub fn pop_scope(&mut self) {
         self.variables.pop().expect("Empty stack");
+        self.aliases.pop().expect("Empty stack");
     }
 
     /// Push an assignment to the current scope.
@@ -86,6 +94,32 @@ impl GlobalScope {
             .last_mut()
             .expect("Empty stack")
             .push(pattern);
+    }
+
+    /// Resolve a type with aliases to a type without aliases.
+    pub fn resolve(&mut self, ty: &AliasedType) -> Result<ResolvedType, Identifier> {
+        let get_alias = |name: &Identifier| -> Option<ResolvedType> {
+            self.aliases
+                .iter()
+                .rev()
+                .find_map(|scope| scope.get(name))
+                .cloned()
+        };
+        ty.resolve(get_alias)
+    }
+
+    /// Push a type alias to the current scope.
+    ///
+    /// ## Panics
+    ///
+    /// The stack is empty.
+    pub fn insert_alias(&mut self, name: Identifier, ty: AliasedType) -> Result<(), Identifier> {
+        let resolved_ty = self.resolve(&ty)?;
+        self.aliases
+            .last_mut()
+            .expect("Empty stack")
+            .insert(name, resolved_ty);
+        Ok(())
     }
 
     /// Get the input pattern.

@@ -11,7 +11,7 @@ use simplicity::Value;
 
 use crate::error::{Error, RichError, WithSpan};
 use crate::num::{NonZeroPow2Usize, U256};
-use crate::types::{ResolvedType, TypeConstructible, UIntType};
+use crate::types::{AliasedType, TypeConstructible, UIntType};
 use crate::Rule;
 
 /// Position of an object inside a file.
@@ -101,6 +101,8 @@ pub enum Statement {
     Assignment(Assignment),
     /// A function call.
     FuncCall(FuncCall),
+    /// A type alias.
+    TypeAlias(TypeAlias),
 }
 
 /// Pattern for binding values to variables.
@@ -195,7 +197,7 @@ pub struct Assignment {
     /// The pattern.
     pub pattern: Pattern,
     /// The return type of the expression.
-    pub ty: ResolvedType,
+    pub ty: AliasedType,
     /// The expression.
     pub expression: Expression,
     /// The source text associated with this assignment.
@@ -253,6 +255,20 @@ impl fmt::Display for JetName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
+}
+
+/// A type alias.
+#[derive(Clone, Debug, Hash)]
+pub struct TypeAlias {
+    /// Name of the alias.
+    pub name: Identifier,
+    /// Type that the alias resolves to.
+    ///
+    /// During the parsing stage, these types may include aliases.
+    /// The compiler checks if all contained aliases have been declared before.
+    pub ty: AliasedType,
+    /// Area that the alias spans in the source file.
+    pub span: Span,
 }
 
 /// An expression is something that returns a value.
@@ -493,6 +509,7 @@ impl PestParse for Statement {
         match inner_pair.as_rule() {
             Rule::assignment => Assignment::parse(inner_pair).map(Statement::Assignment),
             Rule::func_call => FuncCall::parse(inner_pair).map(Statement::FuncCall),
+            Rule::type_alias => TypeAlias::parse(inner_pair).map(Statement::TypeAlias),
             _ => unreachable!("Corrupt grammar"),
         }
     }
@@ -549,7 +566,7 @@ impl PestParse for Assignment {
         let span = Span::from(&pair);
         let mut inner_pair = pair.into_inner();
         let pattern = Pattern::parse(inner_pair.next().unwrap())?;
-        let ty = ResolvedType::parse(inner_pair.next().unwrap())?;
+        let ty = AliasedType::parse(inner_pair.next().unwrap())?;
         let expression = Expression::parse(inner_pair.next().unwrap())?;
         Ok(Assignment {
             pattern,
@@ -608,6 +625,17 @@ impl PestParse for JetName {
         assert!(matches!(pair.as_rule(), Rule::jet));
         let jet_name = pair.as_str().strip_prefix("jet_").unwrap();
         Ok(Self(Arc::from(jet_name)))
+    }
+}
+
+impl PestParse for TypeAlias {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
+        assert!(matches!(pair.as_rule(), Rule::type_alias));
+        let span = Span::from(&pair);
+        let mut it = pair.into_inner();
+        let name = Identifier::parse(it.next().unwrap())?;
+        let ty = AliasedType::parse(it.next().unwrap())?;
+        Ok(Self { name, ty, span })
     }
 }
 
@@ -892,16 +920,16 @@ impl PestParse for MatchPattern {
     }
 }
 
-impl PestParse for ResolvedType {
+impl PestParse for AliasedType {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         enum Item {
-            Type(ResolvedType),
+            Type(AliasedType),
             Size(NonZeroUsize),
             Bound(NonZeroPow2Usize),
         }
 
         impl Item {
-            fn unwrap_type(self) -> ResolvedType {
+            fn unwrap_type(self) -> AliasedType {
                 match self {
                     Item::Type(ty) => ty,
                     _ => panic!("Not a type"),
@@ -929,32 +957,36 @@ impl PestParse for ResolvedType {
 
         for data in pair.post_order_iter() {
             match data.node.0.as_rule() {
-                Rule::unit_type => output.push(Item::Type(ResolvedType::unit())),
+                Rule::identifier => {
+                    let identifier = Identifier::parse(data.node.0)?;
+                    output.push(Item::Type(AliasedType::alias(identifier)));
+                }
+                Rule::unit_type => output.push(Item::Type(AliasedType::unit())),
                 Rule::unsigned_type => {
                     let uint_ty = UIntType::parse(data.node.0)?;
-                    output.push(Item::Type(ResolvedType::uint(uint_ty)));
+                    output.push(Item::Type(AliasedType::uint(uint_ty)));
                 }
                 Rule::sum_type => {
                     let r = output.pop().unwrap().unwrap_type();
                     let l = output.pop().unwrap().unwrap_type();
-                    output.push(Item::Type(ResolvedType::either(l, r)));
+                    output.push(Item::Type(AliasedType::either(l, r)));
                 }
                 Rule::product_type => {
                     let r = output.pop().unwrap().unwrap_type();
                     let l = output.pop().unwrap().unwrap_type();
-                    output.push(Item::Type(ResolvedType::product(l, r)));
+                    output.push(Item::Type(AliasedType::product(l, r)));
                 }
                 Rule::option_type => {
                     let r = output.pop().unwrap().unwrap_type();
-                    output.push(Item::Type(ResolvedType::option(r)));
+                    output.push(Item::Type(AliasedType::option(r)));
                 }
                 Rule::boolean_type => {
-                    output.push(Item::Type(ResolvedType::boolean()));
+                    output.push(Item::Type(AliasedType::boolean()));
                 }
                 Rule::array_type => {
                     let size = output.pop().unwrap().unwrap_size();
                     let el = output.pop().unwrap().unwrap_type();
-                    output.push(Item::Type(ResolvedType::array(el, size)));
+                    output.push(Item::Type(AliasedType::array(el, size)));
                 }
                 Rule::array_size => {
                     let size_str = data.node.0.as_str();
@@ -967,7 +999,7 @@ impl PestParse for ResolvedType {
                 Rule::list_type => {
                     let bound = output.pop().unwrap().unwrap_bound();
                     let el = output.pop().unwrap().unwrap_type();
-                    output.push(Item::Type(ResolvedType::list(el, bound)));
+                    output.push(Item::Type(AliasedType::list(el, bound)));
                 }
                 Rule::list_bound => {
                     let bound_str = data.node.0.as_str();
@@ -1045,7 +1077,8 @@ impl<'a> TreeLike for TyPair<'a> {
             | Rule::boolean_type
             | Rule::unsigned_type
             | Rule::array_size
-            | Rule::list_bound => Tree::Nullary,
+            | Rule::list_bound
+            | Rule::identifier => Tree::Nullary,
             Rule::ty | Rule::option_type => {
                 let l = it.next().unwrap();
                 Tree::Unary(TyPair(l))

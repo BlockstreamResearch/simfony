@@ -150,6 +150,7 @@ pub enum Error {
     TypeValueMismatch(ResolvedType),
     InvalidDecimal(UIntType),
     UndefinedVariable(Identifier),
+    UndefinedAlias(Identifier),
 }
 
 #[rustfmt::skip]
@@ -203,6 +204,10 @@ impl fmt::Display for Error {
             Error::UndefinedVariable(identifier) => write!(
                 f,
                 "Variable `{identifier}` is not defined"
+            ),
+            Error::UndefinedAlias(identifier) => write!(
+                f,
+                "Type alias `{identifier}` is not defined"
             ),
         }
     }
