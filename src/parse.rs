@@ -825,14 +825,16 @@ impl PestParse for Bytes {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::byte_string));
         let hex_string = pair.as_str();
-        debug_assert!(&hex_string[0..2] == "0x");
 
-        let hex_digits = &hex_string[2..];
+        let hex_digits = hex_string
+            .strip_prefix("0x")
+            .expect("Grammar enforces prefix")
+            .replace('_', "");
         if !hex_digits.len().is_power_of_two() {
             return Err(Error::HexStringPow2).with_span(&pair);
         }
 
-        Vec::<u8>::from_hex(hex_digits)
+        Vec::<u8>::from_hex(&hex_digits)
             .map_err(Error::from)
             .with_span(&pair)
             .map(Arc::from)
