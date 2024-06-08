@@ -7,13 +7,14 @@ use simplicity::{jet::Elements, Cmr, FailEntropy};
 
 use crate::array::{BTreeSlice, Partition};
 use crate::num::NonZeroPow2Usize;
-use crate::parse::{Pattern, SingleExpressionInner, Span, UIntType};
+use crate::parse::{Pattern, SingleExpressionInner, Span};
 use crate::scope::BasePattern;
 use crate::{
     error::{Error, RichError, WithSpan},
     named::{ConstructExt, ProgExt},
-    parse::{Expression, ExpressionInner, FuncCall, FuncType, Program, Statement, Type},
+    parse::{Expression, ExpressionInner, FuncCall, FuncType, Program, Statement},
     scope::GlobalScope,
+    types::{ResolvedType, StructuralType, TypeConstructible, TypeInner, UIntType},
     ProgNode,
 };
 
@@ -61,7 +62,7 @@ impl FuncCall {
     pub fn eval(
         &self,
         scope: &mut GlobalScope,
-        _reqd_ty: Option<&Type>,
+        _reqd_ty: Option<&ResolvedType>,
     ) -> Result<ProgNode, RichError> {
         match &self.func_type {
             FuncType::Jet(name) => {
@@ -105,7 +106,7 @@ impl Expression {
     pub fn eval(
         &self,
         scope: &mut GlobalScope,
-        reqd_ty: Option<&Type>,
+        reqd_ty: Option<&ResolvedType>,
     ) -> Result<ProgNode, RichError> {
         match &self.inner {
             ExpressionInner::BlockExpression(stmts, expr) => {
@@ -123,7 +124,7 @@ impl SingleExpressionInner {
     pub fn eval(
         &self,
         scope: &mut GlobalScope,
-        reqd_ty: Option<&Type>,
+        reqd_ty: Option<&ResolvedType>,
         span: Span,
     ) -> Result<ProgNode, RichError> {
         let expr = match self {
@@ -148,10 +149,11 @@ impl SingleExpressionInner {
                 ProgNode::pair(&l, &r).with_span(span)?
             }
             SingleExpressionInner::UnsignedInteger(decimal) => {
-                let reqd_ty = reqd_ty.cloned().unwrap_or(Type::UInt(UIntType::U32));
-                let ty = reqd_ty
-                    .to_uint()
-                    .ok_or(Error::TypeValueMismatch(reqd_ty))
+                let reqd_ty = reqd_ty
+                    .cloned()
+                    .unwrap_or(ResolvedType::uint(UIntType::U32));
+                let ty = UIntType::try_from(&reqd_ty)
+                    .map_err(|_| Error::TypeValueMismatch(reqd_ty))
                     .with_span(span)?;
                 let value = ty.parse_decimal(decimal).with_span(span)?;
                 ProgNode::unit_comp(&ProgNode::const_word(value))
@@ -204,10 +206,15 @@ impl SingleExpressionInner {
                 ProgNode::comp(&input, &output).with_span(span)?
             }
             SingleExpressionInner::Array(elements) => {
-                let el_type = if let Some(Type::Array(ty, _)) = reqd_ty {
-                    Some(ty.as_ref())
-                } else {
-                    None
+                let el_type = match reqd_ty.map(ResolvedType::as_inner) {
+                    Some(TypeInner::Array(el_type, size)) => {
+                        if size.get() != elements.len() {
+                            return Err(Error::TypeValueMismatch(reqd_ty.unwrap().clone()))
+                                .with_span(span);
+                        }
+                        Some(el_type.as_ref())
+                    }
+                    _ => None,
                 };
                 // FIXME: Constructing pairs should never fail because when Simfony is translated to
                 // Simplicity the input type is variable. However, the fact that pairs always unify
@@ -220,22 +227,19 @@ impl SingleExpressionInner {
                 })?
             }
             SingleExpressionInner::List(elements) => {
-                let el_type = if let Some(Type::List(ty, _)) = reqd_ty {
-                    Some(ty.as_ref())
-                } else {
-                    None
+                let el_type = match reqd_ty.map(ResolvedType::as_inner) {
+                    Some(TypeInner::List(el_type, _)) => Some(el_type.as_ref()),
+                    _ => None,
                 };
                 let nodes: Vec<Result<ProgNode, RichError>> =
                     elements.iter().map(|e| e.eval(scope, el_type)).collect();
-                let bound = if let Some(list_type @ Type::List(_, bound)) = reqd_ty {
-                    if bound.get() <= nodes.len() {
-                        return Err(Error::TypeValueMismatch(list_type.clone())).with_span(span);
-                    }
-                    *bound
-                } else {
-                    NonZeroPow2Usize::next(elements.len().saturating_add(1))
+                let bound = match reqd_ty.map(ResolvedType::as_inner) {
+                    Some(TypeInner::List(_, bound)) => *bound,
+                    _ => NonZeroPow2Usize::next(elements.len().saturating_add(1)),
                 };
-
+                if bound.get() <= nodes.len() {
+                    return Err(Error::TypeValueMismatch(reqd_ty.unwrap().clone())).with_span(span);
+                }
                 // FIXME: Constructing pairs should never fail because when Simfony is translated to
                 // Simplicity the input type is variable. However, the fact that pairs always unify
                 // is hard to prove at the moment, while Simfony lacks a type system.
@@ -263,7 +267,7 @@ impl SingleExpressionInner {
         if let Some(reqd_ty) = reqd_ty {
             expr.arrow()
                 .target
-                .unify(&reqd_ty.to_simplicity(), "")
+                .unify(&StructuralType::from(reqd_ty).to_unfinalized(), "")
                 .map_err(|_| Error::TypeValueMismatch(reqd_ty.clone()))
                 .with_span(span)?;
         }
