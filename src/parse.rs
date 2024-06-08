@@ -10,7 +10,7 @@ use simplicity::elements::hex::FromHex;
 use simplicity::Value;
 
 use crate::error::{Error, RichError, WithSpan};
-use crate::num::NonZeroPow2Usize;
+use crate::num::{NonZeroPow2Usize, U256};
 use crate::types::{ResolvedType, TypeConstructible, UIntType};
 use crate::Rule;
 
@@ -449,9 +449,9 @@ impl UIntType {
     /// Parse a decimal string for the type.
     pub fn parse_decimal(&self, decimal: &UnsignedDecimal) -> Result<Arc<Value>, Error> {
         if let UIntType::U256 = self {
-            return Err(Error::InvalidDecimal(*self));
+            let u256 = decimal.as_inner().parse::<U256>().map_err(Error::from)?;
+            return Ok(Value::u256_from_slice(u256.as_ref()));
         }
-
         match self {
             UIntType::U1 => decimal.as_inner().parse::<u8>().map(Value::u1),
             UIntType::U2 => decimal.as_inner().parse::<u8>().map(Value::u2),

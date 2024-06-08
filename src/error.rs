@@ -229,6 +229,12 @@ impl From<std::num::ParseIntError> for Error {
     }
 }
 
+impl From<crate::num::ParseIntError> for Error {
+    fn from(error: crate::num::ParseIntError) -> Self {
+        Self::CannotParse(error.to_string())
+    }
+}
+
 impl From<simplicity::types::Error> for Error {
     fn from(error: simplicity::types::Error) -> Self {
         Self::CannotCompile(error.to_string())
