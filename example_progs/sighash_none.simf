@@ -21,5 +21,5 @@ let ctx: (List<u8, 64>, (u64, u256)) = jet_sha_256_ctx_8_add_4(ctx, jet_current_
 let msg: u256 = jet_sha_256_ctx_8_finalize(ctx);
 
 let pk: u256 = 0xf9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9;
-let sig: (u256, u256) = 0x346152583d5b60b972bb4c03ab672e339431060e2b09c447ab983c65dabc70a459f3beca7788bfa5da221cf99227b65b4ad3821a2045c847ee56d48df26aee9c;
+let sig: (u256, u256) = (0x346152583d5b60b972bb4c03ab672e339431060e2b09c447ab983c65dabc70a4, 0x59f3beca7788bfa5da221cf99227b65b4ad3821a2045c847ee56d48df26aee9c);
 jet_bip_0340_verify(pk, msg, sig);

@@ -57,8 +57,8 @@ unwrap_right_expr =  { "unwrap_right(" ~ expression ~ ")" }
 unwrap_expr       =  { "unwrap(" ~ expression ~ ")" }
 func_call         =  { jet_expr | unwrap_left_expr | unwrap_right_expr | unwrap_expr }
 unsigned_integer  = @{ ASCII_DIGIT+ }
-bit_string        = @{ "0b" ~ ASCII_BIN_DIGIT+ }
-byte_string       = @{ "0x" ~ ASCII_HEX_DIGIT+ }
+bit_string        = @{ "0b" ~ (ASCII_BIN_DIGIT | "_")+ }
+byte_string       = @{ "0x" ~ (ASCII_HEX_DIGIT | "_")+ }
 witness_expr      =  { "witness(\"" ~ witness_name ~ "\")" }
 variable_expr     =  { identifier }
 match_arm         =  { match_pattern ~ "=>" ~ (single_expression ~ "," | block_expression ~ ","?) }

@@ -380,6 +380,8 @@ impl Bits {
 }
 
 /// Byte string whose length is a power of two.
+///
+/// The string must be at least 1 byte and at most 32 bytes long.
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Bytes(pub Arc<[u8]>);
 
@@ -784,7 +786,7 @@ impl PestParse for Bits {
 
         let bits = &bit_string[2..];
         if !bits.len().is_power_of_two() {
-            return Err(Error::BitStringPow2).with_span(&pair);
+            return Err(Error::BitStringPow2(bits.len())).with_span(&pair);
         }
 
         let byte_len = (bits.len() + 7) / 8;
@@ -825,14 +827,16 @@ impl PestParse for Bytes {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::byte_string));
         let hex_string = pair.as_str();
-        debug_assert!(&hex_string[0..2] == "0x");
 
-        let hex_digits = &hex_string[2..];
-        if !hex_digits.len().is_power_of_two() {
-            return Err(Error::HexStringPow2).with_span(&pair);
+        let hex_digits = hex_string
+            .strip_prefix("0x")
+            .expect("Grammar enforces prefix")
+            .replace('_', "");
+        if hex_digits.len() < 2 || 64 < hex_digits.len() || !hex_digits.len().is_power_of_two() {
+            return Err(Error::HexStringPow2(hex_digits.len())).with_span(&pair);
         }
 
-        Vec::<u8>::from_hex(hex_digits)
+        Vec::<u8>::from_hex(&hex_digits)
             .map_err(Error::from)
             .with_span(&pair)
             .map(Arc::from)
@@ -966,9 +970,9 @@ impl PestParse for ResolvedType {
                 }
                 Rule::list_bound => {
                     let bound_str = data.node.0.as_str();
-                    let bound = bound_str
-                        .parse::<NonZeroPow2Usize>()
-                        .map_err(|_| Error::ListBoundPow2)
+                    let bound = bound_str.parse::<usize>().with_span(&data.node.0)?;
+                    let bound = NonZeroPow2Usize::new(bound)
+                        .ok_or(Error::ListBoundPow2(bound))
                         .with_span(&data.node.0)?;
                     output.push(Item::Bound(bound));
                 }

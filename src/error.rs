@@ -136,9 +136,9 @@ impl From<pest::error::Error<Rule>> for RichError {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Error {
     ArraySizeZero,
-    ListBoundPow2,
-    BitStringPow2,
-    HexStringPow2,
+    ListBoundPow2(usize),
+    BitStringPow2(usize),
+    HexStringPow2(usize),
     CannotParse(String),
     Grammar(String),
     UnmatchedPattern(String),
@@ -158,19 +158,19 @@ impl fmt::Display for Error {
         match self {
             Error::ArraySizeZero => write!(
                 f,
-                "Array size must be positive: 1, 2, 3, 4, 5, ..."
+                "Expected positive array size (1, 2, 3, 4, 5, ...), found 0"
             ),
-            Error::ListBoundPow2 => write!(
+            Error::ListBoundPow2(bound) => write!(
                 f,
-                "List bound must be a power of two greater one: 2, 4, 8, 16, 32, ..."
+                "Expected a power of two greater than one (2, 4, 8, 16, 32, ...) as list bound, found {bound}"
             ),
-            Error::BitStringPow2 => write!(
+            Error::BitStringPow2(len) => write!(
                 f,
-                "Length of bit string must be a power of two: 1, 2, 4, 8, 16, ..."
+                "Expected a power of two (1, 2, 4, 8, 16, ...) as bit string length, found {len}"
             ),
-            Error::HexStringPow2 => write!(
+            Error::HexStringPow2(len) => write!(
                 f,
-                "Length of hex string must be a power of two: 1, 2, 4, 8, 16, ..."
+                "Expected a valid hex string length (2, 4, 8, 16, 32, 64), found {len}"
             ),
             Error::CannotParse(description) => write!(
                 f,
@@ -239,7 +239,7 @@ impl From<simplicity::types::Error> for Error {
 mod tests {
     use super::*;
 
-    const FILE: &str = r#"let a1: List<u32, 2> = None;
+    const FILE: &str = r#"let a1: List<u32, 5> = None;
 let x: u32 = Left(
     Right(0)
 );
@@ -247,13 +247,13 @@ let x: u32 = Left(
 
     #[test]
     fn display_single_line() {
-        let error = Error::ListBoundPow2
+        let error = Error::ListBoundPow2(5)
             .with_span(Span::new(Position::new(1, 14), Position::new(1, 20)))
             .with_file(Arc::from(FILE));
         let expected = r#"
   |
-1 | let a1: List<u32, 2> = None;
-  |              ^^^^^^ List bound must be a power of two greater one: 2, 4, 8, 16, 32, ..."#;
+1 | let a1: List<u32, 5> = None;
+  |              ^^^^^^ Expected a power of two greater than one (2, 4, 8, 16, 32, ...) as list bound, found 5"#;
         assert_eq!(&expected[1..], &error.to_string());
     }
 
