@@ -380,6 +380,8 @@ impl Bits {
 }
 
 /// Byte string whose length is a power of two.
+///
+/// The string must be at least 1 byte and at most 32 bytes long.
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Bytes(pub Arc<[u8]>);
 
@@ -830,7 +832,7 @@ impl PestParse for Bytes {
             .strip_prefix("0x")
             .expect("Grammar enforces prefix")
             .replace('_', "");
-        if hex_digits.len() < 2 || !hex_digits.len().is_power_of_two() {
+        if hex_digits.len() < 2 || 64 < hex_digits.len() || !hex_digits.len().is_power_of_two() {
             return Err(Error::HexStringPow2(hex_digits.len())).with_span(&pair);
         }
 
