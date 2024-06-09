@@ -448,7 +448,7 @@ impl MatchPattern {
 impl UIntType {
     /// Parse a decimal string for the type.
     pub fn parse_decimal(&self, decimal: &UnsignedDecimal) -> Result<Arc<Value>, Error> {
-        if let UIntType::U128 | UIntType::U256 = self {
+        if let UIntType::U256 = self {
             return Err(Error::InvalidDecimal(*self));
         }
 
@@ -460,7 +460,8 @@ impl UIntType {
             UIntType::U16 => decimal.as_inner().parse::<u16>().map(Value::u16),
             UIntType::U32 => decimal.as_inner().parse::<u32>().map(Value::u32),
             UIntType::U64 => decimal.as_inner().parse::<u64>().map(Value::u64),
-            _ => unreachable!("Covered by outer match"),
+            UIntType::U128 => decimal.as_inner().parse::<u128>().map(Value::u128),
+            UIntType::U256 => unreachable!("Covered by previous if-let"),
         }
         .map_err(Error::from)
     }
