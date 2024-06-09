@@ -773,7 +773,7 @@ impl PestParse for SingleExpression {
 impl PestParse for UnsignedDecimal {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::unsigned_integer));
-        let decimal = Arc::from(pair.as_str());
+        let decimal = Arc::from(pair.as_str().replace('_', ""));
         Ok(Self(decimal))
     }
 }
