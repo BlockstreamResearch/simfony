@@ -32,7 +32,11 @@ fn eval_blk(
     }
     match &stmts[index] {
         Statement::Assignment(assignment) => {
-            let expr = assignment.expression.eval(scope, Some(&assignment.ty))?;
+            let ty = scope
+                .resolve(&assignment.ty)
+                .map_err(Error::UndefinedAlias)
+                .with_span(assignment.span)?;
+            let expr = assignment.expression.eval(scope, Some(&ty))?;
             scope.insert(assignment.pattern.clone());
             let left = ProgNode::pair_iden(&expr);
             let right = eval_blk(stmts, scope, index + 1, last_expr)?;
@@ -42,6 +46,13 @@ fn eval_blk(
             let left = func_call.eval(scope, None)?;
             let right = eval_blk(stmts, scope, index + 1, last_expr)?;
             combine_seq(&left, &right).with_span(func_call.span)
+        }
+        Statement::TypeAlias(alias) => {
+            scope
+                .insert_alias(alias.name.clone(), alias.ty.clone())
+                .map_err(Error::UndefinedAlias)
+                .with_span(alias.span)?;
+            eval_blk(stmts, scope, index + 1, last_expr)
         }
     }
 }

@@ -6,13 +6,14 @@ program = {
     (statement ~ ";")* ~
     EOI
 }
-statement = { assignment | func_call }
+statement = { assignment | func_call | type_alias }
 
 identifier        = @{ !(reserved) ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
 jet               = @{ "jet_" ~ (ASCII_ALPHANUMERIC | "_")+ }
 builtin           = @{ "builtin_" ~ (ASCII_ALPHANUMERIC | "_")+ }
 witness_name      = @{ (ASCII_ALPHANUMERIC | "_")+ }
-reserved          = _{ jet | builtin }
+builtin_type      = @{ "Either" | "Option" | "bool" | unsigned_type | "List" }
+reserved          = @{ jet | builtin | builtin_type }
 
 variable_pattern  =  { identifier }
 ignore_pattern    = @{ "_" }
@@ -39,7 +40,8 @@ array_size        = @{ ASCII_DIGIT+ }
 array_type        =  { "[" ~ ty ~ ";" ~ array_size ~ "]" }
 list_bound        = @{ ASCII_DIGIT+ }
 list_type         =  { "List<" ~ ty ~ "," ~ list_bound ~ ">" }
-ty                =  { unit_type | sum_type | product_type | option_type | boolean_type | unsigned_type | array_type | list_type }
+ty                =  { unit_type | sum_type | product_type | option_type | boolean_type | unsigned_type | array_type | list_type | identifier }
+type_alias        =  { "type" ~ identifier ~ "=" ~ ty }
 
 expression        =  { block_expression | single_expression }
 block_expression  =  { "{" ~ (statement ~ ";")* ~ expression ~ "}" }

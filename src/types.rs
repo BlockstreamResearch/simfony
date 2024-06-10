@@ -7,6 +7,7 @@ use simplicity::types::{CompleteBound, Final};
 
 use crate::array::{BTreeSlice, Partition};
 use crate::num::NonZeroPow2Usize;
+use crate::parse::Identifier;
 
 /// Primitives of the Simfony type system, excluding type aliases.
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
@@ -253,6 +254,146 @@ impl fmt::Display for ResolvedType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for data in self.verbose_pre_order_iter() {
             data.node.0.display(f, data.n_children_yielded)?;
+        }
+        Ok(())
+    }
+}
+
+/// Simfony type with type aliases.
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub struct AliasedType(AliasedInner);
+
+/// Type alias or primitive.
+///
+/// Private struct to allow future changes.
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+enum AliasedInner {
+    /// Type alias
+    Alias(Identifier),
+    /// Type primitive
+    Inner(TypeInner<Arc<AliasedType>>),
+}
+
+impl AliasedType {
+    /// Create a type alias from the given `identifier`.
+    pub fn alias(identifier: Identifier) -> Self {
+        Self(AliasedInner::Alias(identifier))
+    }
+
+    /// Resolve all aliases in the type based on the given map of `aliases` to types.
+    pub fn resolve<F>(&self, mut get_alias: F) -> Result<ResolvedType, Identifier>
+    where
+        F: FnMut(&Identifier) -> Option<ResolvedType>,
+    {
+        let mut output = vec![];
+        for data in self.post_order_iter() {
+            match &data.node.0 {
+                AliasedInner::Alias(alias) => {
+                    let resolved = get_alias(alias).ok_or(alias.clone())?;
+                    output.push(resolved);
+                }
+                AliasedInner::Inner(inner) => match inner {
+                    TypeInner::Unit => output.push(ResolvedType::unit()),
+                    TypeInner::Either(_, _) => {
+                        let right = output.pop().unwrap();
+                        let left = output.pop().unwrap();
+                        output.push(ResolvedType::either(left, right));
+                    }
+                    TypeInner::Product(_, _) => {
+                        let right = output.pop().unwrap();
+                        let left = output.pop().unwrap();
+                        output.push(ResolvedType::product(left, right));
+                    }
+                    TypeInner::Option(_) => {
+                        let inner = output.pop().unwrap();
+                        output.push(ResolvedType::option(inner));
+                    }
+                    TypeInner::Boolean => output.push(ResolvedType::boolean()),
+                    TypeInner::UInt(integer) => output.push(ResolvedType::uint(*integer)),
+                    TypeInner::Array(_, size) => {
+                        let element = output.pop().unwrap();
+                        output.push(ResolvedType::array(element, *size));
+                    }
+                    TypeInner::List(_, bound) => {
+                        let element = output.pop().unwrap();
+                        output.push(ResolvedType::list(element, *bound));
+                    }
+                },
+            }
+        }
+        debug_assert_eq!(output.len(), 1);
+        Ok(output.pop().unwrap())
+    }
+}
+
+impl TypeConstructible for AliasedType {
+    fn unit() -> Self {
+        Self(AliasedInner::Inner(TypeInner::Unit))
+    }
+
+    fn either(left: Self, right: Self) -> Self {
+        Self(AliasedInner::Inner(TypeInner::Either(
+            Arc::new(left),
+            Arc::new(right),
+        )))
+    }
+
+    fn product(left: Self, right: Self) -> Self {
+        Self(AliasedInner::Inner(TypeInner::Product(
+            Arc::new(left),
+            Arc::new(right),
+        )))
+    }
+
+    fn option(inner: Self) -> Self {
+        Self(AliasedInner::Inner(TypeInner::Option(Arc::new(inner))))
+    }
+
+    fn boolean() -> Self {
+        Self(AliasedInner::Inner(TypeInner::Boolean))
+    }
+
+    fn uint(integer: UIntType) -> Self {
+        Self(AliasedInner::Inner(TypeInner::UInt(integer)))
+    }
+
+    fn array(element: Self, size: NonZeroUsize) -> Self {
+        Self(AliasedInner::Inner(TypeInner::Array(
+            Arc::new(element),
+            size,
+        )))
+    }
+
+    fn list(element: Self, bound: NonZeroPow2Usize) -> Self {
+        Self(AliasedInner::Inner(TypeInner::List(
+            Arc::new(element),
+            bound,
+        )))
+    }
+}
+
+impl<'a> TreeLike for &'a AliasedType {
+    fn as_node(&self) -> Tree<Self> {
+        match &self.0 {
+            AliasedInner::Alias(_) => Tree::Nullary,
+            AliasedInner::Inner(inner) => match inner {
+                TypeInner::Unit | TypeInner::Boolean | TypeInner::UInt(..) => Tree::Nullary,
+                TypeInner::Option(l) | TypeInner::Array(l, _) | TypeInner::List(l, _) => {
+                    Tree::Unary(l)
+                }
+                TypeInner::Either(l, r) | TypeInner::Product(l, r) => Tree::Binary(l, r),
+            },
+        }
+    }
+}
+
+impl fmt::Display for AliasedType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for data in self.verbose_pre_order_iter() {
+            match &data.node.0 {
+                AliasedInner::Alias(alias) => write!(f, "{alias}")?,
+                AliasedInner::Inner(inner) => inner.display(f, data.n_children_yielded)?,
+            }
         }
         Ok(())
     }
