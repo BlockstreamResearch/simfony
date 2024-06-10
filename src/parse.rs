@@ -10,7 +10,7 @@ use simplicity::elements::hex::FromHex;
 use simplicity::Value;
 
 use crate::error::{Error, RichError, WithSpan};
-use crate::num::NonZeroPow2Usize;
+use crate::num::{NonZeroPow2Usize, U256};
 use crate::types::{ResolvedType, TypeConstructible, UIntType};
 use crate::Rule;
 
@@ -448,10 +448,10 @@ impl MatchPattern {
 impl UIntType {
     /// Parse a decimal string for the type.
     pub fn parse_decimal(&self, decimal: &UnsignedDecimal) -> Result<Arc<Value>, Error> {
-        if let UIntType::U128 | UIntType::U256 = self {
-            return Err(Error::InvalidDecimal(*self));
+        if let UIntType::U256 = self {
+            let u256 = decimal.as_inner().parse::<U256>().map_err(Error::from)?;
+            return Ok(Value::u256_from_slice(u256.as_ref()));
         }
-
         match self {
             UIntType::U1 => decimal.as_inner().parse::<u8>().map(Value::u1),
             UIntType::U2 => decimal.as_inner().parse::<u8>().map(Value::u2),
@@ -460,7 +460,8 @@ impl UIntType {
             UIntType::U16 => decimal.as_inner().parse::<u16>().map(Value::u16),
             UIntType::U32 => decimal.as_inner().parse::<u32>().map(Value::u32),
             UIntType::U64 => decimal.as_inner().parse::<u64>().map(Value::u64),
-            _ => unreachable!("Covered by outer match"),
+            UIntType::U128 => decimal.as_inner().parse::<u128>().map(Value::u128),
+            UIntType::U256 => unreachable!("Covered by previous if-let"),
         }
         .map_err(Error::from)
     }
@@ -773,7 +774,7 @@ impl PestParse for SingleExpression {
 impl PestParse for UnsignedDecimal {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::unsigned_integer));
-        let decimal = Arc::from(pair.as_str());
+        let decimal = Arc::from(pair.as_str().replace('_', ""));
         Ok(Self(decimal))
     }
 }
