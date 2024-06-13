@@ -142,7 +142,7 @@ impl<'a> TryFrom<&'a StructuralType> for UIntType {
     type Error = ();
 
     fn try_from(value: &StructuralType) -> Result<Self, Self::Error> {
-        let mut current = value.as_inner();
+        let mut current = value.as_ref();
         let mut n = 0;
         while let Some((left, right)) = current.as_product() {
             if left.tmr() != right.tmr() {
@@ -405,6 +405,12 @@ impl From<UIntType> for AliasedType {
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub struct StructuralType(Arc<Final>);
 
+impl AsRef<Final> for StructuralType {
+    fn as_ref(&self) -> &Final {
+        &self.0
+    }
+}
+
 impl TreeLike for StructuralType {
     fn as_node(&self) -> Tree<Self> {
         match self.0.bound() {
@@ -516,11 +522,6 @@ impl TypeConstructible for StructuralType {
 }
 
 impl StructuralType {
-    /// Access the finalized Simplicity type.
-    pub fn as_inner(&self) -> &Final {
-        self.0.as_ref()
-    }
-
     /// Convert into an unfinalized type that can be used in Simplicity's unification algorithm.
     pub fn to_unfinalized(&self) -> simplicity::types::Type {
         simplicity::types::Type::from(self.0.clone())
