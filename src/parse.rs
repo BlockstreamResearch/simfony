@@ -373,13 +373,22 @@ impl fmt::Display for UnsignedDecimal {
 /// Bit string whose length is a power of two.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Bits {
-    /// Least significant bit of byte
+    /// Least significant bit of byte.
+    ///
+    /// The bit is saved as a [`u8`] value that is always less than or equal to 1.
     U1(u8),
-    /// Two least significant bits of byte
+    /// Two least significant bits of byte.
+    ///
+    /// The bits are saved as a [`u8`] value that is always less than or equal to 3.
     U2(u8),
-    /// Four least significant bits of byte
+    /// Four least significant bits of byte.
+    ///
+    /// The bits are saved as a [`u8`] value that is always less than or equal to 15.
     U4(u8),
-    /// All bits from byte string
+    /// All bits from byte string.
+    ///
+    /// There are at least 8 bits, aka 1 byte.
+    /// There are at most 256 bits, aka 32 bytes.
     Long(Arc<[u8]>),
 }
 
@@ -397,7 +406,8 @@ impl Bits {
 
 /// Byte string whose length is a power of two.
 ///
-/// The string must be at least 1 byte and at most 32 bytes long.
+/// There is at least 1 byte.
+/// There are at most 32 bytes.
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Bytes(pub Arc<[u8]>);
 
@@ -833,22 +843,22 @@ impl PestParse for Bits {
             bytes.push(byte);
         }
 
-        let ret = match bits.len() {
+        match bits.len() {
             1 => {
                 debug_assert!(bytes[0] < 2);
-                Bits::U1(bytes[0])
+                Ok(Bits::U1(bytes[0]))
             }
             2 => {
                 debug_assert!(bytes[0] < 4);
-                Bits::U2(bytes[0])
+                Ok(Bits::U2(bytes[0]))
             }
             4 => {
                 debug_assert!(bytes[0] < 16);
-                Bits::U4(bytes[0])
+                Ok(Bits::U4(bytes[0]))
             }
-            _ => Bits::Long(bytes.into_iter().collect()),
-        };
-        Ok(ret)
+            8 | 16 | 32 | 64 | 128 | 256 => Ok(Bits::Long(bytes.into_iter().collect())),
+            n => Err(Error::BitStringPow2(n)).with_span(&pair),
+        }
     }
 }
 

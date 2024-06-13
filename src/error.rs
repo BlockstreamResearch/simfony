@@ -166,7 +166,7 @@ impl fmt::Display for Error {
             ),
             Error::BitStringPow2(len) => write!(
                 f,
-                "Expected a power of two (1, 2, 4, 8, 16, ...) as bit string length, found {len}"
+                "Expected a valid bit string length (1, 2, 4, 8, 16, 32, 64, 128, 256), found {len}"
             ),
             Error::HexStringPow2(len) => write!(
                 f,
