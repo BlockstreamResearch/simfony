@@ -187,6 +187,38 @@ impl From<u128> for U256 {
     }
 }
 
+impl fmt::Display for U256 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut bytes = self.0;
+        let mut digits = Vec::with_capacity(Self::MAX_DIGITS);
+        let mut is_zero = false;
+
+        while !is_zero {
+            let mut carry = 0;
+            is_zero = true;
+
+            // Divide by 10, starting at the most significant bytes
+            for byte in bytes.iter_mut() {
+                let value = carry * 256 + *byte as u32;
+                *byte = (value / 10) as u8;
+                carry = value % 10;
+
+                if *byte != 0 {
+                    is_zero = false;
+                }
+            }
+
+            digits.push(carry as u8);
+        }
+
+        for digit in digits.iter().rev() {
+            write!(f, "{}", digit)?;
+        }
+
+        Ok(())
+    }
+}
+
 impl FromStr for U256 {
     type Err = ParseIntError;
 
@@ -285,5 +317,17 @@ mod tests {
                 .parse()
                 .unwrap()
         );
+    }
+
+    #[test]
+    fn display_u256() {
+        for n in 0u8..=255 {
+            assert_eq!(n.to_string(), U256::from(n).to_string());
+        }
+        assert_eq!(u128::MAX.to_string(), U256::from(u128::MAX).to_string());
+        assert_eq!(
+            "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+            &U256::MAX.to_string()
+        )
     }
 }
