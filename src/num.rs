@@ -119,6 +119,8 @@ impl U256 {
     pub const MIN: Self = Self([0; 32]);
     /// The largest value that can be represented by this integer type (2²⁵⁶ − 1).
     pub const MAX: Self = Self([255; 32]);
+    /// The number of decimal digits of [`Self::MAX`].
+    const MAX_DIGITS: usize = 78;
 
     /// Create a 256-bit unsigned integer from a byte array.
     ///
@@ -190,8 +192,7 @@ impl FromStr for U256 {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let decimal = s.trim_start_matches('0');
-        // Short-circuit if string has more digits than u256::MAX
-        if 78 < decimal.chars().count() {
+        if Self::MAX_DIGITS < decimal.chars().count() {
             return Err(ParseIntError::PosOverflow);
         }
         let mut bytes = [0; 32];
