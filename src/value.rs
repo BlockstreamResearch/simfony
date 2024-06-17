@@ -1,9 +1,12 @@
 use std::fmt;
+use std::sync::Arc;
+
+use miniscript::iter::{Tree, TreeLike};
 
 use crate::error::Error;
-use crate::num::U256;
+use crate::num::{NonZeroPow2Usize, U256};
 use crate::parse::{Bits, Bytes, UnsignedDecimal};
-use crate::types::UIntType;
+use crate::types::{ResolvedType, TypeInner, UIntType};
 
 /// Unsigned integer value.
 #[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -189,5 +192,269 @@ impl From<Bits> for UIntValue {
 impl From<Bytes> for UIntValue {
     fn from(value: Bytes) -> Self {
         Self::try_from(value.as_ref()).expect("At most 32 bytes")
+    }
+}
+
+/// Various value constructors.
+pub trait ValueConstructible: Sized + From<Option<Self>> + From<bool> + From<UIntValue> {
+    /// Create the unit value.
+    fn unit() -> Self;
+
+    /// Create the left value `Either::Left(inner)`.
+    fn left(inner: Self) -> Self;
+
+    /// Create the right value `Either::Right(inner)`.
+    fn right(inner: Self) -> Self;
+
+    /// Create the product value `(left, right)`.
+    fn product(left: Self, right: Self) -> Self;
+
+    /// Create an array from the given `elements`.
+    ///
+    /// ## Nonemptiness
+    ///
+    /// There must be at least one element.
+    ///
+    /// ## Errors
+    ///
+    /// Returns [`None`] if there are no elements.
+    fn array<I: IntoIterator<Item = Self>>(elements: I) -> Option<Self>;
+
+    /// Create `bound`ed list from the given `elements`.
+    ///
+    /// ## Boundedness
+    ///
+    /// There must be fewer `elements` than the given `bound`.
+    /// The `bound` is an exclusive upper bound on the number of `elements`.
+    ///
+    /// ## Errors
+    ///
+    /// Returns [`None`] if there are too many elements.
+    fn list<I: IntoIterator<Item = Self>>(elements: I, bound: NonZeroPow2Usize) -> Option<Self>;
+}
+
+/// Simfony value.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum Value {
+    /// Unit value.
+    Unit,
+    /// Left value.
+    Left(Arc<Self>),
+    /// Right value.
+    Right(Arc<Self>),
+    /// Product value.
+    Product(Arc<Self>, Arc<Self>),
+    /// Option value.
+    Option(Option<Arc<Self>>),
+    /// Boolean value.
+    Boolean(bool),
+    /// Unsigned integer.
+    UInt(UIntValue),
+    /// Nonempty array of values.
+    // FIXME: Prevent construction of invalid arrays (that are empty)
+    Array(Arc<[Self]>),
+    /// Bounded list of values.
+    // FIXME: Prevent construction of invalid lists (that run out of bounds)
+    List(Arc<[Self]>, NonZeroPow2Usize),
+}
+
+impl<'a> TreeLike for &'a Value {
+    fn as_node(&self) -> Tree<Self> {
+        match self {
+            Value::Unit | Value::Option(None) | Value::Boolean(_) | Value::UInt(_) => Tree::Nullary,
+            Value::Left(l) | Value::Right(l) | Value::Option(Some(l)) => Tree::Unary(l),
+            Value::Product(l, r) => Tree::Binary(l, r),
+            Value::Array(elements) | Value::List(elements, _) => {
+                Tree::Nary(elements.iter().collect())
+            }
+        }
+    }
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for data in self.verbose_pre_order_iter() {
+            match &data.node {
+                Value::Unit => f.write_str("()")?,
+                Value::Left(_) => match data.n_children_yielded {
+                    0 => f.write_str("Left(")?,
+                    n => {
+                        debug_assert_eq!(n, 1);
+                        f.write_str(")")?;
+                    }
+                },
+                Value::Right(_) => match data.n_children_yielded {
+                    0 => f.write_str("Right(")?,
+                    n => {
+                        debug_assert_eq!(n, 1);
+                        f.write_str(")")?;
+                    }
+                },
+                Value::Product(_, _) => match data.n_children_yielded {
+                    0 => f.write_str("(")?,
+                    1 => f.write_str(", ")?,
+                    n => {
+                        debug_assert_eq!(n, 2);
+                        f.write_str(")")?;
+                    }
+                },
+                Value::Option(None) => f.write_str("None")?,
+                Value::Option(Some(_)) => match data.n_children_yielded {
+                    0 => f.write_str("Some(")?,
+                    n => {
+                        debug_assert_eq!(n, 1);
+                        f.write_str(")")?;
+                    }
+                },
+                Value::Boolean(bit) => write!(f, "{bit}")?,
+                Value::UInt(integer) => write!(f, "{integer}")?,
+                Value::Array(elements) => match data.n_children_yielded {
+                    0 => f.write_str("[")?,
+                    n if n == elements.len() => {
+                        f.write_str("]")?;
+                    }
+                    n => {
+                        debug_assert!(n < elements.len());
+                        f.write_str(", ")?;
+                    }
+                },
+                Value::List(elements, _) => match data.n_children_yielded {
+                    0 => f.write_str("list![")?,
+                    n if n == elements.len() => {
+                        f.write_str("]")?;
+                    }
+                    n => {
+                        debug_assert!(n < elements.len());
+                        f.write_str(", ")?;
+                    }
+                },
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl ValueConstructible for Value {
+    fn unit() -> Self {
+        Self::Unit
+    }
+
+    fn left(inner: Self) -> Self {
+        Self::Left(Arc::new(inner))
+    }
+
+    fn right(inner: Self) -> Self {
+        Self::Right(Arc::new(inner))
+    }
+
+    fn product(left: Self, right: Self) -> Self {
+        Self::Product(Arc::new(left), Arc::new(right))
+    }
+
+    fn array<I: IntoIterator<Item = Self>>(elements: I) -> Option<Self> {
+        let elements: Arc<[Self]> = elements.into_iter().collect();
+        match elements.is_empty() {
+            false => Some(Self::Array(elements)),
+            true => None,
+        }
+    }
+
+    fn list<I: IntoIterator<Item = Self>>(elements: I, bound: NonZeroPow2Usize) -> Option<Self> {
+        let elements: Arc<[Self]> = elements.into_iter().collect();
+        match elements.len() < bound.get() {
+            true => Some(Self::List(elements, bound)),
+            false => None,
+        }
+    }
+}
+
+impl From<Option<Self>> for Value {
+    fn from(value: Option<Self>) -> Self {
+        Self::Option(value.map(Arc::new))
+    }
+}
+
+impl From<bool> for Value {
+    fn from(value: bool) -> Self {
+        Self::Boolean(value)
+    }
+}
+
+impl From<UIntValue> for Value {
+    fn from(value: UIntValue) -> Self {
+        Self::UInt(value)
+    }
+}
+
+impl Value {
+    /// Check if the value is of the given type.
+    ///
+    /// ## Errors
+    ///
+    /// A subvalue and the corresponding subtype didn't match.
+    /// The method returns this mismatching value-type pair.
+    pub fn is_of_type<'a>(
+        &'a self,
+        ty: &'a ResolvedType,
+    ) -> Result<(), (&'a Value, &'a ResolvedType)> {
+        let mut stack = vec![(self, ty)];
+        while let Some((value, ty)) = stack.pop() {
+            match (value, ty.as_inner()) {
+                (Value::Unit, TypeInner::Unit)
+                | (Value::Boolean(_), TypeInner::Boolean)
+                | (Value::UInt(_), TypeInner::UInt(_))
+                | (Value::Option(None), TypeInner::Option(_)) => {}
+                (Value::Left(val_l), TypeInner::Either(ty_l, _))
+                | (Value::Right(val_l), TypeInner::Either(_, ty_l))
+                | (Value::Option(Some(val_l)), TypeInner::Option(ty_l)) => {
+                    stack.push((val_l, ty_l))
+                }
+                (Value::Product(val_l, val_r), TypeInner::Product(ty_l, ty_r)) => {
+                    stack.push((val_r, ty_r));
+                    stack.push((val_l, ty_l));
+                }
+                (Value::Array(val_el), TypeInner::Array(ty_el, size))
+                    if val_el.len() == size.get() =>
+                {
+                    stack.extend(val_el.iter().zip(std::iter::repeat(ty_el.as_ref())));
+                }
+                (Value::List(val_el, val_bound), TypeInner::List(ty_el, ty_bound))
+                    if val_bound == ty_bound =>
+                {
+                    stack.extend(val_el.iter().zip(std::iter::repeat(ty_el.as_ref())));
+                }
+                _ => return Err((value, ty)),
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{StructuralType, TypeConstructible};
+
+    #[test]
+    fn display_value() {
+        let array = Value::array([Value::unit(), Value::unit(), Value::unit()]).unwrap();
+        assert_eq!("[(), (), ()]", &array.to_string());
+        let list = Value::list([Value::unit()], NonZeroPow2Usize::TWO).unwrap();
+        assert_eq!("list![()]", &list.to_string());
+    }
+
+    #[test]
+    fn value_is_of_type() {
+        let bit = Value::from(false);
+        let actual_boolean = ResolvedType::boolean();
+        let structural_boolean = ResolvedType::either(ResolvedType::unit(), ResolvedType::unit());
+        assert_eq!(
+            StructuralType::from(&actual_boolean),
+            StructuralType::from(&structural_boolean)
+        );
+        assert!(bit.is_of_type(&actual_boolean).is_ok());
+        assert!(bit.is_of_type(&structural_boolean).is_err());
     }
 }
