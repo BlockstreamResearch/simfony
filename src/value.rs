@@ -2,11 +2,13 @@ use std::fmt;
 use std::sync::Arc;
 
 use miniscript::iter::{Tree, TreeLike};
+use simplicity::Value as SimValue;
 
+use crate::array::{BTreeSlice, Partition};
 use crate::error::Error;
 use crate::num::{NonZeroPow2Usize, U256};
 use crate::parse::{Bits, Bytes, UnsignedDecimal};
-use crate::types::{ResolvedType, TypeInner, UIntType};
+use crate::types::{ResolvedType, StructuralType, TypeInner, UIntType};
 
 /// Unsigned integer value.
 #[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -473,6 +475,163 @@ impl From<TypedValue> for Value {
 impl From<TypedValue> for ResolvedType {
     fn from(value: TypedValue) -> Self {
         value.ty
+    }
+}
+
+/// Structure of a Simfony value.
+/// 1:1 isomorphism to Simplicity.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct StructuralValue(Arc<SimValue>);
+
+impl AsRef<SimValue> for StructuralValue {
+    fn as_ref(&self) -> &SimValue {
+        &self.0
+    }
+}
+
+impl From<StructuralValue> for Arc<SimValue> {
+    fn from(value: StructuralValue) -> Self {
+        value.0
+    }
+}
+
+impl TreeLike for StructuralValue {
+    fn as_node(&self) -> Tree<Self> {
+        match self.as_ref() {
+            SimValue::Unit => Tree::Nullary,
+            SimValue::SumL(l) | SimValue::SumR(l) => Tree::Unary(Self(l.clone())),
+            SimValue::Prod(l, r) => Tree::Binary(Self(l.clone()), Self(r.clone())),
+        }
+    }
+}
+
+impl ValueConstructible for StructuralValue {
+    fn unit() -> Self {
+        Self(SimValue::unit())
+    }
+
+    fn left(inner: Self) -> Self {
+        Self(SimValue::sum_l(inner.0))
+    }
+
+    fn right(inner: Self) -> Self {
+        Self(SimValue::sum_r(inner.0))
+    }
+
+    fn product(left: Self, right: Self) -> Self {
+        Self(SimValue::prod(left.0, right.0))
+    }
+
+    fn array<I: IntoIterator<Item = Self>>(elements: I) -> Option<Self> {
+        let elements: Vec<Self> = elements.into_iter().collect();
+        if elements.is_empty() {
+            return None;
+        }
+        let tree = BTreeSlice::from_slice(&elements);
+        Some(tree.fold(Self::product))
+    }
+
+    fn list<I: IntoIterator<Item = Self>>(elements: I, bound: NonZeroPow2Usize) -> Option<Self> {
+        let elements: Vec<Self> = elements.into_iter().collect();
+        if bound.get() <= elements.len() {
+            return None;
+        }
+        let partition = Partition::from_slice(&elements, bound.get() / 2);
+        let process = |block: &[Self]| -> Self {
+            if block.is_empty() {
+                return Self::from(None);
+            }
+            let tree = BTreeSlice::from_slice(block);
+            let array = tree.fold(Self::product);
+            Self::from(Some(array))
+        };
+        Some(partition.fold(process, Self::product))
+    }
+}
+
+impl From<Option<Self>> for StructuralValue {
+    fn from(value: Option<Self>) -> Self {
+        match value {
+            None => Self::left(Self::unit()),
+            Some(inner) => Self::right(inner),
+        }
+    }
+}
+
+impl From<bool> for StructuralValue {
+    fn from(value: bool) -> Self {
+        match value {
+            false => Self::left(Self::unit()),
+            true => Self::right(Self::unit()),
+        }
+    }
+}
+
+impl From<UIntValue> for StructuralValue {
+    fn from(value: UIntValue) -> Self {
+        match value {
+            UIntValue::U1(n) => Self(SimValue::u1(n)),
+            UIntValue::U2(n) => Self(SimValue::u2(n)),
+            UIntValue::U4(n) => Self(SimValue::u4(n)),
+            UIntValue::U8(n) => Self(SimValue::u8(n)),
+            UIntValue::U16(n) => Self(SimValue::u16(n)),
+            UIntValue::U32(n) => Self(SimValue::u32(n)),
+            UIntValue::U64(n) => Self(SimValue::u64(n)),
+            UIntValue::U128(n) => Self(SimValue::u128(n)),
+            UIntValue::U256(n) => Self(SimValue::u256_from_slice(n.as_ref())),
+        }
+    }
+}
+
+impl<'a> From<&'a Value> for StructuralValue {
+    fn from(value: &Value) -> Self {
+        let mut output = vec![];
+        for data in value.post_order_iter() {
+            match &data.node {
+                Value::Unit => output.push(Self::unit()),
+                Value::Left(_) => {
+                    let inner = output.pop().unwrap();
+                    output.push(Self::left(inner));
+                }
+                Value::Right(_) => {
+                    let inner = output.pop().unwrap();
+                    output.push(Self::right(inner));
+                }
+                Value::Product(_, _) => {
+                    let right = output.pop().unwrap();
+                    let left = output.pop().unwrap();
+                    output.push(Self::product(left, right));
+                }
+                Value::Option(None) => output.push(Self::from(None)),
+                Value::Option(Some(_)) => {
+                    let inner = output.pop().unwrap();
+                    output.push(Self::from(Some(inner)));
+                }
+                Value::Boolean(bit) => output.push(Self::from(*bit)),
+                Value::UInt(integer) => output.push(Self::from(*integer)),
+                Value::Array(_) => {
+                    let size = data.node.n_children();
+                    debug_assert!(0 < size);
+                    let elements = output.split_off(output.len() - size);
+                    output.push(Self::array(elements).unwrap());
+                }
+                Value::List(_, bound) => {
+                    let size = data.node.n_children();
+                    let elements = output.split_off(output.len() - size);
+                    debug_assert!(elements.len() < bound.get());
+                    output.push(Self::list(elements, *bound).unwrap());
+                }
+            }
+        }
+        debug_assert_eq!(output.len(), 1);
+        output.pop().unwrap()
+    }
+}
+
+impl StructuralValue {
+    /// Check if the value is of the given type.
+    pub fn is_of_type(&self, ty: &StructuralType) -> bool {
+        self.as_ref().is_of_type(ty.as_ref())
     }
 }
 
