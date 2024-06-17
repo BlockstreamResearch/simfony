@@ -974,7 +974,7 @@ impl PestParse for AliasedType {
                 Rule::unit_type => output.push(Item::Type(AliasedType::unit())),
                 Rule::unsigned_type => {
                     let uint_ty = UIntType::parse(data.node.0)?;
-                    output.push(Item::Type(AliasedType::uint(uint_ty)));
+                    output.push(Item::Type(AliasedType::from(uint_ty)));
                 }
                 Rule::sum_type => {
                     let r = output.pop().unwrap().unwrap_type();

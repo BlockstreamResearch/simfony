@@ -169,7 +169,7 @@ impl<'a> TryFrom<&'a ResolvedType> for UIntType {
 }
 
 /// Various type constructors.
-pub trait TypeConstructible: Sized {
+pub trait TypeConstructible: Sized + From<UIntType> {
     /// Create the unit type.
     fn unit() -> Self;
 
@@ -184,9 +184,6 @@ pub trait TypeConstructible: Sized {
 
     /// Create the Boolean type.
     fn boolean() -> Self;
-
-    /// Create an unsigned `integer` type.
-    fn uint(integer: UIntType) -> Self;
 
     /// Create an array with `size` many values of the `element` type.
     fn array(element: Self, size: NonZeroUsize) -> Self;
@@ -227,10 +224,6 @@ impl TypeConstructible for ResolvedType {
         Self(TypeInner::Boolean)
     }
 
-    fn uint(integer: UIntType) -> Self {
-        Self(TypeInner::UInt(integer))
-    }
-
     fn array(element: Self, size: NonZeroUsize) -> Self {
         Self(TypeInner::Array(Arc::new(element), size))
     }
@@ -256,6 +249,12 @@ impl fmt::Display for ResolvedType {
             data.node.0.display(f, data.n_children_yielded)?;
         }
         Ok(())
+    }
+}
+
+impl From<UIntType> for ResolvedType {
+    fn from(value: UIntType) -> Self {
+        Self(TypeInner::UInt(value))
     }
 }
 
@@ -309,7 +308,7 @@ impl AliasedType {
                         output.push(ResolvedType::option(inner));
                     }
                     TypeInner::Boolean => output.push(ResolvedType::boolean()),
-                    TypeInner::UInt(integer) => output.push(ResolvedType::uint(*integer)),
+                    TypeInner::UInt(integer) => output.push(ResolvedType::from(*integer)),
                     TypeInner::Array(_, size) => {
                         let element = output.pop().unwrap();
                         output.push(ResolvedType::array(element, *size));
@@ -353,10 +352,6 @@ impl TypeConstructible for AliasedType {
         Self(AliasedInner::Inner(TypeInner::Boolean))
     }
 
-    fn uint(integer: UIntType) -> Self {
-        Self(AliasedInner::Inner(TypeInner::UInt(integer)))
-    }
-
     fn array(element: Self, size: NonZeroUsize) -> Self {
         Self(AliasedInner::Inner(TypeInner::Array(
             Arc::new(element),
@@ -396,6 +391,12 @@ impl fmt::Display for AliasedType {
             }
         }
         Ok(())
+    }
+}
+
+impl From<UIntType> for AliasedType {
+    fn from(value: UIntType) -> Self {
+        Self(AliasedInner::Inner(TypeInner::UInt(value)))
     }
 }
 
@@ -453,7 +454,7 @@ impl<'a> From<&'a ResolvedType> for StructuralType {
                     output.push(StructuralType::option(inner));
                 }
                 TypeInner::Boolean => output.push(StructuralType::boolean()),
-                TypeInner::UInt(integer) => output.push(StructuralType::uint(*integer)),
+                TypeInner::UInt(integer) => output.push(StructuralType::from(*integer)),
                 TypeInner::Array(_, size) => {
                     let element = output.pop().unwrap();
                     output.push(StructuralType::array(element, *size));
@@ -488,10 +489,6 @@ impl TypeConstructible for StructuralType {
 
     fn boolean() -> Self {
         Self::either(Self::unit(), Self::unit())
-    }
-
-    fn uint(integer: UIntType) -> Self {
-        Self::from(integer)
     }
 
     fn array(element: Self, size: NonZeroUsize) -> Self {
