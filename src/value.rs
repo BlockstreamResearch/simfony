@@ -432,6 +432,50 @@ impl Value {
     }
 }
 
+/// Typed Simfony value.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct TypedValue {
+    value: Value,
+    ty: ResolvedType,
+}
+
+impl TypedValue {
+    /// Create a `value` of the given type.
+    ///
+    /// ## Errors
+    ///
+    /// The `value` is not of the given type.
+    pub fn new(value: Value, ty: ResolvedType) -> Result<Self, Error> {
+        match value.is_of_type(&ty) {
+            Ok(()) => Ok(Self { value, ty }),
+            // TODO: Include local value-type mismatch in Error::TypeValueMismatch
+            Err(..) => Err(Error::TypeValueMismatch(ty)),
+        }
+    }
+
+    /// Access the Simfony value.
+    pub const fn value(&self) -> &Value {
+        &self.value
+    }
+
+    /// Access the Simfony type.
+    pub const fn ty(&self) -> &ResolvedType {
+        &self.ty
+    }
+}
+
+impl From<TypedValue> for Value {
+    fn from(value: TypedValue) -> Self {
+        value.value
+    }
+}
+
+impl From<TypedValue> for ResolvedType {
+    fn from(value: TypedValue) -> Self {
+        value.ty
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
