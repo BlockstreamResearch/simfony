@@ -11,6 +11,7 @@ pub mod num;
 pub mod parse;
 pub mod scope;
 pub mod types;
+pub mod value;
 
 use std::{collections::HashMap, path::Path, sync::Arc};
 
