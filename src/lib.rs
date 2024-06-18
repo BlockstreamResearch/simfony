@@ -10,7 +10,7 @@ pub mod named;
 pub mod num;
 pub mod parse;
 pub mod scope;
-mod types;
+pub mod types;
 
 use std::{collections::HashMap, path::Path, sync::Arc};
 
