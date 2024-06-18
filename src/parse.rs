@@ -88,14 +88,14 @@ impl<'a> From<&'a pest::iterators::Pair<'_, Rule>> for Span {
 }
 
 /// A complete simplicity program.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Program {
     /// The statements in the program.
     pub statements: Vec<Statement>,
 }
 
 /// A statement in a simplicity program.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Statement {
     /// A declaration of variables inside a pattern.
     Assignment(Assignment),
@@ -192,7 +192,7 @@ impl fmt::Display for Identifier {
 }
 
 /// The output of an expression is assigned to a pattern.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Assignment {
     /// The pattern.
     pub pattern: Pattern,
@@ -213,7 +213,7 @@ pub struct Assignment {
 /// Since jets in simplicity operate on a single paired type,
 /// the arguments are paired together.
 /// jet(a, b, c, d) = jet(pair(pair(pair(a, b), c), d))
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct FuncCall {
     /// The type of the function.
     pub func_type: FuncType,
@@ -258,7 +258,7 @@ impl fmt::Display for JetName {
 }
 
 /// A type alias.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct TypeAlias {
     /// Name of the alias.
     pub name: Identifier,
@@ -272,7 +272,7 @@ pub struct TypeAlias {
 }
 
 /// An expression is something that returns a value.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Expression {
     /// The kind of expression
     pub inner: ExpressionInner,
@@ -283,7 +283,7 @@ pub struct Expression {
 }
 
 /// The kind of expression.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum ExpressionInner {
     /// A block expression executes a series of statements
     /// and returns the value of the final expression.
@@ -293,7 +293,7 @@ pub enum ExpressionInner {
 }
 
 /// A single expression directly returns a value.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct SingleExpression {
     /// The kind of single expression
     pub inner: SingleExpressionInner,
@@ -304,7 +304,7 @@ pub struct SingleExpression {
 }
 
 /// The kind of single expression.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum SingleExpressionInner {
     /// Unit literal expression
     Unit,
@@ -498,7 +498,7 @@ impl fmt::Display for WitnessName {
 }
 
 /// Arm of a match expression.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct MatchArm {
     /// Matched pattern
     pub pattern: MatchPattern,
@@ -507,7 +507,7 @@ pub struct MatchArm {
 }
 
 /// Pattern of a match arm.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum MatchPattern {
     /// Bind inner value of left value to variable name.
     Left(Identifier),
