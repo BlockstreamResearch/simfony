@@ -281,9 +281,9 @@ pub struct Expression {
 pub enum ExpressionInner {
     /// A block expression executes a series of statements
     /// and returns the value of the final expression.
-    BlockExpression(Vec<Statement>, Arc<Expression>),
+    Block(Vec<Statement>, Arc<Expression>),
     /// A single expression directly returns a value.
-    SingleExpression(SingleExpression),
+    Single(SingleExpression),
 }
 
 /// A single expression directly returns a value.
@@ -716,11 +716,9 @@ impl PestParse for Expression {
                     stmts.push(Statement::parse(inner_pair.next().unwrap())?);
                 }
                 let expr = Expression::parse(inner_pair.next().unwrap())?;
-                ExpressionInner::BlockExpression(stmts, Arc::new(expr))
+                ExpressionInner::Block(stmts, Arc::new(expr))
             }
-            Rule::single_expression => {
-                ExpressionInner::SingleExpression(SingleExpression::parse(pair)?)
-            }
+            Rule::single_expression => ExpressionInner::Single(SingleExpression::parse(pair)?),
             _ => unreachable!("Corrupt grammar"),
         };
 

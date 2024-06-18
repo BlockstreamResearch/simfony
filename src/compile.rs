@@ -120,13 +120,13 @@ impl Expression {
         reqd_ty: Option<&ResolvedType>,
     ) -> Result<ProgNode, RichError> {
         match &self.inner {
-            ExpressionInner::BlockExpression(stmts, expr) => {
+            ExpressionInner::Block(stmts, expr) => {
                 scope.push_scope();
                 let res = eval_blk(stmts, scope, 0, Some(expr.as_ref()));
                 scope.pop_scope();
                 res
             }
-            ExpressionInner::SingleExpression(e) => e.inner.eval(scope, reqd_ty, self.span),
+            ExpressionInner::Single(e) => e.inner.eval(scope, reqd_ty, self.span),
         }
     }
 }
