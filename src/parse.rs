@@ -465,7 +465,13 @@ impl Bits {
 /// There is at least 1 byte.
 /// There are at most 32 bytes.
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct Bytes(pub Arc<[u8]>);
+pub struct Bytes(Arc<[u8]>);
+
+impl AsRef<[u8]> for Bytes {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
 
 impl Bytes {
     /// Convert the byte string into a Simplicity value.
