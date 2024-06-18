@@ -200,8 +200,6 @@ pub struct Assignment {
     pub ty: AliasedType,
     /// The expression.
     pub expression: Expression,
-    /// The source text associated with this assignment.
-    pub source_text: Arc<str>,
     /// Area that this assignment spans in the source file.
     pub span: Span,
 }
@@ -219,8 +217,6 @@ pub struct FuncCall {
     pub func_type: FuncType,
     /// The arguments to the function.
     pub args: Arc<[Expression]>,
-    /// The source text associated with this expression
-    pub source_text: Arc<str>,
     /// Area that this call spans in the source file.
     pub span: Span,
 }
@@ -276,8 +272,6 @@ pub struct TypeAlias {
 pub struct Expression {
     /// The kind of expression
     pub inner: ExpressionInner,
-    /// The source text associated with this expression
-    pub source_text: Arc<str>,
     /// Area that this expression spans in the source file.
     pub span: Span,
 }
@@ -297,8 +291,6 @@ pub enum ExpressionInner {
 pub struct SingleExpression {
     /// The kind of single expression
     pub inner: SingleExpressionInner,
-    /// The source text associated with this expression
-    pub source_text: Arc<str>,
     /// Area that this expression spans in the source file.
     pub span: Span,
 }
@@ -634,7 +626,6 @@ impl PestParse for Identifier {
 impl PestParse for Assignment {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::assignment));
-        let source_text = Arc::from(pair.as_str());
         let span = Span::from(&pair);
         let mut inner_pair = pair.into_inner();
         let pattern = Pattern::parse(inner_pair.next().unwrap())?;
@@ -644,7 +635,6 @@ impl PestParse for Assignment {
             pattern,
             ty,
             expression,
-            source_text,
             span,
         })
     }
@@ -653,7 +643,6 @@ impl PestParse for Assignment {
 impl PestParse for FuncCall {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::func_call));
-        let source_text = Arc::from(pair.as_str());
         let span = Span::from(&pair);
         let inner_pair = pair.into_inner().next().unwrap();
 
@@ -671,7 +660,6 @@ impl PestParse for FuncCall {
         Ok(FuncCall {
             func_type,
             args: args.into_iter().collect(),
-            source_text,
             span,
         })
     }
@@ -713,7 +701,6 @@ impl PestParse for TypeAlias {
 
 impl PestParse for Expression {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        let source_text = Arc::from(pair.as_str());
         let span = Span::from(&pair);
         let pair = match pair.as_rule() {
             Rule::expression => pair.into_inner().next().unwrap(),
@@ -737,11 +724,7 @@ impl PestParse for Expression {
             _ => unreachable!("Corrupt grammar"),
         };
 
-        Ok(Expression {
-            inner,
-            source_text,
-            span,
-        })
+        Ok(Expression { inner, span })
     }
 }
 
@@ -749,7 +732,6 @@ impl PestParse for SingleExpression {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::single_expression));
 
-        let source_text: Arc<str> = Arc::from(pair.as_str());
         let span = Span::from(&pair);
         let inner_pair = pair.into_inner().next().unwrap();
 
@@ -863,11 +845,7 @@ impl PestParse for SingleExpression {
             _ => unreachable!("Corrupt grammar"),
         };
 
-        Ok(SingleExpression {
-            inner,
-            source_text,
-            span,
-        })
+        Ok(SingleExpression { inner, span })
     }
 }
 
