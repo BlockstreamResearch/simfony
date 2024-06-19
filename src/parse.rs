@@ -371,8 +371,15 @@ impl fmt::Display for UnsignedDecimal {
 }
 
 /// Bit string whose length is a power of two.
+///
+/// There is at least 1 bit.
+/// There are at most 256 bits.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum Bits {
+pub struct Bits(BitsInner);
+
+/// Private enum that upholds invariants about its values.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+enum BitsInner {
     /// Least significant bit of byte.
     ///
     /// The bit is saved as a [`u8`] value that is always less than or equal to 1.
@@ -393,13 +400,62 @@ pub enum Bits {
 }
 
 impl Bits {
+    /// Access the contained 1-bit value,
+    /// represented by a [`u8`] integer that is always less than or equal to 1.
+    pub fn as_u1(&self) -> Option<u8> {
+        match self.0 {
+            BitsInner::U1(byte) => {
+                debug_assert!(byte <= 1);
+                Some(byte)
+            }
+            _ => None,
+        }
+    }
+
+    /// Access the contained 2-bit value,
+    /// represented by a [`u8`] integer that is always less than or equal to 3.
+    pub fn as_u2(&self) -> Option<u8> {
+        match self.0 {
+            BitsInner::U2(byte) => {
+                debug_assert!(byte <= 3);
+                Some(byte)
+            }
+            _ => None,
+        }
+    }
+
+    /// Access the contained 4-bit value,
+    /// represented by a [`u8`] integer that is always less than or equal to 15.
+    pub fn as_u4(&self) -> Option<u8> {
+        match self.0 {
+            BitsInner::U4(byte) => {
+                debug_assert!(byte <= 15);
+                Some(byte)
+            }
+            _ => None,
+        }
+    }
+
+    /// Access the contained value that is between 8 and 256 bits long,
+    /// represented by a slice that is between 1 and 32 bytes long.
+    pub fn as_long(&self) -> Option<&[u8]> {
+        match &self.0 {
+            BitsInner::Long(bytes) => {
+                debug_assert!(1 <= bytes.len());
+                debug_assert!(bytes.len() <= 32);
+                Some(bytes.as_ref())
+            }
+            _ => None,
+        }
+    }
+
     /// Convert the bit string into a Simplicity type.
     pub fn to_simplicity(&self) -> Arc<Value> {
-        match self {
-            Bits::U1(byte) => Value::u1(*byte),
-            Bits::U2(byte) => Value::u2(*byte),
-            Bits::U4(byte) => Value::u4(*byte),
-            Bits::Long(bytes) => Value::power_of_two(bytes),
+        match &self.0 {
+            BitsInner::U1(byte) => Value::u1(*byte),
+            BitsInner::U2(byte) => Value::u2(*byte),
+            BitsInner::U4(byte) => Value::u4(*byte),
+            BitsInner::Long(bytes) => Value::power_of_two(bytes),
         }
     }
 }
@@ -409,7 +465,13 @@ impl Bits {
 /// There is at least 1 byte.
 /// There are at most 32 bytes.
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct Bytes(pub Arc<[u8]>);
+pub struct Bytes(Arc<[u8]>);
+
+impl AsRef<[u8]> for Bytes {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
 
 impl Bytes {
     /// Convert the byte string into a Simplicity value.
@@ -846,17 +908,17 @@ impl PestParse for Bits {
         match bits.len() {
             1 => {
                 debug_assert!(bytes[0] < 2);
-                Ok(Bits::U1(bytes[0]))
+                Ok(Bits(BitsInner::U1(bytes[0])))
             }
             2 => {
                 debug_assert!(bytes[0] < 4);
-                Ok(Bits::U2(bytes[0]))
+                Ok(Bits(BitsInner::U2(bytes[0])))
             }
             4 => {
                 debug_assert!(bytes[0] < 16);
-                Ok(Bits::U4(bytes[0]))
+                Ok(Bits(BitsInner::U4(bytes[0])))
             }
-            8 | 16 | 32 | 64 | 128 | 256 => Ok(Bits::Long(bytes.into_iter().collect())),
+            8 | 16 | 32 | 64 | 128 | 256 => Ok(Bits(BitsInner::Long(bytes.into_iter().collect()))),
             n => Err(Error::BitStringPow2(n)).with_span(&pair),
         }
     }

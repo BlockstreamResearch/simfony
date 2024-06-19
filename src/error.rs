@@ -4,7 +4,7 @@ use std::sync::Arc;
 use simplicity::elements;
 
 use crate::parse::{Identifier, Position, Span};
-use crate::types::ResolvedType;
+use crate::types::{ResolvedType, UIntType};
 use crate::Rule;
 
 /// Helper trait to convert `Result<T, E>` into `Result<T, RichError>`.
@@ -148,6 +148,7 @@ pub enum Error {
     CannotCompile(String),
     JetDoesNotExist(Arc<str>),
     TypeValueMismatch(ResolvedType),
+    IntegerOutOfBounds(UIntType),
     UndefinedVariable(Identifier),
     UndefinedAlias(Identifier),
 }
@@ -195,6 +196,10 @@ impl fmt::Display for Error {
             Error::TypeValueMismatch(ty) => write!(
                 f,
                 "Value does not match the assigned type `{ty}`"
+            ),
+            Error::IntegerOutOfBounds(ty) => write!(
+                f,
+                "Value is out of bounds for type `{ty}`"
             ),
             Error::UndefinedVariable(identifier) => write!(
                 f,
