@@ -7,7 +7,7 @@ use simplicity::{jet::Elements, Cmr, FailEntropy};
 
 use crate::array::{BTreeSlice, Partition};
 use crate::num::NonZeroPow2Usize;
-use crate::parse::{Pattern, SingleExpressionInner, Span};
+use crate::parse::{Match, Pattern, SingleExpressionInner, Span};
 use crate::scope::BasePattern;
 use crate::{
     error::{Error, RichError, WithSpan},
@@ -184,38 +184,7 @@ impl SingleExpressionInner {
                 .with_span(span)?,
             SingleExpressionInner::FuncCall(call) => call.eval(scope, reqd_ty)?,
             SingleExpressionInner::Expression(expression) => expression.eval(scope, reqd_ty)?,
-            SingleExpressionInner::Match {
-                scrutinee,
-                left,
-                right,
-            } => {
-                let mut l_scope = scope.clone();
-                l_scope.insert(
-                    left.pattern
-                        .get_identifier()
-                        .cloned()
-                        .map(Pattern::Identifier)
-                        .unwrap_or(Pattern::Ignore),
-                );
-                let l_compiled = left.expression.eval(&mut l_scope, reqd_ty)?;
-
-                let mut r_scope = scope.clone();
-                r_scope.insert(
-                    right
-                        .pattern
-                        .get_identifier()
-                        .cloned()
-                        .map(Pattern::Identifier)
-                        .unwrap_or(Pattern::Ignore),
-                );
-                let r_compiled = right.expression.eval(&mut r_scope, reqd_ty)?;
-
-                // TODO: Enforce target type A + B for m_expr
-                let scrutinized_input = scrutinee.eval(scope, None)?;
-                let input = ProgNode::pair_iden(&scrutinized_input);
-                let output = ProgNode::case(&l_compiled, &r_compiled).with_span(span)?;
-                ProgNode::comp(&input, &output).with_span(span)?
-            }
+            SingleExpressionInner::Match(match_) => match_.eval(scope, reqd_ty)?,
             SingleExpressionInner::Array(elements) => {
                 let el_type = match reqd_ty.map(ResolvedType::as_inner) {
                     Some(TypeInner::Array(el_type, size)) => {
@@ -283,5 +252,41 @@ impl SingleExpressionInner {
                 .with_span(span)?;
         }
         Ok(expr)
+    }
+}
+
+impl Match {
+    pub fn eval(
+        &self,
+        scope: &mut GlobalScope,
+        reqd_ty: Option<&ResolvedType>,
+    ) -> Result<ProgNode, RichError> {
+        let mut l_scope = scope.clone();
+        l_scope.insert(
+            self.left()
+                .pattern
+                .get_identifier()
+                .cloned()
+                .map(Pattern::Identifier)
+                .unwrap_or(Pattern::Ignore),
+        );
+        let l_compiled = self.left().expression.eval(&mut l_scope, reqd_ty)?;
+
+        let mut r_scope = scope.clone();
+        r_scope.insert(
+            self.right()
+                .pattern
+                .get_identifier()
+                .cloned()
+                .map(Pattern::Identifier)
+                .unwrap_or(Pattern::Ignore),
+        );
+        let r_compiled = self.right().expression.eval(&mut r_scope, reqd_ty)?;
+
+        // TODO: Enforce target type A + B for m_expr
+        let scrutinized_input = self.scrutinee().eval(scope, None)?;
+        let input = ProgNode::pair_iden(&scrutinized_input);
+        let output = ProgNode::case(&l_compiled, &r_compiled).with_span(self)?;
+        ProgNode::comp(&input, &output).with_span(self)
     }
 }

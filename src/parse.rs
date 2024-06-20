@@ -329,14 +329,7 @@ pub enum SingleExpressionInner {
     /// Expression in parentheses
     Expression(Arc<Expression>),
     /// Match expression over a sum type
-    Match {
-        /// Expression whose output is matched
-        scrutinee: Arc<Expression>,
-        /// Arm for left sum values
-        left: MatchArm,
-        /// Arm for right sum values
-        right: MatchArm,
-    },
+    Match(Match),
     /// Array wrapper expression
     Array(Arc<[Expression]>),
     /// List wrapper expression
@@ -489,6 +482,36 @@ impl fmt::Display for WitnessName {
     }
 }
 
+/// Match expression.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct Match {
+    /// Expression whose output is matched.
+    scrutinee: Arc<Expression>,
+    /// Match arm for left sum values.
+    left: MatchArm,
+    /// Match arm for right sum values.
+    right: MatchArm,
+    /// Area that the match spans in the source file.
+    span: Span,
+}
+
+impl Match {
+    /// Access the expression that is matched.
+    pub fn scrutinee(&self) -> &Expression {
+        &self.scrutinee
+    }
+
+    /// Access the match arm for left sum values.
+    pub fn left(&self) -> &MatchArm {
+        &self.left
+    }
+
+    /// Access the match arm for right sum values.
+    pub fn right(&self) -> &MatchArm {
+        &self.right
+    }
+}
+
 /// Arm of a match expression.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct MatchArm {
@@ -521,6 +544,19 @@ impl MatchPattern {
         match self {
             MatchPattern::Left(i) | MatchPattern::Right(i) | MatchPattern::Some(i) => Some(i),
             MatchPattern::None | MatchPattern::False | MatchPattern::True => None,
+        }
+    }
+}
+
+impl fmt::Display for MatchPattern {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MatchPattern::Left(i) => write!(f, "Left({i}"),
+            MatchPattern::Right(i) => write!(f, "Right({i}"),
+            MatchPattern::None => write!(f, "None"),
+            MatchPattern::Some(i) => write!(f, "Some({i}"),
+            MatchPattern::False => write!(f, "false"),
+            MatchPattern::True => write!(f, "true"),
         }
     }
 }
@@ -776,52 +812,7 @@ impl PestParse for SingleExpression {
             Rule::expression => {
                 SingleExpressionInner::Expression(Expression::parse(inner_pair).map(Arc::new)?)
             }
-            Rule::match_expr => {
-                let mut it = inner_pair.into_inner();
-                let scrutinee_pair = it.next().unwrap();
-                let scrutinee = Expression::parse(scrutinee_pair.clone()).map(Arc::new)?;
-                let first_arm = MatchArm::parse(it.next().unwrap())?;
-                let second_arm = MatchArm::parse(it.next().unwrap())?;
-
-                let (left, right) = match (&first_arm.pattern, &second_arm.pattern) {
-                    (MatchPattern::Left(..), MatchPattern::Right(..)) => (first_arm, second_arm),
-                    (MatchPattern::Left(..), _) => {
-                        return Err(Error::UnmatchedPattern("Right".to_string()))
-                            .with_span(&scrutinee_pair)
-                    }
-                    (MatchPattern::Right(..), MatchPattern::Left(..)) => (second_arm, first_arm),
-                    (MatchPattern::Right(..), _) => {
-                        return Err(Error::UnmatchedPattern("Left".to_string()))
-                            .with_span(&scrutinee_pair)
-                    }
-                    (MatchPattern::None, MatchPattern::Some(..)) => (first_arm, second_arm),
-                    (MatchPattern::None, _) => {
-                        return Err(Error::UnmatchedPattern("Some".to_string()))
-                            .with_span(&scrutinee_pair)
-                    }
-                    (MatchPattern::Some(..), MatchPattern::None) => (second_arm, first_arm),
-                    (MatchPattern::Some(..), _) => {
-                        return Err(Error::UnmatchedPattern("None".to_string()))
-                            .with_span(&scrutinee_pair)
-                    }
-                    (MatchPattern::False, MatchPattern::True) => (first_arm, second_arm),
-                    (MatchPattern::False, _) => {
-                        return Err(Error::UnmatchedPattern("true".to_string()))
-                            .with_span(&scrutinee_pair)
-                    }
-                    (MatchPattern::True, MatchPattern::False) => (second_arm, first_arm),
-                    (MatchPattern::True, _) => {
-                        return Err(Error::UnmatchedPattern("false".to_string()))
-                            .with_span(&scrutinee_pair)
-                    }
-                };
-
-                SingleExpressionInner::Match {
-                    scrutinee,
-                    left,
-                    right,
-                }
-            }
+            Rule::match_expr => Match::parse(inner_pair).map(SingleExpressionInner::Match)?,
             Rule::array_expr => {
                 let elements: Arc<_> = inner_pair
                     .clone()
@@ -926,6 +917,37 @@ impl PestParse for WitnessName {
         assert!(matches!(pair.as_rule(), Rule::witness_name));
         let name = Arc::from(pair.as_str());
         Ok(Self(name))
+    }
+}
+
+impl PestParse for Match {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
+        assert!(matches!(pair.as_rule(), Rule::match_expr));
+        let span = Span::from(&pair);
+        let mut it = pair.into_inner();
+        let scrutinee_pair = it.next().unwrap();
+        let scrutinee = Expression::parse(scrutinee_pair.clone()).map(Arc::new)?;
+        let first = MatchArm::parse(it.next().unwrap())?;
+        let second = MatchArm::parse(it.next().unwrap())?;
+
+        let (left, right) = match (&first.pattern, &second.pattern) {
+            (MatchPattern::Left(..), MatchPattern::Right(..)) => (first, second),
+            (MatchPattern::Right(..), MatchPattern::Left(..)) => (second, first),
+            (MatchPattern::None, MatchPattern::Some(..)) => (first, second),
+            (MatchPattern::False, MatchPattern::True) => (first, second),
+            (MatchPattern::Some(..), MatchPattern::None) => (second, first),
+            (MatchPattern::True, MatchPattern::False) => (second, first),
+            (p1, p2) => {
+                return Err(Error::IncompatibleMatchArms(p1.clone(), p2.clone())).with_span(span)
+            }
+        };
+
+        Ok(Self {
+            scrutinee,
+            left,
+            right,
+            span,
+        })
     }
 }
 
@@ -1172,6 +1194,12 @@ impl AsRef<Span> for SingleExpression {
 }
 
 impl AsRef<Span> for FuncCall {
+    fn as_ref(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl AsRef<Span> for Match {
     fn as_ref(&self) -> &Span {
         &self.span
     }
