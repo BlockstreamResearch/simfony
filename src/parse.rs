@@ -99,8 +99,8 @@ pub struct Program {
 pub enum Statement {
     /// A declaration of variables inside a pattern.
     Assignment(Assignment),
-    /// A function call.
-    FuncCall(FuncCall),
+    /// An expression that returns nothing (the unit value).
+    Expression(Expression),
     /// A type alias.
     TypeAlias(TypeAlias),
 }
@@ -608,7 +608,7 @@ impl PestParse for Statement {
         let inner_pair = pair.into_inner().next().unwrap();
         match inner_pair.as_rule() {
             Rule::assignment => Assignment::parse(inner_pair).map(Statement::Assignment),
-            Rule::func_call => FuncCall::parse(inner_pair).map(Statement::FuncCall),
+            Rule::expression => Expression::parse(inner_pair).map(Statement::Expression),
             Rule::type_alias => TypeAlias::parse(inner_pair).map(Statement::TypeAlias),
             _ => unreachable!("Corrupt grammar"),
         }

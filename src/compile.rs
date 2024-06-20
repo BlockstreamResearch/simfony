@@ -42,10 +42,10 @@ fn eval_blk(
             let right = eval_blk(stmts, scope, index + 1, last_expr)?;
             ProgNode::comp(&left, &right).with_span(assignment.span)
         }
-        Statement::FuncCall(func_call) => {
-            let left = func_call.eval(scope, None)?;
+        Statement::Expression(expression) => {
+            let left = expression.eval(scope, None)?;
             let right = eval_blk(stmts, scope, index + 1, last_expr)?;
-            combine_seq(&left, &right).with_span(func_call.span)
+            combine_seq(&left, &right).with_span(expression)
         }
         Statement::TypeAlias(alias) => {
             scope

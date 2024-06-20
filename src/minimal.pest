@@ -6,7 +6,7 @@ program = {
     (statement ~ ";")* ~
     EOI
 }
-statement = { assignment | func_call | type_alias }
+statement = { assignment | type_alias | expression }
 
 identifier        = @{ !(reserved) ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
 jet               = @{ "jet_" ~ (ASCII_ALPHANUMERIC | "_")+ }
