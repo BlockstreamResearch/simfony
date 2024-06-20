@@ -12,7 +12,7 @@ use crate::scope::BasePattern;
 use crate::{
     error::{Error, RichError, WithSpan},
     named::{ConstructExt, ProgExt},
-    parse::{Expression, ExpressionInner, FuncCall, FuncType, Program, Statement},
+    parse::{Call, CallName, Expression, ExpressionInner, Program, Statement},
     scope::GlobalScope,
     types::{ResolvedType, StructuralType, TypeInner, UIntType},
     ProgNode,
@@ -69,14 +69,14 @@ impl Program {
     }
 }
 
-impl FuncCall {
+impl Call {
     pub fn eval(
         &self,
         scope: &mut GlobalScope,
         _reqd_ty: Option<&ResolvedType>,
     ) -> Result<ProgNode, RichError> {
-        match &self.func_type {
-            FuncType::Jet(name) => {
+        match &self.name {
+            CallName::Jet(name) => {
                 let args = match self.args.is_empty() {
                     true => SingleExpressionInner::Unit,
                     false => SingleExpressionInner::Array(self.args.clone()),
@@ -92,8 +92,8 @@ impl FuncCall {
                 let jet_expr = ProgNode::jet(jet);
                 ProgNode::comp(&args_expr, &jet_expr).with_span(self.span)
             }
-            FuncType::BuiltIn(..) => unimplemented!("Builtins are not supported yet"),
-            FuncType::UnwrapLeft => {
+            CallName::BuiltIn(..) => unimplemented!("Builtins are not supported yet"),
+            CallName::UnwrapLeft => {
                 debug_assert!(self.args.len() == 1);
                 let b = self.args[0].eval(scope, None)?;
                 let left_and_unit = ProgNode::pair_unit(&b);
@@ -101,7 +101,7 @@ impl FuncCall {
                 let get_inner = ProgNode::assertl_take(&ProgNode::iden(), fail_cmr);
                 ProgNode::comp(&left_and_unit, &get_inner).with_span(self.span)
             }
-            FuncType::UnwrapRight | FuncType::Unwrap => {
+            CallName::UnwrapRight | CallName::Unwrap => {
                 debug_assert!(self.args.len() == 1);
                 let c = self.args[0].eval(scope, None)?;
                 let right_and_unit = ProgNode::pair_unit(&c);
@@ -182,7 +182,7 @@ impl SingleExpressionInner {
                 .get(&BasePattern::Identifier(identifier.clone()))
                 .ok_or(Error::UndefinedVariable(identifier.clone()))
                 .with_span(span)?,
-            SingleExpressionInner::FuncCall(call) => call.eval(scope, reqd_ty)?,
+            SingleExpressionInner::Call(call) => call.eval(scope, reqd_ty)?,
             SingleExpressionInner::Expression(expression) => expression.eval(scope, reqd_ty)?,
             SingleExpressionInner::Match(match_) => match_.eval(scope, reqd_ty)?,
             SingleExpressionInner::Array(elements) => {

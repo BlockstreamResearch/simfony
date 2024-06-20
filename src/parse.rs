@@ -204,33 +204,27 @@ pub struct Assignment {
     pub span: Span,
 }
 
-/// A function(jet) call.
-///
-/// The function name is the name of the jet.
-/// The arguments are the arguments to the jet.
-/// Since jets in simplicity operate on a single paired type,
-/// the arguments are paired together.
-/// jet(a, b, c, d) = jet(pair(pair(pair(a, b), c), d))
+/// Call expression.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct FuncCall {
-    /// The type of the function.
-    pub func_type: FuncType,
-    /// The arguments to the function.
+pub struct Call {
+    /// The name of the call.
+    pub name: CallName,
+    /// The arguments to the call.
     pub args: Arc<[Expression]>,
     /// Area that this call spans in the source file.
     pub span: Span,
 }
 
-/// A function(jet) name.
+/// Name of a call.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum FuncType {
-    /// A jet name.
+pub enum CallName {
+    /// Name of a jet.
     Jet(JetName),
-    /// Left unwrap function
+    /// Left unwrap function.
     UnwrapLeft,
-    /// Right unwrap function
+    /// Right unwrap function.
     UnwrapRight,
-    /// Some unwrap function
+    /// Some unwrap function.
     Unwrap,
     /// A builtin function name.
     BuiltIn(Arc<str>),
@@ -325,7 +319,7 @@ pub enum SingleExpressionInner {
     /// Variable identifier expression
     Variable(Identifier),
     /// Function call
-    FuncCall(FuncCall),
+    Call(Call),
     /// Expression in parentheses
     Expression(Arc<Expression>),
     /// Match expression over a sum type
@@ -676,13 +670,13 @@ impl PestParse for Assignment {
     }
 }
 
-impl PestParse for FuncCall {
+impl PestParse for Call {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Rule::func_call));
+        assert!(matches!(pair.as_rule(), Rule::call_expr));
         let span = Span::from(&pair);
         let inner_pair = pair.into_inner().next().unwrap();
 
-        let func_type = FuncType::parse(inner_pair.clone())?;
+        let name = CallName::parse(inner_pair.clone())?;
         let inner_inner = inner_pair.into_inner();
         let mut args = Vec::new();
         for inner_inner_pair in inner_inner {
@@ -693,24 +687,24 @@ impl PestParse for FuncCall {
             }
         }
 
-        Ok(FuncCall {
-            func_type,
+        Ok(Call {
+            name,
             args: args.into_iter().collect(),
             span,
         })
     }
 }
 
-impl PestParse for FuncType {
+impl PestParse for CallName {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         match pair.as_rule() {
             Rule::jet_expr => {
                 let jet_pair = pair.into_inner().next().unwrap();
-                JetName::parse(jet_pair).map(FuncType::Jet)
+                JetName::parse(jet_pair).map(CallName::Jet)
             }
-            Rule::unwrap_left_expr => Ok(FuncType::UnwrapLeft),
-            Rule::unwrap_right_expr => Ok(FuncType::UnwrapRight),
-            Rule::unwrap_expr => Ok(FuncType::Unwrap),
+            Rule::unwrap_left_expr => Ok(CallName::UnwrapLeft),
+            Rule::unwrap_right_expr => Ok(CallName::UnwrapRight),
+            Rule::unwrap_expr => Ok(CallName::Unwrap),
             _ => unreachable!("Corrupt grammar"),
         }
     }
@@ -795,7 +789,7 @@ impl PestParse for SingleExpression {
             }
             Rule::false_expr => SingleExpressionInner::False,
             Rule::true_expr => SingleExpressionInner::True,
-            Rule::func_call => SingleExpressionInner::FuncCall(FuncCall::parse(inner_pair)?),
+            Rule::call_expr => SingleExpressionInner::Call(Call::parse(inner_pair)?),
             Rule::bit_string => SingleExpressionInner::BitString(Bits::parse(inner_pair)?),
             Rule::byte_string => SingleExpressionInner::ByteString(Bytes::parse(inner_pair)?),
             Rule::unsigned_integer => {
@@ -1193,7 +1187,7 @@ impl AsRef<Span> for SingleExpression {
     }
 }
 
-impl AsRef<Span> for FuncCall {
+impl AsRef<Span> for Call {
     fn as_ref(&self) -> &Span {
         &self.span
     }
