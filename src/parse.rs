@@ -1140,3 +1140,39 @@ impl<'a> TreeLike for TyPair<'a> {
         }
     }
 }
+
+impl<'a, A: AsRef<Span>> From<&'a A> for Span {
+    fn from(value: &'a A) -> Self {
+        *value.as_ref()
+    }
+}
+
+impl AsRef<Span> for Assignment {
+    fn as_ref(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl AsRef<Span> for TypeAlias {
+    fn as_ref(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl AsRef<Span> for Expression {
+    fn as_ref(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl AsRef<Span> for SingleExpression {
+    fn as_ref(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl AsRef<Span> for FuncCall {
+    fn as_ref(&self) -> &Span {
+        &self.span
+    }
+}
