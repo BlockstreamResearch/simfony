@@ -92,7 +92,6 @@ impl Call {
                 let jet_expr = ProgNode::jet(jet);
                 ProgNode::comp(&args_expr, &jet_expr).with_span(self.span)
             }
-            CallName::BuiltIn(..) => unimplemented!("Builtins are not supported yet"),
             CallName::UnwrapLeft => {
                 debug_assert!(self.args.len() == 1);
                 let b = self.args[0].eval(scope, None)?;

@@ -226,8 +226,6 @@ pub enum CallName {
     UnwrapRight,
     /// Some unwrap function.
     Unwrap,
-    /// A builtin function name.
-    BuiltIn(Arc<str>),
 }
 
 /// String that is a jet name.
