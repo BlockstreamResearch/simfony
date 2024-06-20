@@ -613,6 +613,7 @@ impl<'a> From<&'a Value> for StructuralValue {
                     let size = data.node.n_children();
                     debug_assert!(0 < size);
                     let elements = output.split_off(output.len() - size);
+                    debug_assert_eq!(elements.len(), size);
                     output.push(Self::array(elements).unwrap());
                 }
                 Value::List(_, bound) => {
