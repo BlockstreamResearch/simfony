@@ -674,38 +674,33 @@ impl PestParse for Call {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::call_expr));
         let span = Span::from(&pair);
-        let inner_pair = pair.into_inner().next().unwrap();
+        let mut it = pair.into_inner();
+        let name = CallName::parse(it.next().unwrap())?;
+        let args_pair = it.next().unwrap();
+        assert!(matches!(args_pair.as_rule(), Rule::call_args));
+        let args = args_pair
+            .into_inner()
+            .map(Expression::parse)
+            .collect::<Result<Arc<[Expression]>, _>>()?;
 
-        let name = CallName::parse(inner_pair.clone())?;
-        let inner_inner = inner_pair.into_inner();
-        let mut args = Vec::new();
-        for inner_inner_pair in inner_inner {
-            match inner_inner_pair.as_rule() {
-                Rule::expression => args.push(Expression::parse(inner_inner_pair)?),
-                Rule::jet => {}
-                _ => unreachable!("Corrupt grammar"),
-            }
-        }
-
-        Ok(Call {
-            name,
-            args: args.into_iter().collect(),
-            span,
-        })
+        Ok(Call { name, args, span })
     }
 }
 
 impl PestParse for CallName {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        match pair.as_rule() {
-            Rule::jet_expr => {
-                let jet_pair = pair.into_inner().next().unwrap();
-                JetName::parse(jet_pair).map(CallName::Jet)
+        assert!(matches!(pair.as_rule(), Rule::call_name));
+        match pair.as_str() {
+            "unwrap_left" => Ok(CallName::UnwrapLeft),
+            "unwrap_right" => Ok(CallName::UnwrapRight),
+            "unwrap" => Ok(CallName::Unwrap),
+            _ => {
+                let inner = pair.into_inner().next().unwrap();
+                match inner.as_rule() {
+                    Rule::jet => JetName::parse(inner).map(CallName::Jet),
+                    _ => panic!("Corrupt grammar"),
+                }
             }
-            Rule::unwrap_left_expr => Ok(CallName::UnwrapLeft),
-            Rule::unwrap_right_expr => Ok(CallName::UnwrapRight),
-            Rule::unwrap_expr => Ok(CallName::Unwrap),
-            _ => unreachable!("Corrupt grammar"),
         }
     }
 }
