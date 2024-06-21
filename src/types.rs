@@ -555,3 +555,31 @@ impl StructuralType {
         simplicity::types::Type::from(self.0.clone())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_type() {
+        let unit = ResolvedType::unit();
+        assert_eq!("()", &unit.to_string());
+        let singleton = ResolvedType::tuple([ResolvedType::from(UIntType::U1)]);
+        assert_eq!("(u1,)", &singleton.to_string());
+        let pair = ResolvedType::tuple([
+            ResolvedType::from(UIntType::U1),
+            ResolvedType::from(UIntType::U8),
+        ]);
+        assert_eq!("(u1, u8)", &pair.to_string());
+        let triple = ResolvedType::tuple([
+            ResolvedType::from(UIntType::U1),
+            ResolvedType::from(UIntType::U8),
+            ResolvedType::from(UIntType::U16),
+        ]);
+        assert_eq!("(u1, u8, u16)", &triple.to_string());
+        let array = ResolvedType::array(ResolvedType::unit(), NonZeroUsize::new(3).unwrap());
+        assert_eq!("[(); 3]", &array.to_string());
+        let list = ResolvedType::list(ResolvedType::unit(), NonZeroPow2Usize::TWO);
+        assert_eq!("List<(), 2>", &list.to_string());
+    }
+}

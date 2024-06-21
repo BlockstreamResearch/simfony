@@ -668,6 +668,21 @@ mod tests {
 
     #[test]
     fn display_value() {
+        let unit = Value::unit();
+        assert_eq!("()", &unit.to_string());
+        let singleton = Value::tuple([Value::from(UIntValue::U1(1))]);
+        assert_eq!("(1,)", &singleton.to_string());
+        let pair = Value::tuple([
+            Value::from(UIntValue::U1(1)),
+            Value::from(UIntValue::U8(42)),
+        ]);
+        assert_eq!("(1, 42)", &pair.to_string());
+        let triple = Value::tuple([
+            Value::from(UIntValue::U1(1)),
+            Value::from(UIntValue::U8(42)),
+            Value::from(UIntValue::U16(1337)),
+        ]);
+        assert_eq!("(1, 42, 1337)", &triple.to_string());
         let array = Value::array([Value::unit(), Value::unit(), Value::unit()]).unwrap();
         assert_eq!("[(), (), ()]", &array.to_string());
         let list = Value::list([Value::unit()], NonZeroPow2Usize::TWO).unwrap();
