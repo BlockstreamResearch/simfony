@@ -135,7 +135,6 @@ impl From<pest::error::Error<Rule>> for RichError {
 /// Records _what_ happened but not where.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Error {
-    ArraySizeZero,
     ListBoundPow2(usize),
     BitStringPow2(usize),
     HexStringPow2(usize),
@@ -157,10 +156,6 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::ArraySizeZero => write!(
-                f,
-                "Expected positive array size (1, 2, 3, 4, 5, ...), found 0"
-            ),
             Error::ListBoundPow2(bound) => write!(
                 f,
                 "Expected a power of two greater than one (2, 4, 8, 16, 32, ...) as list bound, found {bound}"

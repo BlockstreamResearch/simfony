@@ -125,17 +125,8 @@ impl Pattern {
     }
 
     /// Construct an array pattern.
-    ///
-    /// ## Error
-    ///
-    /// The array is empty.
-    pub fn array<I: IntoIterator<Item = Self>>(array: I) -> Result<Self, Error> {
-        let inner: Arc<_> = array.into_iter().collect();
-        if inner.is_empty() {
-            Err(Error::ArraySizeZero)
-        } else {
-            Ok(Self::Array(inner))
-        }
+    pub fn array<I: IntoIterator<Item = Self>>(elements: I) -> Self {
+        Self::Array(elements.into_iter().collect())
     }
 }
 
@@ -163,10 +154,20 @@ impl fmt::Display for Pattern {
                         write!(f, ")")?;
                     }
                 },
-                Pattern::Array(children) => match data.n_children_yielded {
-                    0 => write!(f, "[")?,
-                    n if n == children.len() => write!(f, "]")?,
-                    _ => write!(f, ",")?,
+                Pattern::Array(elements) => match data.n_children_yielded {
+                    0 => {
+                        f.write_str("[")?;
+                        if 0 == elements.len() {
+                            f.write_str("]")?;
+                        }
+                    }
+                    n if n == elements.len() => {
+                        f.write_str("]")?;
+                    }
+                    n => {
+                        debug_assert!(n < elements.len());
+                        f.write_str(", ")?;
+                    }
                 },
             }
         }
@@ -629,10 +630,10 @@ impl PestParse for Pattern {
                     output.push(Pattern::Product(Arc::new(l), Arc::new(r)));
                 }
                 Rule::array_pattern => {
-                    assert!(0 < data.node.n_children(), "Array must be nonempty");
-                    let children = output.split_off(output.len() - data.node.n_children());
-                    let array = Pattern::array(children).with_span(&data.node.0)?;
-                    output.push(array);
+                    let size = data.node.n_children();
+                    let elements = output.split_off(output.len() - size);
+                    debug_assert_eq!(elements.len(), size);
+                    output.push(Pattern::array(elements));
                 }
                 _ => unreachable!("Corrupt grammar"),
             }

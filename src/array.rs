@@ -262,29 +262,25 @@ mod tests {
                 BasePattern::product(a_.clone(), b_.clone()),
             ),
             // [a] = a
-            (Pattern::array([a.clone()]).unwrap(), a_.clone()),
+            (Pattern::array([a.clone()]), a_.clone()),
             // [[a]] = a
-            (
-                Pattern::array([Pattern::array([a.clone()]).unwrap()]).unwrap(),
-                a_.clone(),
-            ),
+            (Pattern::array([Pattern::array([a.clone()])]), a_.clone()),
             // [a b] = (a, b)
             (
-                Pattern::array([a.clone(), b.clone()]).unwrap(),
+                Pattern::array([a.clone(), b.clone()]),
                 BasePattern::product(a_.clone(), b_.clone()),
             ),
             // [a b c] = ((a, b), c)
             (
-                Pattern::array([a.clone(), b.clone(), c.clone()]).unwrap(),
+                Pattern::array([a.clone(), b.clone(), c.clone()]),
                 BasePattern::product(BasePattern::product(a_.clone(), b_.clone()), c_.clone()),
             ),
             // [[a, b], [c, d]] = ((a, b), (c, d))
             (
                 Pattern::array([
-                    Pattern::array([a.clone(), b.clone()]).unwrap(),
-                    Pattern::array([c.clone(), d.clone()]).unwrap(),
-                ])
-                .unwrap(),
+                    Pattern::array([a.clone(), b.clone()]),
+                    Pattern::array([c.clone(), d.clone()]),
+                ]),
                 BasePattern::product(BasePattern::product(a_, b_), BasePattern::product(c_, d_)),
             ),
         ];
