@@ -13,12 +13,8 @@ use crate::parse::Identifier;
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 #[non_exhaustive]
 pub enum TypeInner<A> {
-    /// Unit type
-    Unit,
     /// Sum of the left and right types
     Either(A, A),
-    /// Product of the left and right types
-    Product(A, A),
     /// Option of the inner type
     Option(A),
     /// Boolean type
@@ -39,21 +35,12 @@ impl<A> TypeInner<A> {
     /// We cannot implement [`fmt::Display`] because `n_children_yielded` is an extra argument.
     fn display(&self, f: &mut fmt::Formatter<'_>, n_children_yielded: usize) -> fmt::Result {
         match self {
-            TypeInner::Unit => f.write_str("()"),
             TypeInner::Either(_, _) => match n_children_yielded {
                 0 => f.write_str("Either<"),
                 1 => f.write_str(","),
                 n => {
                     debug_assert_eq!(n, 2);
                     f.write_str(">")
-                }
-            },
-            TypeInner::Product(_, _) => match n_children_yielded {
-                0 => f.write_str("("),
-                1 => f.write_str(", "),
-                n => {
-                    debug_assert_eq!(n, 2);
-                    f.write_str(")")
                 }
             },
             TypeInner::Option(_) => match n_children_yielded {
@@ -191,14 +178,8 @@ impl<'a> TryFrom<&'a ResolvedType> for UIntType {
 
 /// Various type constructors.
 pub trait TypeConstructible: Sized + From<UIntType> {
-    /// Create the unit type.
-    fn unit() -> Self;
-
     /// Create a sum of the given `left` and `right` types.
     fn either(left: Self, right: Self) -> Self;
-
-    /// Create a product of the given `left` and `right` types.
-    fn product(left: Self, right: Self) -> Self;
 
     /// Create an option of the given `inner` type.
     fn option(inner: Self) -> Self;
@@ -207,7 +188,20 @@ pub trait TypeConstructible: Sized + From<UIntType> {
     fn boolean() -> Self;
 
     /// Create a tuple from the given `elements`.
+    ///
+    /// The empty tuple is the unit type.
+    /// A tuple of two types is a product.
     fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self;
+
+    /// Create the unit type.
+    fn unit() -> Self {
+        Self::tuple([])
+    }
+
+    /// Create a product of the given `left` and `right` types.
+    fn product(left: Self, right: Self) -> Self {
+        Self::tuple([left, right])
+    }
 
     /// Create an array with `size` many values of the `element` type.
     fn array(element: Self, size: NonZeroUsize) -> Self;
@@ -228,16 +222,8 @@ impl ResolvedType {
 }
 
 impl TypeConstructible for ResolvedType {
-    fn unit() -> Self {
-        Self(TypeInner::Unit)
-    }
-
     fn either(left: Self, right: Self) -> Self {
         Self(TypeInner::Either(Arc::new(left), Arc::new(right)))
-    }
-
-    fn product(left: Self, right: Self) -> Self {
-        Self(TypeInner::Product(Arc::new(left), Arc::new(right)))
     }
 
     fn option(inner: Self) -> Self {
@@ -266,9 +252,9 @@ impl TypeConstructible for ResolvedType {
 impl<'a> TreeLike for &'a ResolvedType {
     fn as_node(&self) -> Tree<Self> {
         match &self.0 {
-            TypeInner::Unit | TypeInner::Boolean | TypeInner::UInt(..) => Tree::Nullary,
+            TypeInner::Boolean | TypeInner::UInt(..) => Tree::Nullary,
             TypeInner::Option(l) | TypeInner::Array(l, _) | TypeInner::List(l, _) => Tree::Unary(l),
-            TypeInner::Either(l, r) | TypeInner::Product(l, r) => Tree::Binary(l, r),
+            TypeInner::Either(l, r) => Tree::Binary(l, r),
             TypeInner::Tuple(elements) => Tree::Nary(elements.iter().map(Arc::as_ref).collect()),
         }
     }
@@ -323,16 +309,10 @@ impl AliasedType {
                     output.push(resolved);
                 }
                 AliasedInner::Inner(inner) => match inner {
-                    TypeInner::Unit => output.push(ResolvedType::unit()),
                     TypeInner::Either(_, _) => {
                         let right = output.pop().unwrap();
                         let left = output.pop().unwrap();
                         output.push(ResolvedType::either(left, right));
-                    }
-                    TypeInner::Product(_, _) => {
-                        let right = output.pop().unwrap();
-                        let left = output.pop().unwrap();
-                        output.push(ResolvedType::product(left, right));
                     }
                     TypeInner::Option(_) => {
                         let inner = output.pop().unwrap();
@@ -363,19 +343,8 @@ impl AliasedType {
 }
 
 impl TypeConstructible for AliasedType {
-    fn unit() -> Self {
-        Self(AliasedInner::Inner(TypeInner::Unit))
-    }
-
     fn either(left: Self, right: Self) -> Self {
         Self(AliasedInner::Inner(TypeInner::Either(
-            Arc::new(left),
-            Arc::new(right),
-        )))
-    }
-
-    fn product(left: Self, right: Self) -> Self {
-        Self(AliasedInner::Inner(TypeInner::Product(
             Arc::new(left),
             Arc::new(right),
         )))
@@ -415,11 +384,11 @@ impl<'a> TreeLike for &'a AliasedType {
         match &self.0 {
             AliasedInner::Alias(_) => Tree::Nullary,
             AliasedInner::Inner(inner) => match inner {
-                TypeInner::Unit | TypeInner::Boolean | TypeInner::UInt(..) => Tree::Nullary,
+                TypeInner::Boolean | TypeInner::UInt(..) => Tree::Nullary,
                 TypeInner::Option(l) | TypeInner::Array(l, _) | TypeInner::List(l, _) => {
                     Tree::Unary(l)
                 }
-                TypeInner::Either(l, r) | TypeInner::Product(l, r) => Tree::Binary(l, r),
+                TypeInner::Either(l, r) => Tree::Binary(l, r),
                 TypeInner::Tuple(elements) => {
                     Tree::Nary(elements.iter().map(Arc::as_ref).collect())
                 }
@@ -490,16 +459,10 @@ impl<'a> From<&'a ResolvedType> for StructuralType {
         let mut output = vec![];
         for data in value.post_order_iter() {
             match &data.node.0 {
-                TypeInner::Unit => output.push(StructuralType::unit()),
                 TypeInner::Either(_, _) => {
                     let right = output.pop().unwrap();
                     let left = output.pop().unwrap();
                     output.push(StructuralType::either(left, right));
-                }
-                TypeInner::Product(_, _) => {
-                    let right = output.pop().unwrap();
-                    let left = output.pop().unwrap();
-                    output.push(StructuralType::product(left, right));
                 }
                 TypeInner::Option(_) => {
                     let inner = output.pop().unwrap();
@@ -529,16 +492,8 @@ impl<'a> From<&'a ResolvedType> for StructuralType {
 }
 
 impl TypeConstructible for StructuralType {
-    fn unit() -> Self {
-        Self(Final::unit())
-    }
-
     fn either(left: Self, right: Self) -> Self {
         Self(Final::sum(left.0, right.0))
-    }
-
-    fn product(left: Self, right: Self) -> Self {
-        Self(Final::product(left.0, right.0))
     }
 
     fn option(inner: Self) -> Self {
@@ -558,6 +513,16 @@ impl TypeConstructible for StructuralType {
                 tree.fold(Self::product)
             }
         }
+    }
+
+    // Keep this implementation to prevent an infinite loop in <Self as TypeConstructible>::tuple
+    fn unit() -> Self {
+        Self(Final::unit())
+    }
+
+    // Keep this implementation to prevent an infinite loop in <Self as TypeConstructible>::tuple
+    fn product(left: Self, right: Self) -> Self {
+        Self(Final::product(left.0, right.0))
     }
 
     fn array(element: Self, size: NonZeroUsize) -> Self {

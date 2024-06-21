@@ -199,20 +199,27 @@ impl<'a> From<&'a Bytes> for UIntValue {
 
 /// Various value constructors.
 pub trait ValueConstructible: Sized + From<Option<Self>> + From<bool> + From<UIntValue> {
-    /// Create the unit value.
-    fn unit() -> Self;
-
     /// Create the left value `Either::Left(inner)`.
     fn left(inner: Self) -> Self;
 
     /// Create the right value `Either::Right(inner)`.
     fn right(inner: Self) -> Self;
 
-    /// Create the product value `(left, right)`.
-    fn product(left: Self, right: Self) -> Self;
-
     /// Create a tuple from the given `elements`.
+    ///
+    /// The empty tuple is the unit value.
+    /// A tuple of two values is a product.
     fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self;
+
+    /// Create the unit value.
+    fn unit() -> Self {
+        Self::tuple([])
+    }
+
+    /// Create the product value `(left, right)`.
+    fn product(left: Self, right: Self) -> Self {
+        Self::tuple([left, right])
+    }
 
     /// Create an array from the given `elements`.
     ///
@@ -241,14 +248,10 @@ pub trait ValueConstructible: Sized + From<Option<Self>> + From<bool> + From<UIn
 /// Simfony value.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Value {
-    /// Unit value.
-    Unit,
     /// Left value.
     Left(Arc<Self>),
     /// Right value.
     Right(Arc<Self>),
-    /// Product value.
-    Product(Arc<Self>, Arc<Self>),
     /// Option value.
     Option(Option<Arc<Self>>),
     /// Boolean value.
@@ -270,9 +273,8 @@ pub enum Value {
 impl<'a> TreeLike for &'a Value {
     fn as_node(&self) -> Tree<Self> {
         match self {
-            Value::Unit | Value::Option(None) | Value::Boolean(_) | Value::UInt(_) => Tree::Nullary,
+            Value::Option(None) | Value::Boolean(_) | Value::UInt(_) => Tree::Nullary,
             Value::Left(l) | Value::Right(l) | Value::Option(Some(l)) => Tree::Unary(l),
-            Value::Product(l, r) => Tree::Binary(l, r),
             Value::Tuple(elements) | Value::Array(elements) | Value::List(elements, _) => {
                 Tree::Nary(elements.iter().collect())
             }
@@ -284,7 +286,6 @@ impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for data in self.verbose_pre_order_iter() {
             match &data.node {
-                Value::Unit => f.write_str("()")?,
                 Value::Left(_) => match data.n_children_yielded {
                     0 => f.write_str("Left(")?,
                     n => {
@@ -296,14 +297,6 @@ impl fmt::Display for Value {
                     0 => f.write_str("Right(")?,
                     n => {
                         debug_assert_eq!(n, 1);
-                        f.write_str(")")?;
-                    }
-                },
-                Value::Product(_, _) => match data.n_children_yielded {
-                    0 => f.write_str("(")?,
-                    1 => f.write_str(", ")?,
-                    n => {
-                        debug_assert_eq!(n, 2);
                         f.write_str(")")?;
                     }
                 },
@@ -363,20 +356,12 @@ impl fmt::Display for Value {
 }
 
 impl ValueConstructible for Value {
-    fn unit() -> Self {
-        Self::Unit
-    }
-
     fn left(inner: Self) -> Self {
         Self::Left(Arc::new(inner))
     }
 
     fn right(inner: Self) -> Self {
         Self::Right(Arc::new(inner))
-    }
-
-    fn product(left: Self, right: Self) -> Self {
-        Self::Product(Arc::new(left), Arc::new(right))
     }
 
     fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
@@ -432,18 +417,13 @@ impl Value {
         let mut stack = vec![(self, ty)];
         while let Some((value, ty)) = stack.pop() {
             match (value, ty.as_inner()) {
-                (Value::Unit, TypeInner::Unit)
-                | (Value::Boolean(_), TypeInner::Boolean)
+                (Value::Boolean(_), TypeInner::Boolean)
                 | (Value::UInt(_), TypeInner::UInt(_))
                 | (Value::Option(None), TypeInner::Option(_)) => {}
                 (Value::Left(val_l), TypeInner::Either(ty_l, _))
                 | (Value::Right(val_l), TypeInner::Either(_, ty_l))
                 | (Value::Option(Some(val_l)), TypeInner::Option(ty_l)) => {
                     stack.push((val_l, ty_l))
-                }
-                (Value::Product(val_l, val_r), TypeInner::Product(ty_l, ty_r)) => {
-                    stack.push((val_r, ty_r));
-                    stack.push((val_l, ty_l));
                 }
                 (Value::Tuple(val_el), TypeInner::Tuple(ty_el)) if val_el.len() == ty_el.len() => {
                     stack.extend(val_el.iter().zip(ty_el.iter().map(Arc::as_ref)));
@@ -538,20 +518,12 @@ impl TreeLike for StructuralValue {
 }
 
 impl ValueConstructible for StructuralValue {
-    fn unit() -> Self {
-        Self(SimValue::unit())
-    }
-
     fn left(inner: Self) -> Self {
         Self(SimValue::sum_l(inner.0))
     }
 
     fn right(inner: Self) -> Self {
         Self(SimValue::sum_r(inner.0))
-    }
-
-    fn product(left: Self, right: Self) -> Self {
-        Self(SimValue::prod(left.0, right.0))
     }
 
     fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
@@ -563,6 +535,16 @@ impl ValueConstructible for StructuralValue {
                 tree.fold(Self::product)
             }
         }
+    }
+
+    // Keep this implementation to prevent an infinite loop in <Self as ValueConstructible>::tuple
+    fn unit() -> Self {
+        Self(SimValue::unit())
+    }
+
+    // Keep this implementation to prevent an infinite loop in <Self as ValueConstructible>::tuple
+    fn product(left: Self, right: Self) -> Self {
+        Self(SimValue::prod(left.0, right.0))
     }
 
     fn array<I: IntoIterator<Item = Self>>(elements: I) -> Option<Self> {
@@ -631,7 +613,6 @@ impl<'a> From<&'a Value> for StructuralValue {
         let mut output = vec![];
         for data in value.post_order_iter() {
             match &data.node {
-                Value::Unit => output.push(Self::unit()),
                 Value::Left(_) => {
                     let inner = output.pop().unwrap();
                     output.push(Self::left(inner));
@@ -639,11 +620,6 @@ impl<'a> From<&'a Value> for StructuralValue {
                 Value::Right(_) => {
                     let inner = output.pop().unwrap();
                     output.push(Self::right(inner));
-                }
-                Value::Product(_, _) => {
-                    let right = output.pop().unwrap();
-                    let left = output.pop().unwrap();
-                    output.push(Self::product(left, right));
                 }
                 Value::Option(None) => output.push(Self::from(None)),
                 Value::Option(Some(_)) => {
