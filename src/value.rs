@@ -211,6 +211,9 @@ pub trait ValueConstructible: Sized + From<Option<Self>> + From<bool> + From<UIn
     /// Create the product value `(left, right)`.
     fn product(left: Self, right: Self) -> Self;
 
+    /// Create a tuple from the given `elements`.
+    fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self;
+
     /// Create an array from the given `elements`.
     ///
     /// ## Nonemptiness
@@ -252,6 +255,10 @@ pub enum Value {
     Boolean(bool),
     /// Unsigned integer.
     UInt(UIntValue),
+    /// Tuple of values.
+    ///
+    /// Each component may have a different type.
+    Tuple(Arc<[Self]>),
     /// Nonempty array of values.
     // FIXME: Prevent construction of invalid arrays (that are empty)
     Array(Arc<[Self]>),
@@ -266,7 +273,7 @@ impl<'a> TreeLike for &'a Value {
             Value::Unit | Value::Option(None) | Value::Boolean(_) | Value::UInt(_) => Tree::Nullary,
             Value::Left(l) | Value::Right(l) | Value::Option(Some(l)) => Tree::Unary(l),
             Value::Product(l, r) => Tree::Binary(l, r),
-            Value::Array(elements) | Value::List(elements, _) => {
+            Value::Tuple(elements) | Value::Array(elements) | Value::List(elements, _) => {
                 Tree::Nary(elements.iter().collect())
             }
         }
@@ -310,6 +317,24 @@ impl fmt::Display for Value {
                 },
                 Value::Boolean(bit) => write!(f, "{bit}")?,
                 Value::UInt(integer) => write!(f, "{integer}")?,
+                Value::Tuple(elements) => match data.n_children_yielded {
+                    0 => {
+                        f.write_str("(")?;
+                        if 0 == elements.len() {
+                            f.write_str(")")?;
+                        }
+                    }
+                    n if n == elements.len() => {
+                        if n == 1 {
+                            f.write_str(",")?;
+                        }
+                        f.write_str(")")?;
+                    }
+                    n => {
+                        debug_assert!(n < elements.len());
+                        f.write_str(", ")?;
+                    }
+                },
                 Value::Array(elements) => match data.n_children_yielded {
                     0 => f.write_str("[")?,
                     n if n == elements.len() => {
@@ -352,6 +377,10 @@ impl ValueConstructible for Value {
 
     fn product(left: Self, right: Self) -> Self {
         Self::Product(Arc::new(left), Arc::new(right))
+    }
+
+    fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
+        Self::Tuple(elements.into_iter().collect())
     }
 
     fn array<I: IntoIterator<Item = Self>>(elements: I) -> Option<Self> {
@@ -415,6 +444,9 @@ impl Value {
                 (Value::Product(val_l, val_r), TypeInner::Product(ty_l, ty_r)) => {
                     stack.push((val_r, ty_r));
                     stack.push((val_l, ty_l));
+                }
+                (Value::Tuple(val_el), TypeInner::Tuple(ty_el)) if val_el.len() == ty_el.len() => {
+                    stack.extend(val_el.iter().zip(ty_el.iter().map(Arc::as_ref)));
                 }
                 (Value::Array(val_el), TypeInner::Array(ty_el, size))
                     if val_el.len() == size.get() =>
@@ -522,6 +554,17 @@ impl ValueConstructible for StructuralValue {
         Self(SimValue::prod(left.0, right.0))
     }
 
+    fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
+        let elements: Vec<Self> = elements.into_iter().collect();
+        match elements.is_empty() {
+            true => Self::unit(),
+            false => {
+                let tree = BTreeSlice::from_slice(&elements);
+                tree.fold(Self::product)
+            }
+        }
+    }
+
     fn array<I: IntoIterator<Item = Self>>(elements: I) -> Option<Self> {
         let elements: Vec<Self> = elements.into_iter().collect();
         if elements.is_empty() {
@@ -609,6 +652,12 @@ impl<'a> From<&'a Value> for StructuralValue {
                 }
                 Value::Boolean(bit) => output.push(Self::from(*bit)),
                 Value::UInt(integer) => output.push(Self::from(*integer)),
+                Value::Tuple(_) => {
+                    let size = data.node.n_children();
+                    let elements = output.split_off(output.len() - size);
+                    debug_assert_eq!(elements.len(), size);
+                    output.push(Self::tuple(elements));
+                }
                 Value::Array(_) => {
                     let size = data.node.n_children();
                     debug_assert!(0 < size);
