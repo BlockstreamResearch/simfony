@@ -800,17 +800,12 @@ impl PestParse for SingleExpression {
                 SingleExpressionInner::Expression(Expression::parse(inner_pair).map(Arc::new)?)
             }
             Rule::match_expr => Match::parse(inner_pair).map(SingleExpressionInner::Match)?,
-            Rule::array_expr => {
-                let elements: Arc<_> = inner_pair
-                    .clone()
-                    .into_inner()
-                    .map(|inner| Expression::parse(inner))
-                    .collect::<Result<Arc<_>, _>>()?;
-                if elements.is_empty() {
-                    return Err(Error::ArraySizeZero).with_span(&inner_pair);
-                }
-                SingleExpressionInner::Array(elements)
-            }
+            Rule::array_expr => inner_pair
+                .clone()
+                .into_inner()
+                .map(|inner| Expression::parse(inner))
+                .collect::<Result<Arc<[Expression]>, _>>()
+                .map(SingleExpressionInner::Array)?,
             Rule::list_expr => {
                 let elements = inner_pair
                     .into_inner()
@@ -981,7 +976,7 @@ impl PestParse for AliasedType {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         enum Item {
             Type(AliasedType),
-            Size(NonZeroUsize),
+            Size(usize),
             Bound(NonZeroPow2Usize),
         }
 
@@ -993,7 +988,7 @@ impl PestParse for AliasedType {
                 }
             }
 
-            fn unwrap_size(self) -> NonZeroUsize {
+            fn unwrap_size(self) -> usize {
                 match self {
                     Item::Size(size) => size,
                     _ => panic!("Not a size"),
@@ -1047,10 +1042,7 @@ impl PestParse for AliasedType {
                 }
                 Rule::array_size => {
                     let size_str = data.node.0.as_str();
-                    let size = size_str
-                        .parse::<NonZeroUsize>()
-                        .map_err(|_| Error::ArraySizeZero)
-                        .with_span(&data.node.0)?;
+                    let size = size_str.parse::<usize>().with_span(&data.node.0)?;
                     output.push(Item::Size(size));
                 }
                 Rule::list_type => {

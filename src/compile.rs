@@ -187,7 +187,7 @@ impl SingleExpressionInner {
             SingleExpressionInner::Array(elements) => {
                 let el_type = match reqd_ty.map(ResolvedType::as_inner) {
                     Some(TypeInner::Array(el_type, size)) => {
-                        if size.get() != elements.len() {
+                        if *size != elements.len() {
                             return Err(Error::TypeValueMismatch(reqd_ty.unwrap().clone()))
                                 .with_span(span);
                         }
@@ -200,10 +200,17 @@ impl SingleExpressionInner {
                 // is hard to prove at the moment, while Simfony lacks a type system.
                 let nodes: Vec<Result<ProgNode, RichError>> =
                     elements.iter().map(|e| e.eval(scope, el_type)).collect();
-                let tree = BTreeSlice::from_slice(&nodes);
-                tree.fold(|res_a, res_b| {
-                    res_a.and_then(|a| res_b.and_then(|b| ProgNode::pair(&a, &b).with_span(span)))
-                })?
+                match nodes.is_empty() {
+                    true => ProgNode::unit(),
+                    false => {
+                        let tree = BTreeSlice::from_slice(&nodes);
+                        tree.fold(|res_a, res_b| {
+                            res_a.and_then(|a| {
+                                res_b.and_then(|b| ProgNode::pair(&a, &b).with_span(span))
+                            })
+                        })?
+                    }
+                }
             }
             SingleExpressionInner::List(elements) => {
                 let el_type = match reqd_ty.map(ResolvedType::as_inner) {

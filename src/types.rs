@@ -1,5 +1,4 @@
 use std::fmt;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use miniscript::iter::{Tree, TreeLike};
@@ -24,7 +23,7 @@ pub enum TypeInner<A> {
     /// Tuple of potentially different types
     Tuple(Arc<[A]>),
     /// Array of the same type
-    Array(A, NonZeroUsize),
+    Array(A, usize),
     /// List of the same type
     List(A, NonZeroPow2Usize),
 }
@@ -204,7 +203,7 @@ pub trait TypeConstructible: Sized + From<UIntType> {
     }
 
     /// Create an array with `size` many values of the `element` type.
-    fn array(element: Self, size: NonZeroUsize) -> Self;
+    fn array(element: Self, size: usize) -> Self;
 
     /// Create a list with less than `bound` many values of the `element` type.
     fn list(element: Self, bound: NonZeroPow2Usize) -> Self;
@@ -240,7 +239,7 @@ impl TypeConstructible for ResolvedType {
         ))
     }
 
-    fn array(element: Self, size: NonZeroUsize) -> Self {
+    fn array(element: Self, size: usize) -> Self {
         Self(TypeInner::Array(Arc::new(element), size))
     }
 
@@ -364,7 +363,7 @@ impl TypeConstructible for AliasedType {
         )))
     }
 
-    fn array(element: Self, size: NonZeroUsize) -> Self {
+    fn array(element: Self, size: usize) -> Self {
         Self(AliasedInner::Inner(TypeInner::Array(
             Arc::new(element),
             size,
@@ -525,12 +524,16 @@ impl TypeConstructible for StructuralType {
         Self(Final::product(left.0, right.0))
     }
 
-    fn array(element: Self, size: NonZeroUsize) -> Self {
+    fn array(element: Self, size: usize) -> Self {
         // Cheap clone because Arc<Final> consists of Arcs
-        let el_vector = vec![element.0; size.get()];
-        let tree = BTreeSlice::from_slice(&el_vector);
-        let inner = tree.fold(Final::product);
-        Self(inner)
+        let elements = vec![element; size];
+        match elements.is_empty() {
+            true => Self::unit(),
+            false => {
+                let tree = BTreeSlice::from_slice(&elements);
+                tree.fold(Self::product)
+            }
+        }
     }
 
     fn list(element: Self, bound: NonZeroPow2Usize) -> Self {
@@ -577,7 +580,9 @@ mod tests {
             ResolvedType::from(UIntType::U16),
         ]);
         assert_eq!("(u1, u8, u16)", &triple.to_string());
-        let array = ResolvedType::array(ResolvedType::unit(), NonZeroUsize::new(3).unwrap());
+        let empty_array = ResolvedType::array(ResolvedType::unit(), 0);
+        assert_eq!("[(); 0]", &empty_array.to_string());
+        let array = ResolvedType::array(ResolvedType::unit(), 3);
         assert_eq!("[(); 3]", &array.to_string());
         let list = ResolvedType::list(ResolvedType::unit(), NonZeroPow2Usize::TWO);
         assert_eq!("List<(), 2>", &list.to_string());
