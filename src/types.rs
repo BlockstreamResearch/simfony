@@ -25,9 +25,11 @@ pub enum TypeInner<A> {
     Boolean,
     /// Unsigned integer type
     UInt(UIntType),
-    /// Array of the element type
+    /// Tuple of potentially different types
+    Tuple(Arc<[A]>),
+    /// Array of the same type
     Array(A, NonZeroUsize),
-    /// List of the element type
+    /// List of the same type
     List(A, NonZeroPow2Usize),
 }
 
@@ -63,6 +65,25 @@ impl<A> TypeInner<A> {
             },
             TypeInner::Boolean => f.write_str("bool"),
             TypeInner::UInt(ty) => write!(f, "{ty}"),
+            TypeInner::Tuple(elements) => match n_children_yielded {
+                0 => {
+                    f.write_str("(")?;
+                    if 0 == elements.len() {
+                        f.write_str(")")?;
+                    }
+                    Ok(())
+                }
+                n if n == elements.len() => {
+                    if n == 1 {
+                        f.write_str(",")?;
+                    }
+                    f.write_str(")")
+                }
+                n => {
+                    debug_assert!(n < elements.len());
+                    f.write_str(", ")
+                }
+            },
             TypeInner::Array(_, size) => match n_children_yielded {
                 0 => f.write_str("["),
                 n => {
@@ -185,6 +206,9 @@ pub trait TypeConstructible: Sized + From<UIntType> {
     /// Create the Boolean type.
     fn boolean() -> Self;
 
+    /// Create a tuple from the given `elements`.
+    fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self;
+
     /// Create an array with `size` many values of the `element` type.
     fn array(element: Self, size: NonZeroUsize) -> Self;
 
@@ -224,6 +248,12 @@ impl TypeConstructible for ResolvedType {
         Self(TypeInner::Boolean)
     }
 
+    fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
+        Self(TypeInner::Tuple(
+            elements.into_iter().map(Arc::new).collect(),
+        ))
+    }
+
     fn array(element: Self, size: NonZeroUsize) -> Self {
         Self(TypeInner::Array(Arc::new(element), size))
     }
@@ -239,6 +269,7 @@ impl<'a> TreeLike for &'a ResolvedType {
             TypeInner::Unit | TypeInner::Boolean | TypeInner::UInt(..) => Tree::Nullary,
             TypeInner::Option(l) | TypeInner::Array(l, _) | TypeInner::List(l, _) => Tree::Unary(l),
             TypeInner::Either(l, r) | TypeInner::Product(l, r) => Tree::Binary(l, r),
+            TypeInner::Tuple(elements) => Tree::Nary(elements.iter().map(Arc::as_ref).collect()),
         }
     }
 }
@@ -309,6 +340,12 @@ impl AliasedType {
                     }
                     TypeInner::Boolean => output.push(ResolvedType::boolean()),
                     TypeInner::UInt(integer) => output.push(ResolvedType::from(*integer)),
+                    TypeInner::Tuple(_) => {
+                        let size = data.node.n_children();
+                        let elements = output.split_off(output.len() - size);
+                        debug_assert_eq!(elements.len(), size);
+                        output.push(ResolvedType::tuple(elements));
+                    }
                     TypeInner::Array(_, size) => {
                         let element = output.pop().unwrap();
                         output.push(ResolvedType::array(element, *size));
@@ -352,6 +389,12 @@ impl TypeConstructible for AliasedType {
         Self(AliasedInner::Inner(TypeInner::Boolean))
     }
 
+    fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
+        Self(AliasedInner::Inner(TypeInner::Tuple(
+            elements.into_iter().map(Arc::new).collect(),
+        )))
+    }
+
     fn array(element: Self, size: NonZeroUsize) -> Self {
         Self(AliasedInner::Inner(TypeInner::Array(
             Arc::new(element),
@@ -377,6 +420,9 @@ impl<'a> TreeLike for &'a AliasedType {
                     Tree::Unary(l)
                 }
                 TypeInner::Either(l, r) | TypeInner::Product(l, r) => Tree::Binary(l, r),
+                TypeInner::Tuple(elements) => {
+                    Tree::Nary(elements.iter().map(Arc::as_ref).collect())
+                }
             },
         }
     }
@@ -461,6 +507,12 @@ impl<'a> From<&'a ResolvedType> for StructuralType {
                 }
                 TypeInner::Boolean => output.push(StructuralType::boolean()),
                 TypeInner::UInt(integer) => output.push(StructuralType::from(*integer)),
+                TypeInner::Tuple(_) => {
+                    let size = data.node.n_children();
+                    let elements = output.split_off(output.len() - size);
+                    debug_assert_eq!(elements.len(), size);
+                    output.push(StructuralType::tuple(elements));
+                }
                 TypeInner::Array(_, size) => {
                     let element = output.pop().unwrap();
                     output.push(StructuralType::array(element, *size));
@@ -495,6 +547,17 @@ impl TypeConstructible for StructuralType {
 
     fn boolean() -> Self {
         Self::either(Self::unit(), Self::unit())
+    }
+
+    fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
+        let elements: Vec<_> = elements.into_iter().collect();
+        match elements.is_empty() {
+            true => Self::unit(),
+            false => {
+                let tree = BTreeSlice::from_slice(&elements);
+                tree.fold(Self::product)
+            }
+        }
     }
 
     fn array(element: Self, size: NonZeroUsize) -> Self {
