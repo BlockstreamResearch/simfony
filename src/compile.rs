@@ -244,7 +244,7 @@ impl SingleExpressionInner {
             expr.arrow()
                 .target
                 .unify(&StructuralType::from(reqd_ty).to_unfinalized(), "")
-                .map_err(|_| Error::TypeValueMismatch(reqd_ty.clone()))
+                .map_err(|e| Error::CannotCompile(e.to_string()))
                 .with_span(span)?;
         }
         Ok(expr)
