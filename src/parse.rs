@@ -108,20 +108,25 @@ pub enum Statement {
 /// Pattern for binding values to variables.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Pattern {
-    /// Bind value to variable name.
+    /// Match any value and bind it to variable name.
     Identifier(Identifier),
-    /// Do not bind.
+    /// Match any value but ignore it.
     Ignore,
-    /// Split product value. Bind components to first and second pattern, respectively.
-    Product(Arc<Self>, Arc<Self>),
-    /// Split array value. Bind components to balanced binary tree of patterns.
+    /// Recursively match the components of a tuple value
+    Tuple(Arc<[Self]>),
+    /// Recursively match the elements of an array value.
     Array(Arc<[Self]>),
 }
 
 impl Pattern {
     /// Construct a product pattern.
     pub fn product(l: Self, r: Self) -> Self {
-        Self::Product(Arc::new(l), Arc::new(r))
+        Self::tuple([l, r])
+    }
+
+    /// Construct a tuple pattern.
+    pub fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
+        Self::Tuple(elements.into_iter().collect())
     }
 
     /// Construct an array pattern.
@@ -134,8 +139,9 @@ impl<'a> TreeLike for &'a Pattern {
     fn as_node(&self) -> Tree<Self> {
         match self {
             Pattern::Identifier(_) | Pattern::Ignore => Tree::Nullary,
-            Pattern::Product(l, r) => Tree::Binary(l, r),
-            Pattern::Array(children) => Tree::Nary(children.iter().collect()),
+            Pattern::Tuple(elements) | Pattern::Array(elements) => {
+                Tree::Nary(elements.iter().collect())
+            }
         }
     }
 }
@@ -146,12 +152,22 @@ impl fmt::Display for Pattern {
             match data.node {
                 Pattern::Identifier(i) => write!(f, "{i}")?,
                 Pattern::Ignore => write!(f, "_")?,
-                Pattern::Product(..) => match data.n_children_yielded {
-                    0 => write!(f, "(")?,
-                    1 => write!(f, ",")?,
+                Pattern::Tuple(elements) => match data.n_children_yielded {
+                    0 => {
+                        f.write_str("(")?;
+                        if 0 == elements.len() {
+                            f.write_str(")")?;
+                        }
+                    }
+                    n if n == elements.len() => {
+                        if n == 1 {
+                            f.write_str(",")?;
+                        }
+                        f.write_str(")")?;
+                    }
                     n => {
-                        debug_assert!(n == 2);
-                        write!(f, ")")?;
+                        debug_assert!(n < elements.len());
+                        f.write_str(", ")?
                     }
                 },
                 Pattern::Array(elements) => match data.n_children_yielded {
@@ -624,10 +640,11 @@ impl PestParse for Pattern {
                 Rule::ignore_pattern => {
                     output.push(Pattern::Ignore);
                 }
-                Rule::product_pattern => {
-                    let r = output.pop().unwrap();
-                    let l = output.pop().unwrap();
-                    output.push(Pattern::Product(Arc::new(l), Arc::new(r)));
+                Rule::tuple_pattern => {
+                    let size = data.node.n_children();
+                    let elements = output.split_off(output.len() - size);
+                    debug_assert_eq!(elements.len(), size);
+                    output.push(Pattern::tuple(elements));
                 }
                 Rule::array_pattern => {
                     let size = data.node.n_children();
@@ -1101,12 +1118,7 @@ impl<'a> TreeLike for PatternPair<'a> {
                 let l = it.next().unwrap();
                 Tree::Unary(PatternPair(l))
             }
-            Rule::product_pattern => {
-                let l = it.next().unwrap();
-                let r = it.next().unwrap();
-                Tree::Binary(PatternPair(l), PatternPair(r))
-            }
-            Rule::array_pattern => {
+            Rule::tuple_pattern | Rule::array_pattern => {
                 let children: Arc<[PatternPair]> = it.map(PatternPair).collect();
                 Tree::Nary(children)
             }

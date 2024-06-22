@@ -427,12 +427,7 @@ impl From<&Pattern> for BasePattern {
             match data.node {
                 Pattern::Identifier(i) => output.push(Self::Identifier(i.clone())),
                 Pattern::Ignore => output.push(Self::Ignore),
-                Pattern::Product(_, _) => {
-                    let r = output.pop().unwrap();
-                    let l = output.pop().unwrap();
-                    output.push(Self::product(l, r));
-                }
-                Pattern::Array(elements) => {
+                Pattern::Tuple(elements) | Pattern::Array(elements) => {
                     let size = elements.len();
                     let elements = &output[output.len() - size..];
                     debug_assert_eq!(elements.len(), size);
