@@ -209,6 +209,38 @@ pub trait TypeConstructible: Sized + From<UIntType> {
     fn list(element: Self, bound: NonZeroPow2Usize) -> Self;
 }
 
+/// Various type destructors for types that maintain the structure in which they were created.
+///
+/// [`StructuralType`] collapses its structure into Simplicity's units, sums and products,
+/// which is why it does not implement this trait.
+pub trait TypeDeconstructible: Sized {
+    /// Access the left and right types of a sum.
+    fn as_either(&self) -> Option<(&Self, &Self)>;
+
+    /// Access the inner type of an option.
+    fn as_option(&self) -> Option<&Self>;
+
+    /// Check if the type is Boolean.
+    fn is_boolean(&self) -> bool;
+
+    /// Access the internals of an integer type.
+    fn as_integer(&self) -> Option<UIntType>;
+
+    /// Access the element types of a tuple.
+    fn as_tuple(&self) -> Option<&[Arc<Self>]>;
+
+    /// Check if the type is the unit (empty tuple).
+    fn is_unit(&self) -> bool {
+        matches!(self.as_tuple(), Some(components) if components.is_empty())
+    }
+
+    /// Access the element type and size of an array.
+    fn as_array(&self) -> Option<(&Self, usize)>;
+
+    /// Access the element type and bound of a list.
+    fn as_list(&self) -> Option<(&Self, NonZeroPow2Usize)>;
+}
+
 /// Simfony type without type aliases.
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct ResolvedType(TypeInner<Arc<Self>>);
@@ -245,6 +277,54 @@ impl TypeConstructible for ResolvedType {
 
     fn list(element: Self, bound: NonZeroPow2Usize) -> Self {
         Self(TypeInner::List(Arc::new(element), bound))
+    }
+}
+
+impl TypeDeconstructible for ResolvedType {
+    fn as_either(&self) -> Option<(&Self, &Self)> {
+        match self.as_inner() {
+            TypeInner::Either(ty_l, ty_r) => Some((ty_l, ty_r)),
+            _ => None,
+        }
+    }
+
+    fn as_option(&self) -> Option<&Self> {
+        match self.as_inner() {
+            TypeInner::Option(ty) => Some(ty),
+            _ => None,
+        }
+    }
+
+    fn is_boolean(&self) -> bool {
+        matches!(self.as_inner(), TypeInner::Boolean)
+    }
+
+    fn as_integer(&self) -> Option<UIntType> {
+        match self.as_inner() {
+            TypeInner::UInt(ty) => Some(*ty),
+            _ => None,
+        }
+    }
+
+    fn as_tuple(&self) -> Option<&[Arc<Self>]> {
+        match self.as_inner() {
+            TypeInner::Tuple(components) => Some(components),
+            _ => None,
+        }
+    }
+
+    fn as_array(&self) -> Option<(&Self, usize)> {
+        match self.as_inner() {
+            TypeInner::Array(ty, size) => Some((ty, *size)),
+            _ => None,
+        }
+    }
+
+    fn as_list(&self) -> Option<(&Self, NonZeroPow2Usize)> {
+        match self.as_inner() {
+            TypeInner::List(ty, bound) => Some((ty, *bound)),
+            _ => None,
+        }
     }
 }
 
@@ -375,6 +455,54 @@ impl TypeConstructible for AliasedType {
             Arc::new(element),
             bound,
         )))
+    }
+}
+
+impl TypeDeconstructible for AliasedType {
+    fn as_either(&self) -> Option<(&Self, &Self)> {
+        match &self.0 {
+            AliasedInner::Inner(TypeInner::Either(ty_l, ty_r)) => Some((ty_l, ty_r)),
+            _ => None,
+        }
+    }
+
+    fn as_option(&self) -> Option<&Self> {
+        match &self.0 {
+            AliasedInner::Inner(TypeInner::Option(ty)) => Some(ty),
+            _ => None,
+        }
+    }
+
+    fn is_boolean(&self) -> bool {
+        matches!(&self.0, AliasedInner::Inner(TypeInner::Boolean))
+    }
+
+    fn as_integer(&self) -> Option<UIntType> {
+        match &self.0 {
+            AliasedInner::Inner(TypeInner::UInt(ty)) => Some(*ty),
+            _ => None,
+        }
+    }
+
+    fn as_tuple(&self) -> Option<&[Arc<Self>]> {
+        match &self.0 {
+            AliasedInner::Inner(TypeInner::Tuple(components)) => Some(components),
+            _ => None,
+        }
+    }
+
+    fn as_array(&self) -> Option<(&Self, usize)> {
+        match &self.0 {
+            AliasedInner::Inner(TypeInner::Array(ty, size)) => Some((ty, *size)),
+            _ => None,
+        }
+    }
+
+    fn as_list(&self) -> Option<(&Self, NonZeroPow2Usize)> {
+        match &self.0 {
+            AliasedInner::Inner(TypeInner::List(ty, bound)) => Some((ty, *bound)),
+            _ => None,
+        }
     }
 }
 
