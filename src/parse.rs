@@ -310,10 +310,8 @@ pub enum SingleExpressionInner {
     Left(Arc<Expression>),
     /// Right wrapper expression
     Right(Arc<Expression>),
-    /// None literal expression
-    None,
-    /// Some wrapper expression
-    Some(Arc<Expression>),
+    /// Option wrapper expression
+    Option(Option<Arc<Expression>>),
     /// False literal expression
     False,
     /// True literal expression
@@ -741,10 +739,13 @@ impl PestParse for SingleExpression {
                 let r = inner_pair.into_inner().next().unwrap();
                 SingleExpressionInner::Right(Expression::parse(r).map(Arc::new)?)
             }
-            Rule::none_expr => SingleExpressionInner::None,
+            Rule::none_expr => SingleExpressionInner::Option(None),
             Rule::some_expr => {
                 let r = inner_pair.into_inner().next().unwrap();
-                SingleExpressionInner::Some(Expression::parse(r).map(Arc::new)?)
+                Expression::parse(r)
+                    .map(Arc::new)
+                    .map(Some)
+                    .map(SingleExpressionInner::Option)?
             }
             Rule::false_expr => SingleExpressionInner::False,
             Rule::true_expr => SingleExpressionInner::True,

@@ -140,8 +140,8 @@ impl SingleExpressionInner {
                 let l = l.eval(scope, None)?;
                 ProgNode::injl(&l)
             }
-            SingleExpressionInner::None => ProgNode::_false(),
-            SingleExpressionInner::Right(r) | SingleExpressionInner::Some(r) => {
+            SingleExpressionInner::Option(None) => ProgNode::_false(),
+            SingleExpressionInner::Right(r) | SingleExpressionInner::Option(Some(r)) => {
                 let r = r.eval(scope, None)?;
                 ProgNode::injr(&r)
             }
