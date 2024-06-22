@@ -159,12 +159,12 @@ impl SingleExpressionInner {
                 ProgNode::unit_comp(&ProgNode::const_word(value.into()))
             }
             SingleExpressionInner::BitString(bits) => {
-                let value = bits.to_simplicity();
-                ProgNode::unit_comp(&ProgNode::const_word(value))
+                let value = StructuralValue::from(UIntValue::from(bits));
+                ProgNode::unit_comp(&ProgNode::const_word(value.into()))
             }
             SingleExpressionInner::ByteString(bytes) => {
-                let value = bytes.to_simplicity();
-                ProgNode::unit_comp(&ProgNode::const_word(value))
+                let value = StructuralValue::from(UIntValue::from(bytes));
+                ProgNode::unit_comp(&ProgNode::const_word(value.into()))
             }
             SingleExpressionInner::Witness(name) => ProgNode::witness(name.as_inner().clone()),
             SingleExpressionInner::Variable(identifier) => scope

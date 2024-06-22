@@ -7,7 +7,6 @@ use std::sync::Arc;
 
 use miniscript::iter::{Tree, TreeLike};
 use simplicity::elements::hex::FromHex;
-use simplicity::Value;
 
 use crate::error::{Error, RichError, WithSpan};
 use crate::num::NonZeroPow2Usize;
@@ -440,16 +439,6 @@ impl Bits {
             _ => None,
         }
     }
-
-    /// Convert the bit string into a Simplicity type.
-    pub fn to_simplicity(&self) -> Arc<Value> {
-        match &self.0 {
-            BitsInner::U1(byte) => Value::u1(*byte),
-            BitsInner::U2(byte) => Value::u2(*byte),
-            BitsInner::U4(byte) => Value::u4(*byte),
-            BitsInner::Long(bytes) => Value::power_of_two(bytes),
-        }
-    }
 }
 
 /// Byte string whose length is a power of two.
@@ -462,13 +451,6 @@ pub struct Bytes(Arc<[u8]>);
 impl AsRef<[u8]> for Bytes {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
-    }
-}
-
-impl Bytes {
-    /// Convert the byte string into a Simplicity value.
-    pub fn to_simplicity(&self) -> Arc<Value> {
-        Value::power_of_two(self.0.as_ref())
     }
 }
 
