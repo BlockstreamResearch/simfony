@@ -425,7 +425,7 @@ impl Match {
         l_scope.insert(
             self.left()
                 .pattern
-                .get_identifier()
+                .as_variable()
                 .cloned()
                 .map(Pattern::Identifier)
                 .unwrap_or(Pattern::Ignore),
@@ -436,7 +436,7 @@ impl Match {
         r_scope.insert(
             self.right()
                 .pattern
-                .get_identifier()
+                .as_variable()
                 .cloned()
                 .map(Pattern::Identifier)
                 .unwrap_or(Pattern::Ignore),

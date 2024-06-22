@@ -1,10 +1,10 @@
 let bit: u1 = match Left(11) {
-    Left(x) => jet_le_32(10, x),
-    Right(y) => jet_le_32(y, 10),
+    Left(x: u32) => jet_le_32(10, x),
+    Right(y: u32) => jet_le_32(y, 10),
 };
 jet_verify(bit);
 let bit: u1 = match Some(11) {
-    Some(x) => jet_le_32(10, x),
+    Some(x: u32) => jet_le_32(10, x),
     None => 0,
 };
 jet_verify(bit);
