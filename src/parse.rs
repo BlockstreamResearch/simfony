@@ -312,10 +312,8 @@ pub enum SingleExpressionInner {
     Right(Arc<Expression>),
     /// Option wrapper expression
     Option(Option<Arc<Expression>>),
-    /// False literal expression
-    False,
-    /// True literal expression
-    True,
+    /// Boolean literal expression
+    Boolean(bool),
     /// Unsigned integer literal expression
     UnsignedInteger(UnsignedDecimal),
     /// Bit string literal expression
@@ -747,8 +745,8 @@ impl PestParse for SingleExpression {
                     .map(Some)
                     .map(SingleExpressionInner::Option)?
             }
-            Rule::false_expr => SingleExpressionInner::False,
-            Rule::true_expr => SingleExpressionInner::True,
+            Rule::false_expr => SingleExpressionInner::Boolean(false),
+            Rule::true_expr => SingleExpressionInner::Boolean(true),
             Rule::call_expr => SingleExpressionInner::Call(Call::parse(inner_pair)?),
             Rule::bit_string => SingleExpressionInner::BitString(Bits::parse(inner_pair)?),
             Rule::byte_string => SingleExpressionInner::ByteString(Bytes::parse(inner_pair)?),

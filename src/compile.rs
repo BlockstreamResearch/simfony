@@ -145,8 +145,8 @@ impl SingleExpressionInner {
                 let r = r.eval(scope, None)?;
                 ProgNode::injr(&r)
             }
-            SingleExpressionInner::False => ProgNode::_false(),
-            SingleExpressionInner::True => ProgNode::_true(),
+            SingleExpressionInner::Boolean(false) => ProgNode::_false(),
+            SingleExpressionInner::Boolean(true) => ProgNode::_true(),
             SingleExpressionInner::UnsignedInteger(decimal) => {
                 let reqd_ty = reqd_ty
                     .cloned()
