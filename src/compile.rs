@@ -147,7 +147,7 @@ impl SingleExpressionInner {
             }
             SingleExpressionInner::Boolean(false) => ProgNode::_false(),
             SingleExpressionInner::Boolean(true) => ProgNode::_true(),
-            SingleExpressionInner::UnsignedInteger(decimal) => {
+            SingleExpressionInner::Decimal(decimal) => {
                 let reqd_ty = reqd_ty
                     .cloned()
                     .unwrap_or(ResolvedType::from(UIntType::U32));

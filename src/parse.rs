@@ -314,11 +314,11 @@ pub enum SingleExpressionInner {
     Option(Option<Arc<Expression>>),
     /// Boolean literal expression
     Boolean(bool),
-    /// Unsigned integer literal expression
-    UnsignedInteger(UnsignedDecimal),
-    /// Bit string literal expression
+    /// Unsigned integer literal in decimal representation
+    Decimal(UnsignedDecimal),
+    /// Unsigned integer literal in bit string representation
     BitString(Bits),
-    /// Byte string literal expression
+    /// Unsigned integer literal in byte string representation
     ByteString(Bytes),
     /// Witness identifier expression
     Witness(WitnessName),
@@ -748,10 +748,10 @@ impl PestParse for SingleExpression {
             Rule::false_expr => SingleExpressionInner::Boolean(false),
             Rule::true_expr => SingleExpressionInner::Boolean(true),
             Rule::call_expr => SingleExpressionInner::Call(Call::parse(inner_pair)?),
-            Rule::bit_string => SingleExpressionInner::BitString(Bits::parse(inner_pair)?),
-            Rule::byte_string => SingleExpressionInner::ByteString(Bytes::parse(inner_pair)?),
-            Rule::unsigned_integer => {
-                SingleExpressionInner::UnsignedInteger(UnsignedDecimal::parse(inner_pair)?)
+            Rule::bit_string => Bits::parse(inner_pair).map(SingleExpressionInner::BitString)?,
+            Rule::byte_string => Bytes::parse(inner_pair).map(SingleExpressionInner::ByteString)?,
+            Rule::unsigned_decimal => {
+                UnsignedDecimal::parse(inner_pair).map(SingleExpressionInner::Decimal)?
             }
             Rule::witness_expr => {
                 let witness_pair = inner_pair.into_inner().next().unwrap();
@@ -793,7 +793,7 @@ impl PestParse for SingleExpression {
 
 impl PestParse for UnsignedDecimal {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Rule::unsigned_integer));
+        assert!(matches!(pair.as_rule(), Rule::unsigned_decimal));
         let decimal = Arc::from(pair.as_str().replace('_', ""));
         Ok(Self(decimal))
     }
