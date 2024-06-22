@@ -9,6 +9,7 @@ use crate::array::{BTreeSlice, Partition};
 use crate::num::NonZeroPow2Usize;
 use crate::parse::{Match, Pattern, SingleExpressionInner, Span};
 use crate::scope::BasePattern;
+use crate::value::{StructuralValue, UIntValue};
 use crate::{
     error::{Error, RichError, WithSpan},
     named::{ConstructExt, ProgExt},
@@ -153,8 +154,9 @@ impl SingleExpressionInner {
                 let ty = UIntType::try_from(&reqd_ty)
                     .map_err(|_| Error::TypeValueMismatch(reqd_ty))
                     .with_span(span)?;
-                let value = ty.parse_decimal(decimal).with_span(span)?;
-                ProgNode::unit_comp(&ProgNode::const_word(value))
+                let value = UIntValue::parse_decimal(decimal, ty).with_span(span)?;
+                let value = StructuralValue::from(value);
+                ProgNode::unit_comp(&ProgNode::const_word(value.into()))
             }
             SingleExpressionInner::BitString(bits) => {
                 let value = bits.to_simplicity();
