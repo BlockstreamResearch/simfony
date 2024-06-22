@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
+use either::Either;
 use simplicity::node::{CoreConstructible as _, JetConstructible as _};
 use simplicity::{jet::Elements, Cmr, FailEntropy};
 
@@ -296,12 +297,13 @@ impl SingleExpressionInner {
         span: Span,
     ) -> Result<ProgNode, RichError> {
         let expr = match self {
-            SingleExpressionInner::Left(l) => {
+            SingleExpressionInner::Either(Either::Left(l)) => {
                 let l = l.eval(scope, None)?;
                 ProgNode::injl(&l)
             }
             SingleExpressionInner::Option(None) => ProgNode::_false(),
-            SingleExpressionInner::Right(r) | SingleExpressionInner::Option(Some(r)) => {
+            SingleExpressionInner::Either(Either::Right(r))
+            | SingleExpressionInner::Option(Some(r)) => {
                 let r = r.eval(scope, None)?;
                 ProgNode::injr(&r)
             }

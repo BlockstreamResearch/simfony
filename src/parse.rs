@@ -5,6 +5,7 @@ use std::fmt;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
+use either::Either;
 use miniscript::iter::{Tree, TreeLike};
 use simplicity::elements::hex::FromHex;
 
@@ -220,10 +221,8 @@ pub struct SingleExpression {
 /// The kind of single expression.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum SingleExpressionInner {
-    /// Left wrapper expression
-    Left(Arc<Expression>),
-    /// Right wrapper expression
-    Right(Arc<Expression>),
+    /// Either wrapper expression
+    Either(Either<Arc<Expression>, Arc<Expression>>),
     /// Option wrapper expression
     Option(Option<Arc<Expression>>),
     /// Boolean literal expression
@@ -645,11 +644,17 @@ impl PestParse for SingleExpression {
         let inner = match inner_pair.as_rule() {
             Rule::left_expr => {
                 let l = inner_pair.into_inner().next().unwrap();
-                SingleExpressionInner::Left(Expression::parse(l).map(Arc::new)?)
+                Expression::parse(l)
+                    .map(Arc::new)
+                    .map(Either::Left)
+                    .map(SingleExpressionInner::Either)?
             }
             Rule::right_expr => {
                 let r = inner_pair.into_inner().next().unwrap();
-                SingleExpressionInner::Right(Expression::parse(r).map(Arc::new)?)
+                Expression::parse(r)
+                    .map(Arc::new)
+                    .map(Either::Right)
+                    .map(SingleExpressionInner::Either)?
             }
             Rule::none_expr => SingleExpressionInner::Option(None),
             Rule::some_expr => {
