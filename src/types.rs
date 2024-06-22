@@ -505,13 +505,8 @@ impl TypeConstructible for StructuralType {
 
     fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
         let elements: Vec<_> = elements.into_iter().collect();
-        match elements.is_empty() {
-            true => Self::unit(),
-            false => {
-                let tree = BTreeSlice::from_slice(&elements);
-                tree.fold(Self::product)
-            }
-        }
+        let tree = BTreeSlice::from_slice(&elements);
+        tree.fold(Self::product).unwrap_or_else(Self::unit)
     }
 
     // Keep this implementation to prevent an infinite loop in <Self as TypeConstructible>::tuple
@@ -527,13 +522,8 @@ impl TypeConstructible for StructuralType {
     fn array(element: Self, size: usize) -> Self {
         // Cheap clone because Arc<Final> consists of Arcs
         let elements = vec![element; size];
-        match elements.is_empty() {
-            true => Self::unit(),
-            false => {
-                let tree = BTreeSlice::from_slice(&elements);
-                tree.fold(Self::product)
-            }
-        }
+        let tree = BTreeSlice::from_slice(&elements);
+        tree.fold(Self::product).unwrap_or_else(Self::unit)
     }
 
     fn list(element: Self, bound: NonZeroPow2Usize) -> Self {
@@ -544,7 +534,7 @@ impl TypeConstructible for StructuralType {
         let process = |block: &[Arc<Final>]| -> Arc<Final> {
             debug_assert!(!block.is_empty());
             let tree = BTreeSlice::from_slice(block);
-            let array = tree.fold(Final::product);
+            let array = tree.fold(Final::product).unwrap();
             Final::sum(Final::unit(), array)
         };
         let inner = partition.fold(process, Final::product);

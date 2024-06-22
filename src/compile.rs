@@ -200,17 +200,11 @@ impl SingleExpressionInner {
                 // is hard to prove at the moment, while Simfony lacks a type system.
                 let nodes: Vec<Result<ProgNode, RichError>> =
                     elements.iter().map(|e| e.eval(scope, el_type)).collect();
-                match nodes.is_empty() {
-                    true => ProgNode::unit(),
-                    false => {
-                        let tree = BTreeSlice::from_slice(&nodes);
-                        tree.fold(|res_a, res_b| {
-                            res_a.and_then(|a| {
-                                res_b.and_then(|b| ProgNode::pair(&a, &b).with_span(span))
-                            })
-                        })?
-                    }
-                }
+                let tree = BTreeSlice::from_slice(&nodes);
+                tree.fold(|res_a, res_b| {
+                    res_a.and_then(|a| res_b.and_then(|b| ProgNode::pair(&a, &b).with_span(span)))
+                })
+                .unwrap_or_else(|| Ok(ProgNode::unit()))?
             }
             SingleExpressionInner::List(elements) => {
                 let el_type = match reqd_ty.map(ResolvedType::as_inner) {
@@ -232,17 +226,14 @@ impl SingleExpressionInner {
                 let partition = Partition::from_slice(&nodes, bound.get() / 2);
                 let process =
                     |block: &[Result<ProgNode, RichError>]| -> Result<ProgNode, RichError> {
-                        if block.is_empty() {
-                            Ok(ProgNode::_false())
-                        } else {
-                            let tree = BTreeSlice::from_slice(block);
-                            let array = tree.fold(|res_a, res_b| {
-                                res_a.and_then(|a| {
-                                    res_b.and_then(|b| ProgNode::pair(&a, &b).with_span(span))
-                                })
-                            })?;
-                            Ok(ProgNode::injr(&array))
-                        }
+                        let tree = BTreeSlice::from_slice(block);
+                        tree.fold(|res_a, res_b| {
+                            res_a.and_then(|a| {
+                                res_b.and_then(|b| ProgNode::pair(&a, &b).with_span(span))
+                            })
+                        })
+                        .map(|res| res.map(|array| ProgNode::injr(&array)))
+                        .unwrap_or_else(|| Ok(ProgNode::_false()))
                     };
 
                 partition.fold(process, |res_a, res_b| {

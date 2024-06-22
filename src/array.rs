@@ -1,32 +1,32 @@
 use miniscript::iter::{Tree, TreeLike};
 
 /// View of a slice as a balanced binary tree.
-/// The slice must be nonempty.
 ///
 /// Each node is labelled with a slice.
 /// Leaves contain single elements.
+///
+/// The tree is empty if the slice is empty.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct BTreeSlice<'a, A>(&'a [A]);
 
 impl<'a, A> BTreeSlice<'a, A> {
     /// View the slice as a balanced binary tree.
-    ///
-    /// ## Panics
-    ///
-    /// The slice is empty.
     pub fn from_slice(slice: &'a [A]) -> Self {
-        assert!(!slice.is_empty(), "Slice must be nonempty");
         Self(slice)
     }
 }
 
 impl<'a, A: Clone> BTreeSlice<'a, A> {
     /// Fold the tree in post order, using the binary function `f`.
-    pub fn fold<F>(self, f: F) -> A
+    ///
+    /// Returns `None` if the tree is empty.
+    pub fn fold<F>(self, f: F) -> Option<A>
     where
         F: Fn(A, A) -> A,
     {
-        debug_assert!(!self.0.is_empty());
+        if self.0.is_empty() {
+            return None;
+        }
 
         let mut output = vec![];
         for item in self.post_order_iter() {
@@ -37,23 +37,22 @@ impl<'a, A: Clone> BTreeSlice<'a, A> {
                     output.push(f(l, r));
                 }
                 n => {
-                    debug_assert!(n == 0);
-                    debug_assert!(item.node.0.len() == 1);
+                    debug_assert_eq!(n, 0);
+                    debug_assert_eq!(item.node.0.len(), 1);
                     output.push(item.node.0[0].clone());
                 }
             }
         }
 
-        debug_assert!(output.len() == 1);
-        output.pop().unwrap()
+        debug_assert_eq!(output.len(), 1);
+        output.pop()
     }
 }
 
 impl<'a, A: Clone> TreeLike for BTreeSlice<'a, A> {
     fn as_node(&self) -> Tree<Self> {
         match self.0.len() {
-            0 => unreachable!("Empty slice"),
-            1 => Tree::Nullary,
+            0 | 1 => Tree::Nullary,
             n => {
                 let next_pow2 = n.next_power_of_two();
                 debug_assert!(0 < next_pow2 / 2);
@@ -192,7 +191,8 @@ mod tests {
     #[test]
     #[rustfmt::skip]
     fn fold_btree_slice() {
-        let slice_output: [(&[&str], &str); 8] = [
+        let slice_output: [(&[&str], &str); 9] = [
+            (&[], ""),
             (&["a"], "a"),
             (&["a", "b"], "(ab)"),
             (&["a", "b", "c"], "((ab)c)"),
@@ -207,7 +207,7 @@ mod tests {
         for (slice, expected_output) in slice_output {
             let vector: Vec<_> = slice.iter().map(|s| s.to_string()).collect();
             let tree = BTreeSlice::from_slice(&vector);
-            let output = tree.fold(concat);
+            let output = tree.fold(concat).unwrap_or_default();
             assert_eq!(&output, expected_output);
         }
     }

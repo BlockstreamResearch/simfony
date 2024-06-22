@@ -522,13 +522,8 @@ impl ValueConstructible for StructuralValue {
 
     fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
         let elements: Vec<Self> = elements.into_iter().collect();
-        match elements.is_empty() {
-            true => Self::unit(),
-            false => {
-                let tree = BTreeSlice::from_slice(&elements);
-                tree.fold(Self::product)
-            }
-        }
+        let tree = BTreeSlice::from_slice(&elements);
+        tree.fold(Self::product).unwrap_or_else(Self::unit)
     }
 
     // Keep this implementation to prevent an infinite loop in <Self as ValueConstructible>::tuple
@@ -543,13 +538,8 @@ impl ValueConstructible for StructuralValue {
 
     fn array<I: IntoIterator<Item = Self>>(elements: I) -> Self {
         let elements: Vec<Self> = elements.into_iter().collect();
-        match elements.is_empty() {
-            true => Self::unit(),
-            false => {
-                let tree = BTreeSlice::from_slice(&elements);
-                tree.fold(Self::product)
-            }
-        }
+        let tree = BTreeSlice::from_slice(&elements);
+        tree.fold(Self::product).unwrap_or_else(Self::unit)
     }
 
     fn list<I: IntoIterator<Item = Self>>(elements: I, bound: NonZeroPow2Usize) -> Option<Self> {
@@ -559,12 +549,9 @@ impl ValueConstructible for StructuralValue {
         }
         let partition = Partition::from_slice(&elements, bound.get() / 2);
         let process = |block: &[Self]| -> Self {
-            if block.is_empty() {
-                return Self::from(None);
-            }
             let tree = BTreeSlice::from_slice(block);
-            let array = tree.fold(Self::product);
-            Self::from(Some(array))
+            let maybe_array = tree.fold(Self::product);
+            Self::from(maybe_array)
         };
         Some(partition.fold(process, Self::product))
     }

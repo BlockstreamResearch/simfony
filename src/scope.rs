@@ -432,15 +432,12 @@ impl From<&Pattern> for BasePattern {
                     let l = output.pop().unwrap();
                     output.push(Self::product(l, r));
                 }
-                Pattern::Array(elements) if elements.len() == 0 => {
-                    output.push(Self::Ignore);
-                }
                 Pattern::Array(elements) => {
                     let size = elements.len();
                     let elements = &output[output.len() - size..];
                     debug_assert_eq!(elements.len(), size);
                     let tree = BTreeSlice::from_slice(elements);
-                    let out = tree.fold(Self::product);
+                    let out = tree.fold(Self::product).unwrap_or(Self::Ignore);
                     output.truncate(output.len() - size);
                     output.push(out);
                 }
