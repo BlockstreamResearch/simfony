@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use miniscript::iter::{Tree, TreeLike};
 
-use crate::array::BinaryTree;
+use crate::array::BTreeSlice;
 use crate::named::{PairBuilder, SelectorBuilder};
 use crate::parse::{Identifier, Pattern};
 use crate::types::{AliasedType, ResolvedType};
@@ -422,31 +422,32 @@ impl BasePattern {
 
 impl From<&Pattern> for BasePattern {
     fn from(pattern: &Pattern) -> Self {
-        let binary = BinaryTree::from_tree(pattern);
-        let mut to_base = HashMap::new();
-
-        for data in binary.clone().post_order_iter() {
-            match data.node.as_node() {
-                Tree::Nullary => {
-                    let pattern = match &data.node.as_normal().unwrap() {
-                        Pattern::Identifier(id) => BasePattern::Identifier(id.clone()),
-                        Pattern::Ignore => BasePattern::Ignore,
-                        Pattern::Product(..) | Pattern::Array(..) => unreachable!("Nullary node"),
-                    };
-                    to_base.insert(data.node, pattern);
+        let mut output = vec![];
+        for data in pattern.post_order_iter() {
+            match data.node {
+                Pattern::Identifier(i) => output.push(Self::Identifier(i.clone())),
+                Pattern::Ignore => output.push(Self::Ignore),
+                Pattern::Product(_, _) => {
+                    let r = output.pop().unwrap();
+                    let l = output.pop().unwrap();
+                    output.push(Self::product(l, r));
                 }
-                Tree::Binary(l, r) => {
-                    let l_converted = to_base.get(&l).unwrap().clone();
-                    let r_converted = to_base.get(&r).unwrap().clone();
-                    let pattern = BasePattern::product(l_converted, r_converted);
-                    to_base.insert(data.node, pattern);
+                Pattern::Array(elements) if elements.len() == 0 => {
+                    output.push(Self::Ignore);
                 }
-                Tree::Unary(..) => unreachable!("There are no unary patterns"),
-                Tree::Nary(..) => unreachable!("Binary trees have no arrays"),
+                Pattern::Array(elements) => {
+                    let size = elements.len();
+                    let elements = &output[output.len() - size..];
+                    debug_assert_eq!(elements.len(), size);
+                    let tree = BTreeSlice::from_slice(elements);
+                    let out = tree.fold(Self::product);
+                    output.truncate(output.len() - size);
+                    output.push(out);
+                }
             }
         }
-
-        to_base.remove(&binary).unwrap()
+        debug_assert_eq!(output.len(), 1);
+        output.pop().unwrap()
     }
 }
 
