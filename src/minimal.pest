@@ -8,7 +8,7 @@ program = {
 }
 statement = { assignment | type_alias | expression }
 
-identifier        = @{ !(reserved) ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+identifier        = @{ !(reserved ~ !ASCII_ALPHANUMERIC) ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
 jet               = @{ "jet_" ~ (ASCII_ALPHANUMERIC | "_")+ }
 witness_name      = @{ (ASCII_ALPHANUMERIC | "_")+ }
 builtin_type      = @{ "Either" | "Option" | "bool" | unsigned_type | "List" }
@@ -38,7 +38,7 @@ array_size        = @{ ASCII_DIGIT+ }
 array_type        =  { "[" ~ ty ~ ";" ~ array_size ~ "]" }
 list_bound        = @{ ASCII_DIGIT+ }
 list_type         =  { "List<" ~ ty ~ "," ~ list_bound ~ ">" }
-ty                =  { sum_type | option_type | boolean_type | unsigned_type | tuple_type |  array_type | list_type | identifier }
+ty                =  { sum_type | option_type | boolean_type | identifier | unsigned_type | tuple_type | array_type | list_type }
 type_alias        =  { "type" ~ identifier ~ "=" ~ ty }
 
 expression        =  { block_expression | single_expression }
