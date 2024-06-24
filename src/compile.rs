@@ -85,7 +85,7 @@ impl Call {
                 // is hard to prove at the moment, while Simfony lacks a type system.
                 let args_expr = args.eval(scope, None, self.span)?;
                 let jet = Elements::from_str(name.as_inner())
-                    .map_err(|_| Error::JetDoesNotExist(name.as_inner().clone()))
+                    .map_err(|_| Error::JetDoesNotExist(name.clone()))
                     .with_span(self.span)?;
                 let jet_expr = ProgNode::jet(jet);
                 ProgNode::comp(&args_expr, &jet_expr).with_span(self.span)

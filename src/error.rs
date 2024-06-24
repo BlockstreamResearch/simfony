@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use simplicity::elements;
 
-use crate::parse::{Identifier, MatchPattern, Position, Span};
+use crate::parse::{Identifier, JetName, MatchPattern, Position, Span};
 use crate::types::{ResolvedType, UIntType};
 use crate::Rule;
 
@@ -145,7 +145,7 @@ pub enum Error {
     // The Simfony compiler should never produce ill-typed Simplicity code
     // The compiler can only be this precise if it knows a type system at least as expressive as Simplicity's
     CannotCompile(String),
-    JetDoesNotExist(Arc<str>),
+    JetDoesNotExist(JetName),
     TypeValueMismatch(ResolvedType),
     IntegerOutOfBounds(UIntType),
     UndefinedVariable(Identifier),
