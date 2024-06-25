@@ -97,7 +97,7 @@ impl GlobalScope {
     }
 
     /// Resolve a type with aliases to a type without aliases.
-    pub fn resolve(&mut self, ty: &AliasedType) -> Result<ResolvedType, Identifier> {
+    pub fn resolve(&self, ty: &AliasedType) -> Result<ResolvedType, Identifier> {
         let get_alias = |name: &Identifier| -> Option<ResolvedType> {
             self.aliases
                 .iter()
