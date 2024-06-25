@@ -6,6 +6,7 @@ mod array;
 pub mod compile;
 pub mod dummy_env;
 pub mod error;
+pub mod jet;
 pub mod named;
 pub mod num;
 pub mod parse;
