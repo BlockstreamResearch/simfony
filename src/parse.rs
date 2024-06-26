@@ -88,19 +88,19 @@ impl<'a> From<&'a pest::iterators::Pair<'_, Rule>> for Span {
 }
 
 /// A complete simplicity program.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Program {
     /// The statements in the program.
     pub statements: Vec<Statement>,
 }
 
 /// A statement in a simplicity program.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Statement {
     /// A declaration of variables inside a pattern.
     Assignment(Assignment),
-    /// A function call.
-    FuncCall(FuncCall),
+    /// An expression that returns nothing (the unit value).
+    Expression(Expression),
     /// A type alias.
     TypeAlias(TypeAlias),
 }
@@ -192,7 +192,7 @@ impl fmt::Display for Identifier {
 }
 
 /// The output of an expression is assigned to a pattern.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Assignment {
     /// The pattern.
     pub pattern: Pattern,
@@ -200,44 +200,32 @@ pub struct Assignment {
     pub ty: AliasedType,
     /// The expression.
     pub expression: Expression,
-    /// The source text associated with this assignment.
-    pub source_text: Arc<str>,
     /// Area that this assignment spans in the source file.
     pub span: Span,
 }
 
-/// A function(jet) call.
-///
-/// The function name is the name of the jet.
-/// The arguments are the arguments to the jet.
-/// Since jets in simplicity operate on a single paired type,
-/// the arguments are paired together.
-/// jet(a, b, c, d) = jet(pair(pair(pair(a, b), c), d))
-#[derive(Clone, Debug, Hash)]
-pub struct FuncCall {
-    /// The type of the function.
-    pub func_type: FuncType,
-    /// The arguments to the function.
+/// Call expression.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct Call {
+    /// The name of the call.
+    pub name: CallName,
+    /// The arguments to the call.
     pub args: Arc<[Expression]>,
-    /// The source text associated with this expression
-    pub source_text: Arc<str>,
     /// Area that this call spans in the source file.
     pub span: Span,
 }
 
-/// A function(jet) name.
+/// Name of a call.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum FuncType {
-    /// A jet name.
+pub enum CallName {
+    /// Name of a jet.
     Jet(JetName),
-    /// Left unwrap function
+    /// Left unwrap function.
     UnwrapLeft,
-    /// Right unwrap function
+    /// Right unwrap function.
     UnwrapRight,
-    /// Some unwrap function
+    /// Some unwrap function.
     Unwrap,
-    /// A builtin function name.
-    BuiltIn(Arc<str>),
 }
 
 /// String that is a jet name.
@@ -258,7 +246,7 @@ impl fmt::Display for JetName {
 }
 
 /// A type alias.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct TypeAlias {
     /// Name of the alias.
     pub name: Identifier,
@@ -272,39 +260,35 @@ pub struct TypeAlias {
 }
 
 /// An expression is something that returns a value.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Expression {
     /// The kind of expression
     pub inner: ExpressionInner,
-    /// The source text associated with this expression
-    pub source_text: Arc<str>,
     /// Area that this expression spans in the source file.
     pub span: Span,
 }
 
 /// The kind of expression.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum ExpressionInner {
     /// A block expression executes a series of statements
     /// and returns the value of the final expression.
-    BlockExpression(Vec<Statement>, Arc<Expression>),
+    Block(Vec<Statement>, Arc<Expression>),
     /// A single expression directly returns a value.
-    SingleExpression(SingleExpression),
+    Single(SingleExpression),
 }
 
 /// A single expression directly returns a value.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct SingleExpression {
     /// The kind of single expression
     pub inner: SingleExpressionInner,
-    /// The source text associated with this expression
-    pub source_text: Arc<str>,
     /// Area that this expression spans in the source file.
     pub span: Span,
 }
 
 /// The kind of single expression.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum SingleExpressionInner {
     /// Unit literal expression
     Unit,
@@ -333,18 +317,11 @@ pub enum SingleExpressionInner {
     /// Variable identifier expression
     Variable(Identifier),
     /// Function call
-    FuncCall(FuncCall),
+    Call(Call),
     /// Expression in parentheses
     Expression(Arc<Expression>),
     /// Match expression over a sum type
-    Match {
-        /// Expression whose output is matched
-        scrutinee: Arc<Expression>,
-        /// Arm for left sum values
-        left: MatchArm,
-        /// Arm for right sum values
-        right: MatchArm,
-    },
+    Match(Match),
     /// Array wrapper expression
     Array(Arc<[Expression]>),
     /// List wrapper expression
@@ -497,8 +474,38 @@ impl fmt::Display for WitnessName {
     }
 }
 
+/// Match expression.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct Match {
+    /// Expression whose output is matched.
+    scrutinee: Arc<Expression>,
+    /// Match arm for left sum values.
+    left: MatchArm,
+    /// Match arm for right sum values.
+    right: MatchArm,
+    /// Area that the match spans in the source file.
+    span: Span,
+}
+
+impl Match {
+    /// Access the expression that is matched.
+    pub fn scrutinee(&self) -> &Expression {
+        &self.scrutinee
+    }
+
+    /// Access the match arm for left sum values.
+    pub fn left(&self) -> &MatchArm {
+        &self.left
+    }
+
+    /// Access the match arm for right sum values.
+    pub fn right(&self) -> &MatchArm {
+        &self.right
+    }
+}
+
 /// Arm of a match expression.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct MatchArm {
     /// Matched pattern
     pub pattern: MatchPattern,
@@ -507,7 +514,7 @@ pub struct MatchArm {
 }
 
 /// Pattern of a match arm.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum MatchPattern {
     /// Bind inner value of left value to variable name.
     Left(Identifier),
@@ -529,6 +536,19 @@ impl MatchPattern {
         match self {
             MatchPattern::Left(i) | MatchPattern::Right(i) | MatchPattern::Some(i) => Some(i),
             MatchPattern::None | MatchPattern::False | MatchPattern::True => None,
+        }
+    }
+}
+
+impl fmt::Display for MatchPattern {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MatchPattern::Left(i) => write!(f, "Left({i}"),
+            MatchPattern::Right(i) => write!(f, "Right({i}"),
+            MatchPattern::None => write!(f, "None"),
+            MatchPattern::Some(i) => write!(f, "Some({i}"),
+            MatchPattern::False => write!(f, "false"),
+            MatchPattern::True => write!(f, "true"),
         }
     }
 }
@@ -580,7 +600,7 @@ impl PestParse for Statement {
         let inner_pair = pair.into_inner().next().unwrap();
         match inner_pair.as_rule() {
             Rule::assignment => Assignment::parse(inner_pair).map(Statement::Assignment),
-            Rule::func_call => FuncCall::parse(inner_pair).map(Statement::FuncCall),
+            Rule::expression => Expression::parse(inner_pair).map(Statement::Expression),
             Rule::type_alias => TypeAlias::parse(inner_pair).map(Statement::TypeAlias),
             _ => unreachable!("Corrupt grammar"),
         }
@@ -634,7 +654,6 @@ impl PestParse for Identifier {
 impl PestParse for Assignment {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::assignment));
-        let source_text = Arc::from(pair.as_str());
         let span = Span::from(&pair);
         let mut inner_pair = pair.into_inner();
         let pattern = Pattern::parse(inner_pair.next().unwrap())?;
@@ -644,50 +663,42 @@ impl PestParse for Assignment {
             pattern,
             ty,
             expression,
-            source_text,
             span,
         })
     }
 }
 
-impl PestParse for FuncCall {
+impl PestParse for Call {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Rule::func_call));
-        let source_text = Arc::from(pair.as_str());
+        assert!(matches!(pair.as_rule(), Rule::call_expr));
         let span = Span::from(&pair);
-        let inner_pair = pair.into_inner().next().unwrap();
+        let mut it = pair.into_inner();
+        let name = CallName::parse(it.next().unwrap())?;
+        let args_pair = it.next().unwrap();
+        assert!(matches!(args_pair.as_rule(), Rule::call_args));
+        let args = args_pair
+            .into_inner()
+            .map(Expression::parse)
+            .collect::<Result<Arc<[Expression]>, _>>()?;
 
-        let func_type = FuncType::parse(inner_pair.clone())?;
-        let inner_inner = inner_pair.into_inner();
-        let mut args = Vec::new();
-        for inner_inner_pair in inner_inner {
-            match inner_inner_pair.as_rule() {
-                Rule::expression => args.push(Expression::parse(inner_inner_pair)?),
-                Rule::jet => {}
-                _ => unreachable!("Corrupt grammar"),
-            }
-        }
-
-        Ok(FuncCall {
-            func_type,
-            args: args.into_iter().collect(),
-            source_text,
-            span,
-        })
+        Ok(Call { name, args, span })
     }
 }
 
-impl PestParse for FuncType {
+impl PestParse for CallName {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        match pair.as_rule() {
-            Rule::jet_expr => {
-                let jet_pair = pair.into_inner().next().unwrap();
-                JetName::parse(jet_pair).map(FuncType::Jet)
+        assert!(matches!(pair.as_rule(), Rule::call_name));
+        match pair.as_str() {
+            "unwrap_left" => Ok(CallName::UnwrapLeft),
+            "unwrap_right" => Ok(CallName::UnwrapRight),
+            "unwrap" => Ok(CallName::Unwrap),
+            _ => {
+                let inner = pair.into_inner().next().unwrap();
+                match inner.as_rule() {
+                    Rule::jet => JetName::parse(inner).map(CallName::Jet),
+                    _ => panic!("Corrupt grammar"),
+                }
             }
-            Rule::unwrap_left_expr => Ok(FuncType::UnwrapLeft),
-            Rule::unwrap_right_expr => Ok(FuncType::UnwrapRight),
-            Rule::unwrap_expr => Ok(FuncType::Unwrap),
-            _ => unreachable!("Corrupt grammar"),
         }
     }
 }
@@ -713,7 +724,6 @@ impl PestParse for TypeAlias {
 
 impl PestParse for Expression {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        let source_text = Arc::from(pair.as_str());
         let span = Span::from(&pair);
         let pair = match pair.as_rule() {
             Rule::expression => pair.into_inner().next().unwrap(),
@@ -729,19 +739,13 @@ impl PestParse for Expression {
                     stmts.push(Statement::parse(inner_pair.next().unwrap())?);
                 }
                 let expr = Expression::parse(inner_pair.next().unwrap())?;
-                ExpressionInner::BlockExpression(stmts, Arc::new(expr))
+                ExpressionInner::Block(stmts, Arc::new(expr))
             }
-            Rule::single_expression => {
-                ExpressionInner::SingleExpression(SingleExpression::parse(pair)?)
-            }
+            Rule::single_expression => ExpressionInner::Single(SingleExpression::parse(pair)?),
             _ => unreachable!("Corrupt grammar"),
         };
 
-        Ok(Expression {
-            inner,
-            source_text,
-            span,
-        })
+        Ok(Expression { inner, span })
     }
 }
 
@@ -749,7 +753,6 @@ impl PestParse for SingleExpression {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::single_expression));
 
-        let source_text: Arc<str> = Arc::from(pair.as_str());
         let span = Span::from(&pair);
         let inner_pair = pair.into_inner().next().unwrap();
 
@@ -779,7 +782,7 @@ impl PestParse for SingleExpression {
             }
             Rule::false_expr => SingleExpressionInner::False,
             Rule::true_expr => SingleExpressionInner::True,
-            Rule::func_call => SingleExpressionInner::FuncCall(FuncCall::parse(inner_pair)?),
+            Rule::call_expr => SingleExpressionInner::Call(Call::parse(inner_pair)?),
             Rule::bit_string => SingleExpressionInner::BitString(Bits::parse(inner_pair)?),
             Rule::byte_string => SingleExpressionInner::ByteString(Bytes::parse(inner_pair)?),
             Rule::unsigned_integer => {
@@ -796,52 +799,7 @@ impl PestParse for SingleExpression {
             Rule::expression => {
                 SingleExpressionInner::Expression(Expression::parse(inner_pair).map(Arc::new)?)
             }
-            Rule::match_expr => {
-                let mut it = inner_pair.into_inner();
-                let scrutinee_pair = it.next().unwrap();
-                let scrutinee = Expression::parse(scrutinee_pair.clone()).map(Arc::new)?;
-                let first_arm = MatchArm::parse(it.next().unwrap())?;
-                let second_arm = MatchArm::parse(it.next().unwrap())?;
-
-                let (left, right) = match (&first_arm.pattern, &second_arm.pattern) {
-                    (MatchPattern::Left(..), MatchPattern::Right(..)) => (first_arm, second_arm),
-                    (MatchPattern::Left(..), _) => {
-                        return Err(Error::UnmatchedPattern("Right".to_string()))
-                            .with_span(&scrutinee_pair)
-                    }
-                    (MatchPattern::Right(..), MatchPattern::Left(..)) => (second_arm, first_arm),
-                    (MatchPattern::Right(..), _) => {
-                        return Err(Error::UnmatchedPattern("Left".to_string()))
-                            .with_span(&scrutinee_pair)
-                    }
-                    (MatchPattern::None, MatchPattern::Some(..)) => (first_arm, second_arm),
-                    (MatchPattern::None, _) => {
-                        return Err(Error::UnmatchedPattern("Some".to_string()))
-                            .with_span(&scrutinee_pair)
-                    }
-                    (MatchPattern::Some(..), MatchPattern::None) => (second_arm, first_arm),
-                    (MatchPattern::Some(..), _) => {
-                        return Err(Error::UnmatchedPattern("None".to_string()))
-                            .with_span(&scrutinee_pair)
-                    }
-                    (MatchPattern::False, MatchPattern::True) => (first_arm, second_arm),
-                    (MatchPattern::False, _) => {
-                        return Err(Error::UnmatchedPattern("true".to_string()))
-                            .with_span(&scrutinee_pair)
-                    }
-                    (MatchPattern::True, MatchPattern::False) => (second_arm, first_arm),
-                    (MatchPattern::True, _) => {
-                        return Err(Error::UnmatchedPattern("false".to_string()))
-                            .with_span(&scrutinee_pair)
-                    }
-                };
-
-                SingleExpressionInner::Match {
-                    scrutinee,
-                    left,
-                    right,
-                }
-            }
+            Rule::match_expr => Match::parse(inner_pair).map(SingleExpressionInner::Match)?,
             Rule::array_expr => {
                 let elements: Arc<_> = inner_pair
                     .clone()
@@ -863,11 +821,7 @@ impl PestParse for SingleExpression {
             _ => unreachable!("Corrupt grammar"),
         };
 
-        Ok(SingleExpression {
-            inner,
-            source_text,
-            span,
-        })
+        Ok(SingleExpression { inner, span })
     }
 }
 
@@ -950,6 +904,37 @@ impl PestParse for WitnessName {
         assert!(matches!(pair.as_rule(), Rule::witness_name));
         let name = Arc::from(pair.as_str());
         Ok(Self(name))
+    }
+}
+
+impl PestParse for Match {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
+        assert!(matches!(pair.as_rule(), Rule::match_expr));
+        let span = Span::from(&pair);
+        let mut it = pair.into_inner();
+        let scrutinee_pair = it.next().unwrap();
+        let scrutinee = Expression::parse(scrutinee_pair.clone()).map(Arc::new)?;
+        let first = MatchArm::parse(it.next().unwrap())?;
+        let second = MatchArm::parse(it.next().unwrap())?;
+
+        let (left, right) = match (&first.pattern, &second.pattern) {
+            (MatchPattern::Left(..), MatchPattern::Right(..)) => (first, second),
+            (MatchPattern::Right(..), MatchPattern::Left(..)) => (second, first),
+            (MatchPattern::None, MatchPattern::Some(..)) => (first, second),
+            (MatchPattern::False, MatchPattern::True) => (first, second),
+            (MatchPattern::Some(..), MatchPattern::None) => (second, first),
+            (MatchPattern::True, MatchPattern::False) => (second, first),
+            (p1, p2) => {
+                return Err(Error::IncompatibleMatchArms(p1.clone(), p2.clone())).with_span(span)
+            }
+        };
+
+        Ok(Self {
+            scrutinee,
+            left,
+            right,
+            span,
+        })
     }
 }
 
@@ -1162,5 +1147,47 @@ impl<'a> TreeLike for TyPair<'a> {
             }
             _ => unreachable!("Corrupt grammar"),
         }
+    }
+}
+
+impl<'a, A: AsRef<Span>> From<&'a A> for Span {
+    fn from(value: &'a A) -> Self {
+        *value.as_ref()
+    }
+}
+
+impl AsRef<Span> for Assignment {
+    fn as_ref(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl AsRef<Span> for TypeAlias {
+    fn as_ref(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl AsRef<Span> for Expression {
+    fn as_ref(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl AsRef<Span> for SingleExpression {
+    fn as_ref(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl AsRef<Span> for Call {
+    fn as_ref(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl AsRef<Span> for Match {
+    fn as_ref(&self) -> &Span {
+        &self.span
     }
 }

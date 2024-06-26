@@ -175,8 +175,8 @@ impl TryFrom<&[u8]> for UIntValue {
     }
 }
 
-impl From<Bits> for UIntValue {
-    fn from(value: Bits) -> Self {
+impl<'a> From<&'a Bits> for UIntValue {
+    fn from(value: &Bits) -> Self {
         if let Some(byte) = value.as_u1() {
             Self::u1(byte).expect("Always <= 1")
         } else if let Some(byte) = value.as_u2() {
@@ -191,8 +191,8 @@ impl From<Bits> for UIntValue {
     }
 }
 
-impl From<Bytes> for UIntValue {
-    fn from(value: Bytes) -> Self {
+impl<'a> From<&'a Bytes> for UIntValue {
+    fn from(value: &Bytes) -> Self {
         Self::try_from(value.as_ref()).expect("At most 32 bytes")
     }
 }
@@ -613,6 +613,7 @@ impl<'a> From<&'a Value> for StructuralValue {
                     let size = data.node.n_children();
                     debug_assert!(0 < size);
                     let elements = output.split_off(output.len() - size);
+                    debug_assert_eq!(elements.len(), size);
                     output.push(Self::array(elements).unwrap());
                 }
                 Value::List(_, bound) => {

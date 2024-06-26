@@ -7,12 +7,12 @@ use simplicity::{jet::Elements, Cmr, FailEntropy};
 
 use crate::array::{BTreeSlice, Partition};
 use crate::num::NonZeroPow2Usize;
-use crate::parse::{Pattern, SingleExpressionInner, Span};
+use crate::parse::{Match, Pattern, SingleExpressionInner, Span};
 use crate::scope::BasePattern;
 use crate::{
     error::{Error, RichError, WithSpan},
     named::{ConstructExt, ProgExt},
-    parse::{Expression, ExpressionInner, FuncCall, FuncType, Program, Statement},
+    parse::{Call, CallName, Expression, ExpressionInner, Program, Statement},
     scope::GlobalScope,
     types::{ResolvedType, StructuralType, TypeInner, UIntType},
     ProgNode,
@@ -42,10 +42,10 @@ fn eval_blk(
             let right = eval_blk(stmts, scope, index + 1, last_expr)?;
             ProgNode::comp(&left, &right).with_span(assignment.span)
         }
-        Statement::FuncCall(func_call) => {
-            let left = func_call.eval(scope, None)?;
+        Statement::Expression(expression) => {
+            let left = expression.eval(scope, None)?;
             let right = eval_blk(stmts, scope, index + 1, last_expr)?;
-            combine_seq(&left, &right).with_span(func_call.span)
+            combine_seq(&left, &right).with_span(expression)
         }
         Statement::TypeAlias(alias) => {
             scope
@@ -69,14 +69,14 @@ impl Program {
     }
 }
 
-impl FuncCall {
+impl Call {
     pub fn eval(
         &self,
         scope: &mut GlobalScope,
         _reqd_ty: Option<&ResolvedType>,
     ) -> Result<ProgNode, RichError> {
-        match &self.func_type {
-            FuncType::Jet(name) => {
+        match &self.name {
+            CallName::Jet(name) => {
                 let args = match self.args.is_empty() {
                     true => SingleExpressionInner::Unit,
                     false => SingleExpressionInner::Array(self.args.clone()),
@@ -92,8 +92,7 @@ impl FuncCall {
                 let jet_expr = ProgNode::jet(jet);
                 ProgNode::comp(&args_expr, &jet_expr).with_span(self.span)
             }
-            FuncType::BuiltIn(..) => unimplemented!("Builtins are not supported yet"),
-            FuncType::UnwrapLeft => {
+            CallName::UnwrapLeft => {
                 debug_assert!(self.args.len() == 1);
                 let b = self.args[0].eval(scope, None)?;
                 let left_and_unit = ProgNode::pair_unit(&b);
@@ -101,7 +100,7 @@ impl FuncCall {
                 let get_inner = ProgNode::assertl_take(&ProgNode::iden(), fail_cmr);
                 ProgNode::comp(&left_and_unit, &get_inner).with_span(self.span)
             }
-            FuncType::UnwrapRight | FuncType::Unwrap => {
+            CallName::UnwrapRight | CallName::Unwrap => {
                 debug_assert!(self.args.len() == 1);
                 let c = self.args[0].eval(scope, None)?;
                 let right_and_unit = ProgNode::pair_unit(&c);
@@ -120,13 +119,13 @@ impl Expression {
         reqd_ty: Option<&ResolvedType>,
     ) -> Result<ProgNode, RichError> {
         match &self.inner {
-            ExpressionInner::BlockExpression(stmts, expr) => {
+            ExpressionInner::Block(stmts, expr) => {
                 scope.push_scope();
                 let res = eval_blk(stmts, scope, 0, Some(expr.as_ref()));
                 scope.pop_scope();
                 res
             }
-            ExpressionInner::SingleExpression(e) => e.inner.eval(scope, reqd_ty, self.span),
+            ExpressionInner::Single(e) => e.inner.eval(scope, reqd_ty, self.span),
         }
     }
 }
@@ -182,40 +181,9 @@ impl SingleExpressionInner {
                 .get(&BasePattern::Identifier(identifier.clone()))
                 .ok_or(Error::UndefinedVariable(identifier.clone()))
                 .with_span(span)?,
-            SingleExpressionInner::FuncCall(call) => call.eval(scope, reqd_ty)?,
+            SingleExpressionInner::Call(call) => call.eval(scope, reqd_ty)?,
             SingleExpressionInner::Expression(expression) => expression.eval(scope, reqd_ty)?,
-            SingleExpressionInner::Match {
-                scrutinee,
-                left,
-                right,
-            } => {
-                let mut l_scope = scope.clone();
-                l_scope.insert(
-                    left.pattern
-                        .get_identifier()
-                        .cloned()
-                        .map(Pattern::Identifier)
-                        .unwrap_or(Pattern::Ignore),
-                );
-                let l_compiled = left.expression.eval(&mut l_scope, reqd_ty)?;
-
-                let mut r_scope = scope.clone();
-                r_scope.insert(
-                    right
-                        .pattern
-                        .get_identifier()
-                        .cloned()
-                        .map(Pattern::Identifier)
-                        .unwrap_or(Pattern::Ignore),
-                );
-                let r_compiled = right.expression.eval(&mut r_scope, reqd_ty)?;
-
-                // TODO: Enforce target type A + B for m_expr
-                let scrutinized_input = scrutinee.eval(scope, None)?;
-                let input = ProgNode::pair_iden(&scrutinized_input);
-                let output = ProgNode::case(&l_compiled, &r_compiled).with_span(span)?;
-                ProgNode::comp(&input, &output).with_span(span)?
-            }
+            SingleExpressionInner::Match(match_) => match_.eval(scope, reqd_ty)?,
             SingleExpressionInner::Array(elements) => {
                 let el_type = match reqd_ty.map(ResolvedType::as_inner) {
                     Some(TypeInner::Array(el_type, size)) => {
@@ -283,5 +251,41 @@ impl SingleExpressionInner {
                 .with_span(span)?;
         }
         Ok(expr)
+    }
+}
+
+impl Match {
+    pub fn eval(
+        &self,
+        scope: &mut GlobalScope,
+        reqd_ty: Option<&ResolvedType>,
+    ) -> Result<ProgNode, RichError> {
+        let mut l_scope = scope.clone();
+        l_scope.insert(
+            self.left()
+                .pattern
+                .get_identifier()
+                .cloned()
+                .map(Pattern::Identifier)
+                .unwrap_or(Pattern::Ignore),
+        );
+        let l_compiled = self.left().expression.eval(&mut l_scope, reqd_ty)?;
+
+        let mut r_scope = scope.clone();
+        r_scope.insert(
+            self.right()
+                .pattern
+                .get_identifier()
+                .cloned()
+                .map(Pattern::Identifier)
+                .unwrap_or(Pattern::Ignore),
+        );
+        let r_compiled = self.right().expression.eval(&mut r_scope, reqd_ty)?;
+
+        // TODO: Enforce target type A + B for m_expr
+        let scrutinized_input = self.scrutinee().eval(scope, None)?;
+        let input = ProgNode::pair_iden(&scrutinized_input);
+        let output = ProgNode::case(&l_compiled, &r_compiled).with_span(self)?;
+        ProgNode::comp(&input, &output).with_span(self)
     }
 }

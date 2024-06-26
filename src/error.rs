@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use simplicity::elements;
 
-use crate::parse::{Identifier, Position, Span};
+use crate::parse::{Identifier, MatchPattern, Position, Span};
 use crate::types::{ResolvedType, UIntType};
 use crate::Rule;
 
@@ -141,7 +141,7 @@ pub enum Error {
     HexStringPow2(usize),
     CannotParse(String),
     Grammar(String),
-    UnmatchedPattern(String),
+    IncompatibleMatchArms(MatchPattern, MatchPattern),
     // TODO: Remove CompileError once Simfony has a type system
     // The Simfony compiler should never produce ill-typed Simplicity code
     // The compiler can only be this precise if it knows a type system at least as expressive as Simplicity's
@@ -181,9 +181,9 @@ impl fmt::Display for Error {
                 f,
                 "Grammar error: {description}"
             ),
-            Error::UnmatchedPattern(pattern) => write!(
+            Error::IncompatibleMatchArms(pattern1, pattern2) => write!(
                 f,
-                "Pattern `{pattern}` not covered in match"
+                "Match arm `{pattern1}` is incompatible with arm `{pattern2}`"
             ),
             Error::CannotCompile(description) => write!(
                 f,

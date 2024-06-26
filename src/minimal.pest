@@ -6,14 +6,13 @@ program = {
     (statement ~ ";")* ~
     EOI
 }
-statement = { assignment | func_call | type_alias }
+statement = { assignment | type_alias | expression }
 
 identifier        = @{ !(reserved) ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
 jet               = @{ "jet_" ~ (ASCII_ALPHANUMERIC | "_")+ }
-builtin           = @{ "builtin_" ~ (ASCII_ALPHANUMERIC | "_")+ }
 witness_name      = @{ (ASCII_ALPHANUMERIC | "_")+ }
 builtin_type      = @{ "Either" | "Option" | "bool" | unsigned_type | "List" }
-reserved          = @{ jet | builtin | builtin_type }
+reserved          = @{ jet | builtin_type }
 
 variable_pattern  =  { identifier }
 ignore_pattern    = @{ "_" }
@@ -53,11 +52,9 @@ none_expr         = @{ "None" }
 some_expr         =  { "Some(" ~ expression ~ ")" }
 false_expr        = @{ "false" }
 true_expr         = @{ "true" }
-jet_expr          =  { jet ~ "(" ~ (expression ~ ("," ~ expression)*)? ~ ")" }
-unwrap_left_expr  =  { "unwrap_left(" ~ expression ~ ")" }
-unwrap_right_expr =  { "unwrap_right(" ~ expression ~ ")" }
-unwrap_expr       =  { "unwrap(" ~ expression ~ ")" }
-func_call         =  { jet_expr | unwrap_left_expr | unwrap_right_expr | unwrap_expr }
+call_name         = ${ jet | "unwrap_left" | "unwrap_right" | "unwrap" }
+call_args         =  { "(" ~ (expression ~ ("," ~ expression)*)? ~ ")" }
+call_expr         =  { call_name ~ call_args }
 unsigned_integer  = @{ (ASCII_DIGIT | "_")+ }
 bit_string        = @{ "0b" ~ (ASCII_BIN_DIGIT | "_")+ }
 byte_string       = @{ "0x" ~ (ASCII_HEX_DIGIT | "_")+ }
@@ -67,4 +64,4 @@ match_arm         =  { match_pattern ~ "=>" ~ (single_expression ~ "," | block_e
 match_expr        =  { "match" ~ expression ~ "{" ~ match_arm ~ match_arm ~ "}" }
 array_expr        =  { "[" ~ expression ~ ("," ~ expression)* ~ ","? ~ "]" }
 list_expr         =  { "list![" ~ (expression ~ ("," ~ expression)* ~ ","?)? ~ "]" }
-single_expression =  { unit_expr | left_expr | right_expr | product_expr | none_expr | some_expr | false_expr | true_expr | func_call | match_expr | array_expr | list_expr | bit_string | byte_string | unsigned_integer | witness_expr | variable_expr | "(" ~ expression ~ ")" }
+single_expression =  { unit_expr | left_expr | right_expr | product_expr | none_expr | some_expr | false_expr | true_expr | call_expr | match_expr | array_expr | list_expr | bit_string | byte_string | unsigned_integer | witness_expr | variable_expr | "(" ~ expression ~ ")" }
