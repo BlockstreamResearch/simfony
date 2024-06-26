@@ -1,4 +1,5 @@
 use std::fmt;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use miniscript::iter::{Tree, TreeLike};
@@ -363,16 +364,68 @@ pub struct AliasedType(AliasedInner);
 /// Private struct to allow future changes.
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 enum AliasedInner {
-    /// Type alias
+    /// Type alias.
     Alias(Identifier),
-    /// Type primitive
+    /// Builtin type alias.
+    Builtin(BuiltinAlias),
+    /// Type primitive.
     Inner(TypeInner<Arc<AliasedType>>),
 }
 
+/// Type alias with predefined definition.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum BuiltinAlias {
+    Ctx8,
+    Pubkey,
+    Message,
+    Message64,
+    Signature,
+    Scalar,
+    Fe,
+    Ge,
+    Gej,
+    Point,
+    Height,
+    Time,
+    Distance,
+    Duration,
+    Lock,
+    Outpoint,
+    Confidential1,
+    ExplicitAsset,
+    Asset1,
+    ExplicitAmount,
+    Amount1,
+    ExplicitNonce,
+    Nonce,
+    TokenAmount1,
+}
+
 impl AliasedType {
+    /// Access a user-defined alias.
+    pub const fn as_alias(&self) -> Option<&Identifier> {
+        match &self.0 {
+            AliasedInner::Alias(identifier) => Some(identifier),
+            _ => None,
+        }
+    }
+
+    /// Access a buitlin alias.
+    pub const fn as_builtin(&self) -> Option<&BuiltinAlias> {
+        match &self.0 {
+            AliasedInner::Builtin(builtin) => Some(builtin),
+            _ => None,
+        }
+    }
+
     /// Create a type alias from the given `identifier`.
-    pub fn alias(identifier: Identifier) -> Self {
+    pub const fn alias(identifier: Identifier) -> Self {
         Self(AliasedInner::Alias(identifier))
+    }
+
+    /// Create a builtin type alias.
+    pub const fn builtin(builtin: BuiltinAlias) -> Self {
+        Self(AliasedInner::Builtin(builtin))
     }
 
     /// Resolve all aliases in the type based on the given map of `aliases` to types.
@@ -385,6 +438,10 @@ impl AliasedType {
             match &data.node.0 {
                 AliasedInner::Alias(alias) => {
                     let resolved = get_alias(alias).ok_or(alias.clone())?;
+                    output.push(resolved);
+                }
+                AliasedInner::Builtin(builtin) => {
+                    let resolved = builtin.resolve();
                     output.push(resolved);
                 }
                 AliasedInner::Inner(inner) => match inner {
@@ -418,6 +475,11 @@ impl AliasedType {
         }
         debug_assert_eq!(output.len(), 1);
         Ok(output.pop().unwrap())
+    }
+
+    /// Resolve all aliases in the type based on the builtin type aliases only.
+    pub fn resolve_builtin(&self) -> Result<ResolvedType, Identifier> {
+        self.resolve(|_| None)
     }
 }
 
@@ -509,7 +571,7 @@ impl TypeDeconstructible for AliasedType {
 impl<'a> TreeLike for &'a AliasedType {
     fn as_node(&self) -> Tree<Self> {
         match &self.0 {
-            AliasedInner::Alias(_) => Tree::Nullary,
+            AliasedInner::Alias(_) | AliasedInner::Builtin(_) => Tree::Nullary,
             AliasedInner::Inner(inner) => match inner {
                 TypeInner::Boolean | TypeInner::UInt(..) => Tree::Nullary,
                 TypeInner::Option(l) | TypeInner::Array(l, _) | TypeInner::List(l, _) => {
@@ -529,6 +591,7 @@ impl fmt::Display for AliasedType {
         for data in self.verbose_pre_order_iter() {
             match &data.node.0 {
                 AliasedInner::Alias(alias) => write!(f, "{alias}")?,
+                AliasedInner::Builtin(builtin) => write!(f, "{builtin}")?,
                 AliasedInner::Inner(inner) => inner.display(f, data.n_children_yielded)?,
             }
         }
@@ -539,6 +602,114 @@ impl fmt::Display for AliasedType {
 impl From<UIntType> for AliasedType {
     fn from(value: UIntType) -> Self {
         Self(AliasedInner::Inner(TypeInner::UInt(value)))
+    }
+}
+
+impl From<Identifier> for AliasedType {
+    fn from(value: Identifier) -> Self {
+        Self::alias(value)
+    }
+}
+
+impl From<BuiltinAlias> for AliasedType {
+    fn from(value: BuiltinAlias) -> Self {
+        Self::builtin(value)
+    }
+}
+
+impl BuiltinAlias {
+    pub fn resolve(self) -> ResolvedType {
+        use BuiltinAlias::*;
+        use UIntType::*;
+
+        match self {
+            Ctx8 => ResolvedType::tuple([
+                ResolvedType::list(U8.into(), NonZeroPow2Usize::new(64).unwrap()),
+                ResolvedType::tuple([U64.into(), U256.into()]),
+            ]),
+            Pubkey | Message | Scalar | Fe | ExplicitAsset | ExplicitNonce => U256.into(),
+            Message64 | Signature => ResolvedType::array(U8.into(), 64),
+            Ge => ResolvedType::tuple([U256.into(), U256.into()]),
+            Gej => {
+                ResolvedType::tuple([ResolvedType::tuple([U256.into(), U256.into()]), U256.into()])
+            }
+            Point | Confidential1 => ResolvedType::tuple([U1.into(), U256.into()]),
+            Height | Time | Lock => U32.into(),
+            Distance | Duration => U16.into(),
+            Outpoint => ResolvedType::tuple([U256.into(), U32.into()]),
+            Asset1 | Nonce => {
+                ResolvedType::either(ResolvedType::tuple([U1.into(), U256.into()]), U256.into())
+            }
+            ExplicitAmount => U64.into(),
+            Amount1 | TokenAmount1 => {
+                ResolvedType::either(ResolvedType::tuple([U1.into(), U256.into()]), U64.into())
+            }
+        }
+    }
+}
+
+impl fmt::Display for BuiltinAlias {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BuiltinAlias::Ctx8 => f.write_str("Ctx8"),
+            BuiltinAlias::Pubkey => f.write_str("Pubkey"),
+            BuiltinAlias::Message => f.write_str("Message"),
+            BuiltinAlias::Message64 => f.write_str("Message64"),
+            BuiltinAlias::Signature => f.write_str("Signature"),
+            BuiltinAlias::Scalar => f.write_str("Scalar"),
+            BuiltinAlias::Fe => f.write_str("Fe"),
+            BuiltinAlias::Ge => f.write_str("Ge"),
+            BuiltinAlias::Gej => f.write_str("Gej"),
+            BuiltinAlias::Point => f.write_str("Point"),
+            BuiltinAlias::Height => f.write_str("Height"),
+            BuiltinAlias::Time => f.write_str("Time"),
+            BuiltinAlias::Distance => f.write_str("Distance"),
+            BuiltinAlias::Duration => f.write_str("Duration"),
+            BuiltinAlias::Lock => f.write_str("Lock"),
+            BuiltinAlias::Outpoint => f.write_str("Outpoint"),
+            BuiltinAlias::Confidential1 => f.write_str("Confidential1"),
+            BuiltinAlias::ExplicitAsset => f.write_str("ExplicitAsset"),
+            BuiltinAlias::Asset1 => f.write_str("Asset1"),
+            BuiltinAlias::ExplicitAmount => f.write_str("ExplicitAmount"),
+            BuiltinAlias::Amount1 => f.write_str("Amount1"),
+            BuiltinAlias::ExplicitNonce => f.write_str("ExplicitNonce"),
+            BuiltinAlias::Nonce => f.write_str("Nonce"),
+            BuiltinAlias::TokenAmount1 => f.write_str("TokenAmount1"),
+        }
+    }
+}
+
+impl FromStr for BuiltinAlias {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Ctx8" => Ok(BuiltinAlias::Ctx8),
+            "Pubkey" => Ok(BuiltinAlias::Pubkey),
+            "Message" => Ok(BuiltinAlias::Message),
+            "Message64" => Ok(BuiltinAlias::Message64),
+            "Signature" => Ok(BuiltinAlias::Signature),
+            "Scalar" => Ok(BuiltinAlias::Scalar),
+            "Fe" => Ok(BuiltinAlias::Fe),
+            "Ge" => Ok(BuiltinAlias::Ge),
+            "Gej" => Ok(BuiltinAlias::Gej),
+            "Point" => Ok(BuiltinAlias::Point),
+            "Height" => Ok(BuiltinAlias::Height),
+            "Time" => Ok(BuiltinAlias::Time),
+            "Distance" => Ok(BuiltinAlias::Distance),
+            "Duration" => Ok(BuiltinAlias::Duration),
+            "Lock" => Ok(BuiltinAlias::Lock),
+            "Outpoint" => Ok(BuiltinAlias::Outpoint),
+            "Confidential1" => Ok(BuiltinAlias::Confidential1),
+            "ExplicitAsset" => Ok(BuiltinAlias::ExplicitAsset),
+            "Asset1" => Ok(BuiltinAlias::Asset1),
+            "ExplicitAmount" => Ok(BuiltinAlias::ExplicitAmount),
+            "Amount1" => Ok(BuiltinAlias::Amount1),
+            "ExplicitNonce" => Ok(BuiltinAlias::ExplicitNonce),
+            "Nonce" => Ok(BuiltinAlias::Nonce),
+            "TokenAmount1" => Ok(BuiltinAlias::TokenAmount1),
+            _ => Err("Unknown alias".to_string()),
+        }
     }
 }
 

@@ -6,8 +6,6 @@
  * that they want to commit.
  */
 
-type Ctx8 = (List<u8, 64>, (u64, u256));
-
 let ctx: Ctx8 = jet_sha_256_ctx_8_init();
 let ctx: Ctx8 = jet_sha_256_ctx_8_add_4(ctx, jet_version());
 let ctx: Ctx8 = jet_sha_256_ctx_8_add_4(ctx, jet_lock_time());
