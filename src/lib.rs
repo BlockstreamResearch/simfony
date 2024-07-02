@@ -3,6 +3,7 @@
 pub type ProgNode = Arc<named::NamedConstructNode>;
 
 mod array;
+pub mod ast;
 pub mod compile;
 pub mod dummy_env;
 pub mod error;
