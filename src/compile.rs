@@ -251,7 +251,7 @@ impl Call {
                 let jet_expr = ProgNode::jet(jet);
                 ProgNode::comp(&args_expr, &jet_expr).with_span(self.span)
             }
-            CallName::UnwrapLeft => {
+            CallName::UnwrapLeft(..) => {
                 debug_assert!(self.args.len() == 1);
                 let b = self.args[0].eval(scope, None)?;
                 let left_and_unit = ProgNode::pair_unit(&b);
@@ -259,7 +259,7 @@ impl Call {
                 let get_inner = ProgNode::assertl_take(&ProgNode::iden(), fail_cmr);
                 ProgNode::comp(&left_and_unit, &get_inner).with_span(self.span)
             }
-            CallName::UnwrapRight | CallName::Unwrap => {
+            CallName::UnwrapRight(..) | CallName::Unwrap => {
                 debug_assert!(self.args.len() == 1);
                 let c = self.args[0].eval(scope, None)?;
                 let right_and_unit = ProgNode::pair_unit(&c);

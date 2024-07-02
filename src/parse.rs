@@ -153,9 +153,9 @@ pub enum CallName {
     /// Name of a jet.
     Jet(JetName),
     /// Left unwrap function.
-    UnwrapLeft,
+    UnwrapLeft(AliasedType),
     /// Right unwrap function.
-    UnwrapRight,
+    UnwrapRight(AliasedType),
     /// Some unwrap function.
     Unwrap,
 }
@@ -598,17 +598,19 @@ impl PestParse for Call {
 impl PestParse for CallName {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::call_name));
-        match pair.as_str() {
-            "unwrap_left" => Ok(CallName::UnwrapLeft),
-            "unwrap_right" => Ok(CallName::UnwrapRight),
-            "unwrap" => Ok(CallName::Unwrap),
-            _ => {
+        let pair = pair.into_inner().next().unwrap();
+        match pair.as_rule() {
+            Rule::jet => JetName::parse(pair).map(Self::Jet),
+            Rule::unwrap_left => {
                 let inner = pair.into_inner().next().unwrap();
-                match inner.as_rule() {
-                    Rule::jet => JetName::parse(inner).map(CallName::Jet),
-                    _ => panic!("Corrupt grammar"),
-                }
+                AliasedType::parse(inner).map(Self::UnwrapLeft)
             }
+            Rule::unwrap_right => {
+                let inner = pair.into_inner().next().unwrap();
+                AliasedType::parse(inner).map(Self::UnwrapRight)
+            }
+            Rule::unwrap => Ok(Self::Unwrap),
+            _ => panic!("Corrupt grammar"),
         }
     }
 }
