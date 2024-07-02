@@ -1,6 +1,6 @@
-let l_or_r: Either<u32, u32> = jet_parse_lock(10);
-let l: u32 = unwrap_left::<u32>(l_or_r);
+let l_or_r: Either<Height, Time> = jet_parse_lock(10);
+let l: u32 = unwrap_left::<Time>(l_or_r);
 jet_verify(jet_eq_32(l, 10));
-let l_or_r: Either<u32, u32> = Right(11);
-let r: u32 = unwrap_right::<u32>(l_or_r);
-jet_verify(jet_eq_32(r, 11));
+let l_or_r: Either<Height, Time> = jet_parse_lock(1000000000);
+let r: u32 = unwrap_right::<Height>(l_or_r);
+jet_verify(jet_eq_32(r, 1000000000));

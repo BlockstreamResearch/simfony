@@ -1,4 +1,4 @@
-let v1: u256 = {
+let v1: u32 = {
     let v4: u32 = 1;
     let v5: u32 = 2;
     let v6: u32 = 3;
