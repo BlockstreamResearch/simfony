@@ -179,7 +179,12 @@ mod tests {
     fn _test_progs(file: &str) {
         println!("Testing {file}");
         let file = Path::new(file);
-        let simplicity_named_commit = _compile(file).unwrap();
+        let simplicity_named_commit = match _compile(file) {
+            Ok(commit) => commit,
+            Err(error) => {
+                panic!("{error}");
+            }
+        };
 
         struct MyConverter;
 
