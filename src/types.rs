@@ -13,21 +13,19 @@ use crate::parse::Identifier;
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 #[non_exhaustive]
 pub enum TypeInner<A> {
-    /// Unit type
-    Unit,
     /// Sum of the left and right types
     Either(A, A),
-    /// Product of the left and right types
-    Product(A, A),
     /// Option of the inner type
     Option(A),
     /// Boolean type
     Boolean,
     /// Unsigned integer type
     UInt(UIntType),
-    /// Array of the element type
+    /// Tuple of potentially different types
+    Tuple(Arc<[A]>),
+    /// Array of the same type
     Array(A, NonZeroUsize),
-    /// List of the element type
+    /// List of the same type
     List(A, NonZeroPow2Usize),
 }
 
@@ -37,21 +35,12 @@ impl<A> TypeInner<A> {
     /// We cannot implement [`fmt::Display`] because `n_children_yielded` is an extra argument.
     fn display(&self, f: &mut fmt::Formatter<'_>, n_children_yielded: usize) -> fmt::Result {
         match self {
-            TypeInner::Unit => f.write_str("()"),
             TypeInner::Either(_, _) => match n_children_yielded {
                 0 => f.write_str("Either<"),
                 1 => f.write_str(","),
                 n => {
                     debug_assert_eq!(n, 2);
                     f.write_str(">")
-                }
-            },
-            TypeInner::Product(_, _) => match n_children_yielded {
-                0 => f.write_str("("),
-                1 => f.write_str(", "),
-                n => {
-                    debug_assert_eq!(n, 2);
-                    f.write_str(")")
                 }
             },
             TypeInner::Option(_) => match n_children_yielded {
@@ -63,6 +52,25 @@ impl<A> TypeInner<A> {
             },
             TypeInner::Boolean => f.write_str("bool"),
             TypeInner::UInt(ty) => write!(f, "{ty}"),
+            TypeInner::Tuple(elements) => match n_children_yielded {
+                0 => {
+                    f.write_str("(")?;
+                    if 0 == elements.len() {
+                        f.write_str(")")?;
+                    }
+                    Ok(())
+                }
+                n if n == elements.len() => {
+                    if n == 1 {
+                        f.write_str(",")?;
+                    }
+                    f.write_str(")")
+                }
+                n => {
+                    debug_assert!(n < elements.len());
+                    f.write_str(", ")
+                }
+            },
             TypeInner::Array(_, size) => match n_children_yielded {
                 0 => f.write_str("["),
                 n => {
@@ -170,20 +178,30 @@ impl<'a> TryFrom<&'a ResolvedType> for UIntType {
 
 /// Various type constructors.
 pub trait TypeConstructible: Sized + From<UIntType> {
-    /// Create the unit type.
-    fn unit() -> Self;
-
     /// Create a sum of the given `left` and `right` types.
     fn either(left: Self, right: Self) -> Self;
-
-    /// Create a product of the given `left` and `right` types.
-    fn product(left: Self, right: Self) -> Self;
 
     /// Create an option of the given `inner` type.
     fn option(inner: Self) -> Self;
 
     /// Create the Boolean type.
     fn boolean() -> Self;
+
+    /// Create a tuple from the given `elements`.
+    ///
+    /// The empty tuple is the unit type.
+    /// A tuple of two types is a product.
+    fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self;
+
+    /// Create the unit type.
+    fn unit() -> Self {
+        Self::tuple([])
+    }
+
+    /// Create a product of the given `left` and `right` types.
+    fn product(left: Self, right: Self) -> Self {
+        Self::tuple([left, right])
+    }
 
     /// Create an array with `size` many values of the `element` type.
     fn array(element: Self, size: NonZeroUsize) -> Self;
@@ -204,16 +222,8 @@ impl ResolvedType {
 }
 
 impl TypeConstructible for ResolvedType {
-    fn unit() -> Self {
-        Self(TypeInner::Unit)
-    }
-
     fn either(left: Self, right: Self) -> Self {
         Self(TypeInner::Either(Arc::new(left), Arc::new(right)))
-    }
-
-    fn product(left: Self, right: Self) -> Self {
-        Self(TypeInner::Product(Arc::new(left), Arc::new(right)))
     }
 
     fn option(inner: Self) -> Self {
@@ -222,6 +232,12 @@ impl TypeConstructible for ResolvedType {
 
     fn boolean() -> Self {
         Self(TypeInner::Boolean)
+    }
+
+    fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
+        Self(TypeInner::Tuple(
+            elements.into_iter().map(Arc::new).collect(),
+        ))
     }
 
     fn array(element: Self, size: NonZeroUsize) -> Self {
@@ -236,9 +252,10 @@ impl TypeConstructible for ResolvedType {
 impl<'a> TreeLike for &'a ResolvedType {
     fn as_node(&self) -> Tree<Self> {
         match &self.0 {
-            TypeInner::Unit | TypeInner::Boolean | TypeInner::UInt(..) => Tree::Nullary,
+            TypeInner::Boolean | TypeInner::UInt(..) => Tree::Nullary,
             TypeInner::Option(l) | TypeInner::Array(l, _) | TypeInner::List(l, _) => Tree::Unary(l),
-            TypeInner::Either(l, r) | TypeInner::Product(l, r) => Tree::Binary(l, r),
+            TypeInner::Either(l, r) => Tree::Binary(l, r),
+            TypeInner::Tuple(elements) => Tree::Nary(elements.iter().map(Arc::as_ref).collect()),
         }
     }
 }
@@ -292,16 +309,10 @@ impl AliasedType {
                     output.push(resolved);
                 }
                 AliasedInner::Inner(inner) => match inner {
-                    TypeInner::Unit => output.push(ResolvedType::unit()),
                     TypeInner::Either(_, _) => {
                         let right = output.pop().unwrap();
                         let left = output.pop().unwrap();
                         output.push(ResolvedType::either(left, right));
-                    }
-                    TypeInner::Product(_, _) => {
-                        let right = output.pop().unwrap();
-                        let left = output.pop().unwrap();
-                        output.push(ResolvedType::product(left, right));
                     }
                     TypeInner::Option(_) => {
                         let inner = output.pop().unwrap();
@@ -309,6 +320,12 @@ impl AliasedType {
                     }
                     TypeInner::Boolean => output.push(ResolvedType::boolean()),
                     TypeInner::UInt(integer) => output.push(ResolvedType::from(*integer)),
+                    TypeInner::Tuple(_) => {
+                        let size = data.node.n_children();
+                        let elements = output.split_off(output.len() - size);
+                        debug_assert_eq!(elements.len(), size);
+                        output.push(ResolvedType::tuple(elements));
+                    }
                     TypeInner::Array(_, size) => {
                         let element = output.pop().unwrap();
                         output.push(ResolvedType::array(element, *size));
@@ -326,19 +343,8 @@ impl AliasedType {
 }
 
 impl TypeConstructible for AliasedType {
-    fn unit() -> Self {
-        Self(AliasedInner::Inner(TypeInner::Unit))
-    }
-
     fn either(left: Self, right: Self) -> Self {
         Self(AliasedInner::Inner(TypeInner::Either(
-            Arc::new(left),
-            Arc::new(right),
-        )))
-    }
-
-    fn product(left: Self, right: Self) -> Self {
-        Self(AliasedInner::Inner(TypeInner::Product(
             Arc::new(left),
             Arc::new(right),
         )))
@@ -350,6 +356,12 @@ impl TypeConstructible for AliasedType {
 
     fn boolean() -> Self {
         Self(AliasedInner::Inner(TypeInner::Boolean))
+    }
+
+    fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
+        Self(AliasedInner::Inner(TypeInner::Tuple(
+            elements.into_iter().map(Arc::new).collect(),
+        )))
     }
 
     fn array(element: Self, size: NonZeroUsize) -> Self {
@@ -372,11 +384,14 @@ impl<'a> TreeLike for &'a AliasedType {
         match &self.0 {
             AliasedInner::Alias(_) => Tree::Nullary,
             AliasedInner::Inner(inner) => match inner {
-                TypeInner::Unit | TypeInner::Boolean | TypeInner::UInt(..) => Tree::Nullary,
+                TypeInner::Boolean | TypeInner::UInt(..) => Tree::Nullary,
                 TypeInner::Option(l) | TypeInner::Array(l, _) | TypeInner::List(l, _) => {
                     Tree::Unary(l)
                 }
-                TypeInner::Either(l, r) | TypeInner::Product(l, r) => Tree::Binary(l, r),
+                TypeInner::Either(l, r) => Tree::Binary(l, r),
+                TypeInner::Tuple(elements) => {
+                    Tree::Nary(elements.iter().map(Arc::as_ref).collect())
+                }
             },
         }
     }
@@ -444,16 +459,10 @@ impl<'a> From<&'a ResolvedType> for StructuralType {
         let mut output = vec![];
         for data in value.post_order_iter() {
             match &data.node.0 {
-                TypeInner::Unit => output.push(StructuralType::unit()),
                 TypeInner::Either(_, _) => {
                     let right = output.pop().unwrap();
                     let left = output.pop().unwrap();
                     output.push(StructuralType::either(left, right));
-                }
-                TypeInner::Product(_, _) => {
-                    let right = output.pop().unwrap();
-                    let left = output.pop().unwrap();
-                    output.push(StructuralType::product(left, right));
                 }
                 TypeInner::Option(_) => {
                     let inner = output.pop().unwrap();
@@ -461,6 +470,12 @@ impl<'a> From<&'a ResolvedType> for StructuralType {
                 }
                 TypeInner::Boolean => output.push(StructuralType::boolean()),
                 TypeInner::UInt(integer) => output.push(StructuralType::from(*integer)),
+                TypeInner::Tuple(_) => {
+                    let size = data.node.n_children();
+                    let elements = output.split_off(output.len() - size);
+                    debug_assert_eq!(elements.len(), size);
+                    output.push(StructuralType::tuple(elements));
+                }
                 TypeInner::Array(_, size) => {
                     let element = output.pop().unwrap();
                     output.push(StructuralType::array(element, *size));
@@ -477,16 +492,8 @@ impl<'a> From<&'a ResolvedType> for StructuralType {
 }
 
 impl TypeConstructible for StructuralType {
-    fn unit() -> Self {
-        Self(Final::unit())
-    }
-
     fn either(left: Self, right: Self) -> Self {
         Self(Final::sum(left.0, right.0))
-    }
-
-    fn product(left: Self, right: Self) -> Self {
-        Self(Final::product(left.0, right.0))
     }
 
     fn option(inner: Self) -> Self {
@@ -495,6 +502,27 @@ impl TypeConstructible for StructuralType {
 
     fn boolean() -> Self {
         Self::either(Self::unit(), Self::unit())
+    }
+
+    fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
+        let elements: Vec<_> = elements.into_iter().collect();
+        match elements.is_empty() {
+            true => Self::unit(),
+            false => {
+                let tree = BTreeSlice::from_slice(&elements);
+                tree.fold(Self::product)
+            }
+        }
+    }
+
+    // Keep this implementation to prevent an infinite loop in <Self as TypeConstructible>::tuple
+    fn unit() -> Self {
+        Self(Final::unit())
+    }
+
+    // Keep this implementation to prevent an infinite loop in <Self as TypeConstructible>::tuple
+    fn product(left: Self, right: Self) -> Self {
+        Self(Final::product(left.0, right.0))
     }
 
     fn array(element: Self, size: NonZeroUsize) -> Self {
@@ -525,5 +553,33 @@ impl StructuralType {
     /// Convert into an unfinalized type that can be used in Simplicity's unification algorithm.
     pub fn to_unfinalized(&self) -> simplicity::types::Type {
         simplicity::types::Type::from(self.0.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_type() {
+        let unit = ResolvedType::unit();
+        assert_eq!("()", &unit.to_string());
+        let singleton = ResolvedType::tuple([ResolvedType::from(UIntType::U1)]);
+        assert_eq!("(u1,)", &singleton.to_string());
+        let pair = ResolvedType::tuple([
+            ResolvedType::from(UIntType::U1),
+            ResolvedType::from(UIntType::U8),
+        ]);
+        assert_eq!("(u1, u8)", &pair.to_string());
+        let triple = ResolvedType::tuple([
+            ResolvedType::from(UIntType::U1),
+            ResolvedType::from(UIntType::U8),
+            ResolvedType::from(UIntType::U16),
+        ]);
+        assert_eq!("(u1, u8, u16)", &triple.to_string());
+        let array = ResolvedType::array(ResolvedType::unit(), NonZeroUsize::new(3).unwrap());
+        assert_eq!("[(); 3]", &array.to_string());
+        let list = ResolvedType::list(ResolvedType::unit(), NonZeroPow2Usize::TWO);
+        assert_eq!("List<(), 2>", &list.to_string());
     }
 }

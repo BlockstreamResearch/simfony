@@ -199,17 +199,27 @@ impl<'a> From<&'a Bytes> for UIntValue {
 
 /// Various value constructors.
 pub trait ValueConstructible: Sized + From<Option<Self>> + From<bool> + From<UIntValue> {
-    /// Create the unit value.
-    fn unit() -> Self;
-
     /// Create the left value `Either::Left(inner)`.
     fn left(inner: Self) -> Self;
 
     /// Create the right value `Either::Right(inner)`.
     fn right(inner: Self) -> Self;
 
+    /// Create a tuple from the given `elements`.
+    ///
+    /// The empty tuple is the unit value.
+    /// A tuple of two values is a product.
+    fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self;
+
+    /// Create the unit value.
+    fn unit() -> Self {
+        Self::tuple([])
+    }
+
     /// Create the product value `(left, right)`.
-    fn product(left: Self, right: Self) -> Self;
+    fn product(left: Self, right: Self) -> Self {
+        Self::tuple([left, right])
+    }
 
     /// Create an array from the given `elements`.
     ///
@@ -238,20 +248,20 @@ pub trait ValueConstructible: Sized + From<Option<Self>> + From<bool> + From<UIn
 /// Simfony value.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Value {
-    /// Unit value.
-    Unit,
     /// Left value.
     Left(Arc<Self>),
     /// Right value.
     Right(Arc<Self>),
-    /// Product value.
-    Product(Arc<Self>, Arc<Self>),
     /// Option value.
     Option(Option<Arc<Self>>),
     /// Boolean value.
     Boolean(bool),
     /// Unsigned integer.
     UInt(UIntValue),
+    /// Tuple of values.
+    ///
+    /// Each component may have a different type.
+    Tuple(Arc<[Self]>),
     /// Nonempty array of values.
     // FIXME: Prevent construction of invalid arrays (that are empty)
     Array(Arc<[Self]>),
@@ -263,10 +273,9 @@ pub enum Value {
 impl<'a> TreeLike for &'a Value {
     fn as_node(&self) -> Tree<Self> {
         match self {
-            Value::Unit | Value::Option(None) | Value::Boolean(_) | Value::UInt(_) => Tree::Nullary,
+            Value::Option(None) | Value::Boolean(_) | Value::UInt(_) => Tree::Nullary,
             Value::Left(l) | Value::Right(l) | Value::Option(Some(l)) => Tree::Unary(l),
-            Value::Product(l, r) => Tree::Binary(l, r),
-            Value::Array(elements) | Value::List(elements, _) => {
+            Value::Tuple(elements) | Value::Array(elements) | Value::List(elements, _) => {
                 Tree::Nary(elements.iter().collect())
             }
         }
@@ -277,7 +286,6 @@ impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for data in self.verbose_pre_order_iter() {
             match &data.node {
-                Value::Unit => f.write_str("()")?,
                 Value::Left(_) => match data.n_children_yielded {
                     0 => f.write_str("Left(")?,
                     n => {
@@ -292,14 +300,6 @@ impl fmt::Display for Value {
                         f.write_str(")")?;
                     }
                 },
-                Value::Product(_, _) => match data.n_children_yielded {
-                    0 => f.write_str("(")?,
-                    1 => f.write_str(", ")?,
-                    n => {
-                        debug_assert_eq!(n, 2);
-                        f.write_str(")")?;
-                    }
-                },
                 Value::Option(None) => f.write_str("None")?,
                 Value::Option(Some(_)) => match data.n_children_yielded {
                     0 => f.write_str("Some(")?,
@@ -310,6 +310,24 @@ impl fmt::Display for Value {
                 },
                 Value::Boolean(bit) => write!(f, "{bit}")?,
                 Value::UInt(integer) => write!(f, "{integer}")?,
+                Value::Tuple(elements) => match data.n_children_yielded {
+                    0 => {
+                        f.write_str("(")?;
+                        if 0 == elements.len() {
+                            f.write_str(")")?;
+                        }
+                    }
+                    n if n == elements.len() => {
+                        if n == 1 {
+                            f.write_str(",")?;
+                        }
+                        f.write_str(")")?;
+                    }
+                    n => {
+                        debug_assert!(n < elements.len());
+                        f.write_str(", ")?;
+                    }
+                },
                 Value::Array(elements) => match data.n_children_yielded {
                     0 => f.write_str("[")?,
                     n if n == elements.len() => {
@@ -338,10 +356,6 @@ impl fmt::Display for Value {
 }
 
 impl ValueConstructible for Value {
-    fn unit() -> Self {
-        Self::Unit
-    }
-
     fn left(inner: Self) -> Self {
         Self::Left(Arc::new(inner))
     }
@@ -350,8 +364,8 @@ impl ValueConstructible for Value {
         Self::Right(Arc::new(inner))
     }
 
-    fn product(left: Self, right: Self) -> Self {
-        Self::Product(Arc::new(left), Arc::new(right))
+    fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
+        Self::Tuple(elements.into_iter().collect())
     }
 
     fn array<I: IntoIterator<Item = Self>>(elements: I) -> Option<Self> {
@@ -403,8 +417,7 @@ impl Value {
         let mut stack = vec![(self, ty)];
         while let Some((value, ty)) = stack.pop() {
             match (value, ty.as_inner()) {
-                (Value::Unit, TypeInner::Unit)
-                | (Value::Boolean(_), TypeInner::Boolean)
+                (Value::Boolean(_), TypeInner::Boolean)
                 | (Value::UInt(_), TypeInner::UInt(_))
                 | (Value::Option(None), TypeInner::Option(_)) => {}
                 (Value::Left(val_l), TypeInner::Either(ty_l, _))
@@ -412,9 +425,8 @@ impl Value {
                 | (Value::Option(Some(val_l)), TypeInner::Option(ty_l)) => {
                     stack.push((val_l, ty_l))
                 }
-                (Value::Product(val_l, val_r), TypeInner::Product(ty_l, ty_r)) => {
-                    stack.push((val_r, ty_r));
-                    stack.push((val_l, ty_l));
+                (Value::Tuple(val_el), TypeInner::Tuple(ty_el)) if val_el.len() == ty_el.len() => {
+                    stack.extend(val_el.iter().zip(ty_el.iter().map(Arc::as_ref)));
                 }
                 (Value::Array(val_el), TypeInner::Array(ty_el, size))
                     if val_el.len() == size.get() =>
@@ -506,10 +518,6 @@ impl TreeLike for StructuralValue {
 }
 
 impl ValueConstructible for StructuralValue {
-    fn unit() -> Self {
-        Self(SimValue::unit())
-    }
-
     fn left(inner: Self) -> Self {
         Self(SimValue::sum_l(inner.0))
     }
@@ -518,6 +526,23 @@ impl ValueConstructible for StructuralValue {
         Self(SimValue::sum_r(inner.0))
     }
 
+    fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
+        let elements: Vec<Self> = elements.into_iter().collect();
+        match elements.is_empty() {
+            true => Self::unit(),
+            false => {
+                let tree = BTreeSlice::from_slice(&elements);
+                tree.fold(Self::product)
+            }
+        }
+    }
+
+    // Keep this implementation to prevent an infinite loop in <Self as ValueConstructible>::tuple
+    fn unit() -> Self {
+        Self(SimValue::unit())
+    }
+
+    // Keep this implementation to prevent an infinite loop in <Self as ValueConstructible>::tuple
     fn product(left: Self, right: Self) -> Self {
         Self(SimValue::prod(left.0, right.0))
     }
@@ -588,7 +613,6 @@ impl<'a> From<&'a Value> for StructuralValue {
         let mut output = vec![];
         for data in value.post_order_iter() {
             match &data.node {
-                Value::Unit => output.push(Self::unit()),
                 Value::Left(_) => {
                     let inner = output.pop().unwrap();
                     output.push(Self::left(inner));
@@ -597,11 +621,6 @@ impl<'a> From<&'a Value> for StructuralValue {
                     let inner = output.pop().unwrap();
                     output.push(Self::right(inner));
                 }
-                Value::Product(_, _) => {
-                    let right = output.pop().unwrap();
-                    let left = output.pop().unwrap();
-                    output.push(Self::product(left, right));
-                }
                 Value::Option(None) => output.push(Self::from(None)),
                 Value::Option(Some(_)) => {
                     let inner = output.pop().unwrap();
@@ -609,6 +628,12 @@ impl<'a> From<&'a Value> for StructuralValue {
                 }
                 Value::Boolean(bit) => output.push(Self::from(*bit)),
                 Value::UInt(integer) => output.push(Self::from(*integer)),
+                Value::Tuple(_) => {
+                    let size = data.node.n_children();
+                    let elements = output.split_off(output.len() - size);
+                    debug_assert_eq!(elements.len(), size);
+                    output.push(Self::tuple(elements));
+                }
                 Value::Array(_) => {
                     let size = data.node.n_children();
                     debug_assert!(0 < size);
@@ -643,6 +668,21 @@ mod tests {
 
     #[test]
     fn display_value() {
+        let unit = Value::unit();
+        assert_eq!("()", &unit.to_string());
+        let singleton = Value::tuple([Value::from(UIntValue::U1(1))]);
+        assert_eq!("(1,)", &singleton.to_string());
+        let pair = Value::tuple([
+            Value::from(UIntValue::U1(1)),
+            Value::from(UIntValue::U8(42)),
+        ]);
+        assert_eq!("(1, 42)", &pair.to_string());
+        let triple = Value::tuple([
+            Value::from(UIntValue::U1(1)),
+            Value::from(UIntValue::U8(42)),
+            Value::from(UIntValue::U16(1337)),
+        ]);
+        assert_eq!("(1, 42, 1337)", &triple.to_string());
         let array = Value::array([Value::unit(), Value::unit(), Value::unit()]).unwrap();
         assert_eq!("[(), (), ()]", &array.to_string());
         let list = Value::list([Value::unit()], NonZeroPow2Usize::TWO).unwrap();
