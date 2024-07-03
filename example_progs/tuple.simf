@@ -1,0 +1,14 @@
+let a: () = ();
+let b: (u32,) = (1,);
+let c: (u32,u32) = (2,3);
+let d: (u32,u32,u32) = (4,5,6);
+let (): () = a;
+let (e,): (u32,) = b;
+let (f,g): (u32,u32) = c;
+let (h,i,j): (u32,u32,u32) = d;
+jet_verify(jet_eq_32(e,1));
+jet_verify(jet_eq_32(f,2));
+jet_verify(jet_eq_32(g,3));
+jet_verify(jet_eq_32(h,4));
+jet_verify(jet_eq_32(i,5));
+jet_verify(jet_eq_32(j,6));

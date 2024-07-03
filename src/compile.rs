@@ -77,10 +77,7 @@ impl Call {
     ) -> Result<ProgNode, RichError> {
         match &self.name {
             CallName::Jet(name) => {
-                let args = match self.args.is_empty() {
-                    true => SingleExpressionInner::Unit,
-                    false => SingleExpressionInner::Array(self.args.clone()),
-                };
+                let args = SingleExpressionInner::Tuple(self.args.clone());
                 // TODO: Pass the jet source type here.
                 // FIXME: Constructing pairs should never fail because when Simfony is translated to
                 // Simplicity the input type is variable. However, the fact that pairs always unify
@@ -138,7 +135,6 @@ impl SingleExpressionInner {
         span: Span,
     ) -> Result<ProgNode, RichError> {
         let expr = match self {
-            SingleExpressionInner::Unit => ProgNode::unit(),
             SingleExpressionInner::Left(l) => {
                 let l = l.eval(scope, None)?;
                 ProgNode::injl(&l)
@@ -150,14 +146,6 @@ impl SingleExpressionInner {
             }
             SingleExpressionInner::False => ProgNode::_false(),
             SingleExpressionInner::True => ProgNode::_true(),
-            SingleExpressionInner::Product(l, r) => {
-                let l = l.eval(scope, None)?;
-                let r = r.eval(scope, None)?;
-                // FIXME: Constructing pairs should never fail because when Simfony is translated to
-                // Simplicity the input type is variable. However, the fact that pairs always unify
-                // is hard to prove at the moment, while Simfony lacks a type system.
-                ProgNode::pair(&l, &r).with_span(span)?
-            }
             SingleExpressionInner::UnsignedInteger(decimal) => {
                 let reqd_ty = reqd_ty
                     .cloned()
@@ -184,6 +172,17 @@ impl SingleExpressionInner {
             SingleExpressionInner::Call(call) => call.eval(scope, reqd_ty)?,
             SingleExpressionInner::Expression(expression) => expression.eval(scope, reqd_ty)?,
             SingleExpressionInner::Match(match_) => match_.eval(scope, reqd_ty)?,
+            SingleExpressionInner::Tuple(elements) => {
+                // Type checking is annoying when reqd_ty can be None
+                // TODO: Type-check this code once reqd_ty is an explicit &ResolvedType
+                let nodes: Vec<Result<ProgNode, RichError>> =
+                    elements.iter().map(|e| e.eval(scope, None)).collect();
+                let tree = BTreeSlice::from_slice(&nodes);
+                tree.fold(|res_a, res_b| {
+                    res_a.and_then(|a| res_b.and_then(|b| ProgNode::pair(&a, &b).with_span(span)))
+                })
+                .unwrap_or_else(|| Ok(ProgNode::unit()))?
+            }
             SingleExpressionInner::Array(elements) => {
                 let el_type = match reqd_ty.map(ResolvedType::as_inner) {
                     Some(TypeInner::Array(el_type, size)) => {
@@ -245,7 +244,7 @@ impl SingleExpressionInner {
             expr.arrow()
                 .target
                 .unify(&StructuralType::from(reqd_ty).to_unfinalized(), "")
-                .map_err(|_| Error::TypeValueMismatch(reqd_ty.clone()))
+                .map_err(|e| Error::CannotCompile(e.to_string()))
                 .with_span(span)?;
         }
         Ok(expr)

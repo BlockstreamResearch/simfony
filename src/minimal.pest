@@ -16,9 +16,9 @@ reserved          = @{ jet | builtin_type }
 
 variable_pattern  =  { identifier }
 ignore_pattern    = @{ "_" }
-product_pattern   =  { "(" ~ pattern ~ "," ~ pattern ~ ")" }
+tuple_pattern     =  { "(" ~ ((pattern ~ ",")+ ~ pattern?)? ~ ")" }
 array_pattern     =  { "[" ~ (pattern ~ ("," ~ pattern)* ~ ","?)? ~ "]" }
-pattern           =  { ignore_pattern | product_pattern | array_pattern | variable_pattern }
+pattern           =  { ignore_pattern | tuple_pattern | array_pattern | variable_pattern }
 assignment        =  { "let" ~ pattern ~ ":" ~ ty ~ "=" ~ expression }
 
 left_pattern      =  { "Left(" ~ identifier ~ ")" }
@@ -29,25 +29,22 @@ false_pattern     = @{ "false" }
 true_pattern      = @{ "true" }
 match_pattern     =  { left_pattern | right_pattern | none_pattern | some_pattern | false_pattern | true_pattern }
 
-unit_type         = @{ "()" }
 sum_type          =  { "Either<" ~ ty ~ "," ~ ty ~ ">" }
-product_type      =  { "(" ~ ty ~ "," ~ ty ~ ")" }
 option_type       =  { "Option<" ~ ty ~ ">" }
 boolean_type      = @{ "bool" }
 unsigned_type     = @{ "u128" | "u256" | "u16" | "u32" | "u64" | "u1" | "u2" | "u4" | "u8" }
+tuple_type        =  { "(" ~ ((ty ~ ",")+ ~ ty?)? ~ ")" }
 array_size        = @{ ASCII_DIGIT+ }
 array_type        =  { "[" ~ ty ~ ";" ~ array_size ~ "]" }
 list_bound        = @{ ASCII_DIGIT+ }
 list_type         =  { "List<" ~ ty ~ "," ~ list_bound ~ ">" }
-ty                =  { unit_type | sum_type | product_type | option_type | boolean_type | unsigned_type | array_type | list_type | identifier }
+ty                =  { sum_type | option_type | boolean_type | unsigned_type | tuple_type |  array_type | list_type | identifier }
 type_alias        =  { "type" ~ identifier ~ "=" ~ ty }
 
 expression        =  { block_expression | single_expression }
 block_expression  =  { "{" ~ (statement ~ ";")* ~ expression ~ "}" }
-unit_expr         = @{ "()" }
 left_expr         =  { "Left(" ~ expression ~ ")" }
 right_expr        =  { "Right(" ~ expression ~ ")" }
-product_expr      =  { "(" ~ expression ~ "," ~ expression ~ ")" }
 none_expr         = @{ "None" }
 some_expr         =  { "Some(" ~ expression ~ ")" }
 false_expr        = @{ "false" }
@@ -62,6 +59,7 @@ witness_expr      =  { "witness(\"" ~ witness_name ~ "\")" }
 variable_expr     =  { identifier }
 match_arm         =  { match_pattern ~ "=>" ~ (single_expression ~ "," | block_expression ~ ","?) }
 match_expr        =  { "match" ~ expression ~ "{" ~ match_arm ~ match_arm ~ "}" }
+tuple_expr        =  { "(" ~ ((expression ~ ",")+ ~ expression?)? ~ ")" }
 array_expr        =  { "[" ~ (expression ~ ("," ~ expression)* ~ ","?)? ~ "]" }
 list_expr         =  { "list![" ~ (expression ~ ("," ~ expression)* ~ ","?)? ~ "]" }
-single_expression =  { unit_expr | left_expr | right_expr | product_expr | none_expr | some_expr | false_expr | true_expr | call_expr | match_expr | array_expr | list_expr | bit_string | byte_string | unsigned_integer | witness_expr | variable_expr | "(" ~ expression ~ ")" }
+single_expression =  { left_expr | right_expr | none_expr | some_expr | false_expr | true_expr | call_expr | match_expr | tuple_expr | array_expr | list_expr | bit_string | byte_string | unsigned_integer | witness_expr | variable_expr | "(" ~ expression ~ ")" }

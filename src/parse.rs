@@ -108,20 +108,25 @@ pub enum Statement {
 /// Pattern for binding values to variables.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Pattern {
-    /// Bind value to variable name.
+    /// Match any value and bind it to variable name.
     Identifier(Identifier),
-    /// Do not bind.
+    /// Match any value but ignore it.
     Ignore,
-    /// Split product value. Bind components to first and second pattern, respectively.
-    Product(Arc<Self>, Arc<Self>),
-    /// Split array value. Bind components to balanced binary tree of patterns.
+    /// Recursively match the components of a tuple value
+    Tuple(Arc<[Self]>),
+    /// Recursively match the elements of an array value.
     Array(Arc<[Self]>),
 }
 
 impl Pattern {
     /// Construct a product pattern.
     pub fn product(l: Self, r: Self) -> Self {
-        Self::Product(Arc::new(l), Arc::new(r))
+        Self::tuple([l, r])
+    }
+
+    /// Construct a tuple pattern.
+    pub fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
+        Self::Tuple(elements.into_iter().collect())
     }
 
     /// Construct an array pattern.
@@ -134,8 +139,9 @@ impl<'a> TreeLike for &'a Pattern {
     fn as_node(&self) -> Tree<Self> {
         match self {
             Pattern::Identifier(_) | Pattern::Ignore => Tree::Nullary,
-            Pattern::Product(l, r) => Tree::Binary(l, r),
-            Pattern::Array(children) => Tree::Nary(children.iter().collect()),
+            Pattern::Tuple(elements) | Pattern::Array(elements) => {
+                Tree::Nary(elements.iter().collect())
+            }
         }
     }
 }
@@ -146,12 +152,22 @@ impl fmt::Display for Pattern {
             match data.node {
                 Pattern::Identifier(i) => write!(f, "{i}")?,
                 Pattern::Ignore => write!(f, "_")?,
-                Pattern::Product(..) => match data.n_children_yielded {
-                    0 => write!(f, "(")?,
-                    1 => write!(f, ",")?,
+                Pattern::Tuple(elements) => match data.n_children_yielded {
+                    0 => {
+                        f.write_str("(")?;
+                        if 0 == elements.len() {
+                            f.write_str(")")?;
+                        }
+                    }
+                    n if n == elements.len() => {
+                        if n == 1 {
+                            f.write_str(",")?;
+                        }
+                        f.write_str(")")?;
+                    }
                     n => {
-                        debug_assert!(n == 2);
-                        write!(f, ")")?;
+                        debug_assert!(n < elements.len());
+                        f.write_str(", ")?
                     }
                 },
                 Pattern::Array(elements) => match data.n_children_yielded {
@@ -291,14 +307,10 @@ pub struct SingleExpression {
 /// The kind of single expression.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum SingleExpressionInner {
-    /// Unit literal expression
-    Unit,
     /// Left wrapper expression
     Left(Arc<Expression>),
     /// Right wrapper expression
     Right(Arc<Expression>),
-    /// Product wrapper expression
-    Product(Arc<Expression>, Arc<Expression>),
     /// None literal expression
     None,
     /// Some wrapper expression
@@ -323,6 +335,8 @@ pub enum SingleExpressionInner {
     Expression(Arc<Expression>),
     /// Match expression over a sum type
     Match(Match),
+    /// Tuple wrapper expression
+    Tuple(Arc<[Expression]>),
     /// Array wrapper expression
     Array(Arc<[Expression]>),
     /// List wrapper expression
@@ -624,10 +638,11 @@ impl PestParse for Pattern {
                 Rule::ignore_pattern => {
                     output.push(Pattern::Ignore);
                 }
-                Rule::product_pattern => {
-                    let r = output.pop().unwrap();
-                    let l = output.pop().unwrap();
-                    output.push(Pattern::Product(Arc::new(l), Arc::new(r)));
+                Rule::tuple_pattern => {
+                    let size = data.node.n_children();
+                    let elements = output.split_off(output.len() - size);
+                    debug_assert_eq!(elements.len(), size);
+                    output.push(Pattern::tuple(elements));
                 }
                 Rule::array_pattern => {
                     let size = data.node.n_children();
@@ -758,7 +773,6 @@ impl PestParse for SingleExpression {
         let inner_pair = pair.into_inner().next().unwrap();
 
         let inner = match inner_pair.as_rule() {
-            Rule::unit_expr => SingleExpressionInner::Unit,
             Rule::left_expr => {
                 let l = inner_pair.into_inner().next().unwrap();
                 SingleExpressionInner::Left(Expression::parse(l).map(Arc::new)?)
@@ -766,15 +780,6 @@ impl PestParse for SingleExpression {
             Rule::right_expr => {
                 let r = inner_pair.into_inner().next().unwrap();
                 SingleExpressionInner::Right(Expression::parse(r).map(Arc::new)?)
-            }
-            Rule::product_expr => {
-                let mut product_pair = inner_pair.into_inner();
-                let l = product_pair.next().unwrap();
-                let r = product_pair.next().unwrap();
-                SingleExpressionInner::Product(
-                    Expression::parse(l).map(Arc::new)?,
-                    Expression::parse(r).map(Arc::new)?,
-                )
             }
             Rule::none_expr => SingleExpressionInner::None,
             Rule::some_expr => {
@@ -801,10 +806,16 @@ impl PestParse for SingleExpression {
                 SingleExpressionInner::Expression(Expression::parse(inner_pair).map(Arc::new)?)
             }
             Rule::match_expr => Match::parse(inner_pair).map(SingleExpressionInner::Match)?,
+            Rule::tuple_expr => inner_pair
+                .clone()
+                .into_inner()
+                .map(Expression::parse)
+                .collect::<Result<Arc<[Expression]>, _>>()
+                .map(SingleExpressionInner::Tuple)?,
             Rule::array_expr => inner_pair
                 .clone()
                 .into_inner()
-                .map(|inner| Expression::parse(inner))
+                .map(Expression::parse)
                 .collect::<Result<Arc<[Expression]>, _>>()
                 .map(SingleExpressionInner::Array)?,
             Rule::list_expr => {
@@ -1014,7 +1025,6 @@ impl PestParse for AliasedType {
                     let identifier = Identifier::parse(data.node.0)?;
                     output.push(Item::Type(AliasedType::alias(identifier)));
                 }
-                Rule::unit_type => output.push(Item::Type(AliasedType::unit())),
                 Rule::unsigned_type => {
                     let uint_ty = UIntType::parse(data.node.0)?;
                     output.push(Item::Type(AliasedType::from(uint_ty)));
@@ -1024,17 +1034,22 @@ impl PestParse for AliasedType {
                     let l = output.pop().unwrap().unwrap_type();
                     output.push(Item::Type(AliasedType::either(l, r)));
                 }
-                Rule::product_type => {
-                    let r = output.pop().unwrap().unwrap_type();
-                    let l = output.pop().unwrap().unwrap_type();
-                    output.push(Item::Type(AliasedType::product(l, r)));
-                }
                 Rule::option_type => {
                     let r = output.pop().unwrap().unwrap_type();
                     output.push(Item::Type(AliasedType::option(r)));
                 }
                 Rule::boolean_type => {
                     output.push(Item::Type(AliasedType::boolean()));
+                }
+                Rule::tuple_type => {
+                    let size = data.node.n_children();
+                    let elements: Vec<AliasedType> = output
+                        .split_off(output.len() - size)
+                        .into_iter()
+                        .map(Item::unwrap_type)
+                        .collect();
+                    debug_assert_eq!(elements.len(), size);
+                    output.push(Item::Type(AliasedType::tuple(elements)));
                 }
                 Rule::array_type => {
                     let size = output.pop().unwrap().unwrap_size();
@@ -1101,12 +1116,7 @@ impl<'a> TreeLike for PatternPair<'a> {
                 let l = it.next().unwrap();
                 Tree::Unary(PatternPair(l))
             }
-            Rule::product_pattern => {
-                let l = it.next().unwrap();
-                let r = it.next().unwrap();
-                Tree::Binary(PatternPair(l), PatternPair(r))
-            }
-            Rule::array_pattern => {
+            Rule::tuple_pattern | Rule::array_pattern => {
                 let children: Arc<[PatternPair]> = it.map(PatternPair).collect();
                 Tree::Nary(children)
             }
@@ -1123,8 +1133,7 @@ impl<'a> TreeLike for TyPair<'a> {
     fn as_node(&self) -> Tree<Self> {
         let mut it = self.0.clone().into_inner();
         match self.0.as_rule() {
-            Rule::unit_type
-            | Rule::boolean_type
+            Rule::boolean_type
             | Rule::unsigned_type
             | Rule::array_size
             | Rule::list_bound
@@ -1133,11 +1142,12 @@ impl<'a> TreeLike for TyPair<'a> {
                 let l = it.next().unwrap();
                 Tree::Unary(TyPair(l))
             }
-            Rule::sum_type | Rule::product_type | Rule::array_type | Rule::list_type => {
+            Rule::sum_type | Rule::array_type | Rule::list_type => {
                 let l = it.next().unwrap();
                 let r = it.next().unwrap();
                 Tree::Binary(TyPair(l), TyPair(r))
             }
+            Rule::tuple_type => Tree::Nary(it.map(TyPair).collect()),
             _ => unreachable!("Corrupt grammar"),
         }
     }
