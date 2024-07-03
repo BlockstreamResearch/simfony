@@ -1,35 +1,32 @@
 use miniscript::iter::{Tree, TreeLike};
-use std::fmt;
-use std::ops::Range;
-use std::sync::Arc;
 
 /// View of a slice as a balanced binary tree.
-/// The slice must be nonempty.
 ///
 /// Each node is labelled with a slice.
 /// Leaves contain single elements.
+///
+/// The tree is empty if the slice is empty.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct BTreeSlice<'a, A>(&'a [A]);
 
 impl<'a, A> BTreeSlice<'a, A> {
     /// View the slice as a balanced binary tree.
-    ///
-    /// ## Panics
-    ///
-    /// The slice is empty.
     pub fn from_slice(slice: &'a [A]) -> Self {
-        assert!(!slice.is_empty(), "Slice must be nonempty");
         Self(slice)
     }
 }
 
 impl<'a, A: Clone> BTreeSlice<'a, A> {
     /// Fold the tree in post order, using the binary function `f`.
-    pub fn fold<F>(self, f: F) -> A
+    ///
+    /// Returns `None` if the tree is empty.
+    pub fn fold<F>(self, f: F) -> Option<A>
     where
         F: Fn(A, A) -> A,
     {
-        debug_assert!(!self.0.is_empty());
+        if self.0.is_empty() {
+            return None;
+        }
 
         let mut output = vec![];
         for item in self.post_order_iter() {
@@ -40,23 +37,22 @@ impl<'a, A: Clone> BTreeSlice<'a, A> {
                     output.push(f(l, r));
                 }
                 n => {
-                    debug_assert!(n == 0);
-                    debug_assert!(item.node.0.len() == 1);
+                    debug_assert_eq!(n, 0);
+                    debug_assert_eq!(item.node.0.len(), 1);
                     output.push(item.node.0[0].clone());
                 }
             }
         }
 
-        debug_assert!(output.len() == 1);
-        output.pop().unwrap()
+        debug_assert_eq!(output.len(), 1);
+        output.pop()
     }
 }
 
 impl<'a, A: Clone> TreeLike for BTreeSlice<'a, A> {
     fn as_node(&self) -> Tree<Self> {
         match self.0.len() {
-            0 => unreachable!("Empty slice"),
-            1 => Tree::Nullary,
+            0 | 1 => Tree::Nullary,
             n => {
                 let next_pow2 = n.next_power_of_two();
                 debug_assert!(0 < next_pow2 / 2);
@@ -186,150 +182,6 @@ impl<'a, A: Clone> TreeLike for Partition<'a, A> {
     }
 }
 
-/// Convert a tree into a binary tree.
-/// Each node has fanout at most two.
-///
-/// Nodes with at most two children (non-arrays) are preserved in the binary tree.
-/// We call these nodes _normal nodes_.
-///
-/// Nodes with more than two children (arrays) are converted into balanced binary trees.
-///
-/// ## Example
-///
-/// Take a root node with children `a`, `b`, `c`.
-///
-/// ```text
-///    .
-///  / | \
-/// a  b  c
-/// ```
-///
-/// The 3-ary root is converted into two 2-ary nodes. The normal nodes `a`, `b`, `c` stay preserved.
-///
-/// ```text
-///     .
-///    / \
-///   .   c
-///  / \
-/// a   b
-/// ```
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct BinaryTree<T>(BinaryTreeInner<T>);
-
-impl<T> BinaryTree<T> {
-    /// Access the content of a normal node.
-    pub fn as_normal(&self) -> Option<&T> {
-        match &self.0 {
-            BinaryTreeInner::Normal(tree) => Some(tree),
-            _ => None,
-        }
-    }
-}
-
-impl<T: TreeLike> BinaryTree<T> {
-    /// Convert a tree into a binary tree.
-    ///
-    /// ## Panics
-    ///
-    /// `<T as TreeLike>::as_node` returns `Tree::Nary` with an empty array.
-    pub fn from_tree(tree: T) -> Self {
-        Self(BinaryTreeInner::normal(tree))
-    }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-enum BinaryTreeInner<T> {
-    /// Normal node (with at most two children).
-    ///
-    /// Must be constructed via [`BinaryTreeInner::normal()`].
-    Normal(T),
-    /// Array of at least two children.
-    ///
-    /// Must be constructed via [`BinaryTreeInner::array()`].
-    Array(Arc<[T]>, Range<usize>),
-}
-
-impl<T: TreeLike> BinaryTreeInner<T> {
-    /// Construct a binary tree from a tree.
-    ///
-    /// ## Panics
-    ///
-    /// `<T as TreeLike>::as_node` returns `Tree::Nary` with an empty array.
-    // FIXME: Remove recursion
-    fn normal(tree: T) -> Self {
-        match tree.as_node() {
-            Tree::Nary(array) => {
-                let range = 0..array.len();
-                Self::array(array, range)
-            }
-            _ => Self::Normal(tree),
-        }
-    }
-
-    /// Construct a binary tree from an array.
-    ///
-    /// ## Panics
-    ///
-    /// Array is empty. Range is empty.
-    ///
-    /// `<T as TreeLike>::as_node` returns `Tree::Nary` with an empty array.
-    // FIXME: Remove recursion
-    fn array(array: Arc<[T]>, range: Range<usize>) -> Self {
-        assert!(!array.is_empty(), "Arrays must be nonempty");
-        match range.len() {
-            0 => panic!("Range must be nonempty"),
-            1 => Self::normal(array[range.start].clone()),
-            _ => Self::Array(array, range),
-        }
-    }
-}
-
-impl<T: TreeLike> TreeLike for BinaryTree<T> {
-    /// # Panics
-    ///
-    /// `<T as TreeLike>::as_node` returns `Tree::Nary` with an empty array.
-    fn as_node(&self) -> Tree<Self> {
-        match &self.0 {
-            BinaryTreeInner::Normal(tree) => match tree.as_node() {
-                Tree::Nullary => Tree::Nullary,
-                Tree::Unary(l) => Tree::Unary(Self(BinaryTreeInner::normal(l))),
-                Tree::Binary(l, r) => Tree::Binary(
-                    Self(BinaryTreeInner::normal(l)),
-                    Self(BinaryTreeInner::normal(r)),
-                ),
-                Tree::Nary(array) => {
-                    let range = 0..array.len();
-                    Self(BinaryTreeInner::array(array, range)).as_node()
-                }
-            },
-            BinaryTreeInner::Array(array, range) => {
-                debug_assert!(2 <= range.len());
-                let n = range.len();
-                let next_pow2 = n.next_power_of_two();
-                let half = next_pow2 / 2;
-                let left = Self(BinaryTreeInner::array(
-                    Arc::clone(array),
-                    range.start..range.start + half,
-                ));
-                let right = Self(BinaryTreeInner::array(
-                    Arc::clone(array),
-                    range.start + half..range.end,
-                ));
-                Tree::Binary(left, right)
-            }
-        }
-    }
-}
-
-impl<T: TreeLike + fmt::Display> fmt::Display for BinaryTree<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.0 {
-            BinaryTreeInner::Normal(tree) => write!(f, "{tree}"),
-            BinaryTreeInner::Array(..) => write!(f, "."),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -339,7 +191,8 @@ mod tests {
     #[test]
     #[rustfmt::skip]
     fn fold_btree_slice() {
-        let slice_output: [(&[&str], &str); 8] = [
+        let slice_output: [(&[&str], &str); 9] = [
+            (&[], ""),
             (&["a"], "a"),
             (&["a", "b"], "(ab)"),
             (&["a", "b", "c"], "((ab)c)"),
@@ -354,7 +207,7 @@ mod tests {
         for (slice, expected_output) in slice_output {
             let vector: Vec<_> = slice.iter().map(|s| s.to_string()).collect();
             let tree = BTreeSlice::from_slice(&vector);
-            let output = tree.fold(concat);
+            let output = tree.fold(concat).unwrap_or_default();
             assert_eq!(&output, expected_output);
         }
     }
@@ -409,29 +262,25 @@ mod tests {
                 BasePattern::product(a_.clone(), b_.clone()),
             ),
             // [a] = a
-            (Pattern::array([a.clone()]).unwrap(), a_.clone()),
+            (Pattern::array([a.clone()]), a_.clone()),
             // [[a]] = a
-            (
-                Pattern::array([Pattern::array([a.clone()]).unwrap()]).unwrap(),
-                a_.clone(),
-            ),
+            (Pattern::array([Pattern::array([a.clone()])]), a_.clone()),
             // [a b] = (a, b)
             (
-                Pattern::array([a.clone(), b.clone()]).unwrap(),
+                Pattern::array([a.clone(), b.clone()]),
                 BasePattern::product(a_.clone(), b_.clone()),
             ),
             // [a b c] = ((a, b), c)
             (
-                Pattern::array([a.clone(), b.clone(), c.clone()]).unwrap(),
+                Pattern::array([a.clone(), b.clone(), c.clone()]),
                 BasePattern::product(BasePattern::product(a_.clone(), b_.clone()), c_.clone()),
             ),
             // [[a, b], [c, d]] = ((a, b), (c, d))
             (
                 Pattern::array([
-                    Pattern::array([a.clone(), b.clone()]).unwrap(),
-                    Pattern::array([c.clone(), d.clone()]).unwrap(),
-                ])
-                .unwrap(),
+                    Pattern::array([a.clone(), b.clone()]),
+                    Pattern::array([c.clone(), d.clone()]),
+                ]),
                 BasePattern::product(BasePattern::product(a_, b_), BasePattern::product(c_, d_)),
             ),
         ];

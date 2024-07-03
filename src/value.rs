@@ -222,15 +222,7 @@ pub trait ValueConstructible: Sized + From<Option<Self>> + From<bool> + From<UIn
     }
 
     /// Create an array from the given `elements`.
-    ///
-    /// ## Nonemptiness
-    ///
-    /// There must be at least one element.
-    ///
-    /// ## Errors
-    ///
-    /// Returns [`None`] if there are no elements.
-    fn array<I: IntoIterator<Item = Self>>(elements: I) -> Option<Self>;
+    fn array<I: IntoIterator<Item = Self>>(elements: I) -> Self;
 
     /// Create `bound`ed list from the given `elements`.
     ///
@@ -262,10 +254,13 @@ pub enum Value {
     ///
     /// Each component may have a different type.
     Tuple(Arc<[Self]>),
-    /// Nonempty array of values.
-    // FIXME: Prevent construction of invalid arrays (that are empty)
+    /// Array of values.
+    ///
+    /// Each element must have the same type.
     Array(Arc<[Self]>),
     /// Bounded list of values.
+    ///
+    /// Each element must have the same type.
     // FIXME: Prevent construction of invalid lists (that run out of bounds)
     List(Arc<[Self]>, NonZeroPow2Usize),
 }
@@ -329,7 +324,12 @@ impl fmt::Display for Value {
                     }
                 },
                 Value::Array(elements) => match data.n_children_yielded {
-                    0 => f.write_str("[")?,
+                    0 => {
+                        f.write_str("[")?;
+                        if 0 == elements.len() {
+                            f.write_str("]")?;
+                        }
+                    }
                     n if n == elements.len() => {
                         f.write_str("]")?;
                     }
@@ -368,12 +368,8 @@ impl ValueConstructible for Value {
         Self::Tuple(elements.into_iter().collect())
     }
 
-    fn array<I: IntoIterator<Item = Self>>(elements: I) -> Option<Self> {
-        let elements: Arc<[Self]> = elements.into_iter().collect();
-        match elements.is_empty() {
-            false => Some(Self::Array(elements)),
-            true => None,
-        }
+    fn array<I: IntoIterator<Item = Self>>(elements: I) -> Self {
+        Self::Array(elements.into_iter().collect())
     }
 
     fn list<I: IntoIterator<Item = Self>>(elements: I, bound: NonZeroPow2Usize) -> Option<Self> {
@@ -428,9 +424,7 @@ impl Value {
                 (Value::Tuple(val_el), TypeInner::Tuple(ty_el)) if val_el.len() == ty_el.len() => {
                     stack.extend(val_el.iter().zip(ty_el.iter().map(Arc::as_ref)));
                 }
-                (Value::Array(val_el), TypeInner::Array(ty_el, size))
-                    if val_el.len() == size.get() =>
-                {
+                (Value::Array(val_el), TypeInner::Array(ty_el, size)) if val_el.len() == *size => {
                     stack.extend(val_el.iter().zip(std::iter::repeat(ty_el.as_ref())));
                 }
                 (Value::List(val_el, val_bound), TypeInner::List(ty_el, ty_bound))
@@ -528,13 +522,8 @@ impl ValueConstructible for StructuralValue {
 
     fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
         let elements: Vec<Self> = elements.into_iter().collect();
-        match elements.is_empty() {
-            true => Self::unit(),
-            false => {
-                let tree = BTreeSlice::from_slice(&elements);
-                tree.fold(Self::product)
-            }
-        }
+        let tree = BTreeSlice::from_slice(&elements);
+        tree.fold(Self::product).unwrap_or_else(Self::unit)
     }
 
     // Keep this implementation to prevent an infinite loop in <Self as ValueConstructible>::tuple
@@ -547,13 +536,10 @@ impl ValueConstructible for StructuralValue {
         Self(SimValue::prod(left.0, right.0))
     }
 
-    fn array<I: IntoIterator<Item = Self>>(elements: I) -> Option<Self> {
+    fn array<I: IntoIterator<Item = Self>>(elements: I) -> Self {
         let elements: Vec<Self> = elements.into_iter().collect();
-        if elements.is_empty() {
-            return None;
-        }
         let tree = BTreeSlice::from_slice(&elements);
-        Some(tree.fold(Self::product))
+        tree.fold(Self::product).unwrap_or_else(Self::unit)
     }
 
     fn list<I: IntoIterator<Item = Self>>(elements: I, bound: NonZeroPow2Usize) -> Option<Self> {
@@ -563,12 +549,9 @@ impl ValueConstructible for StructuralValue {
         }
         let partition = Partition::from_slice(&elements, bound.get() / 2);
         let process = |block: &[Self]| -> Self {
-            if block.is_empty() {
-                return Self::from(None);
-            }
             let tree = BTreeSlice::from_slice(block);
-            let array = tree.fold(Self::product);
-            Self::from(Some(array))
+            let maybe_array = tree.fold(Self::product);
+            Self::from(maybe_array)
         };
         Some(partition.fold(process, Self::product))
     }
@@ -636,10 +619,9 @@ impl<'a> From<&'a Value> for StructuralValue {
                 }
                 Value::Array(_) => {
                     let size = data.node.n_children();
-                    debug_assert!(0 < size);
                     let elements = output.split_off(output.len() - size);
                     debug_assert_eq!(elements.len(), size);
-                    output.push(Self::array(elements).unwrap());
+                    output.push(Self::array(elements));
                 }
                 Value::List(_, bound) => {
                     let size = data.node.n_children();
@@ -683,7 +665,9 @@ mod tests {
             Value::from(UIntValue::U16(1337)),
         ]);
         assert_eq!("(1, 42, 1337)", &triple.to_string());
-        let array = Value::array([Value::unit(), Value::unit(), Value::unit()]).unwrap();
+        let empty_array = Value::array([]);
+        assert_eq!("[]", &empty_array.to_string());
+        let array = Value::array([Value::unit(), Value::unit(), Value::unit()]);
         assert_eq!("[(), (), ()]", &array.to_string());
         let list = Value::list([Value::unit()], NonZeroPow2Usize::TWO).unwrap();
         assert_eq!("list![()]", &list.to_string());

@@ -60,3 +60,5 @@ let [l, m, n]: [u32; 3] = [1, 2, 3];
 jet_verify(jet_eq_32(1, l));
 jet_verify(jet_eq_32(2, m));
 jet_verify(jet_eq_32(3, n));
+let empty: [u8; 0] = [];
+let []: [u8; 0] = empty;
