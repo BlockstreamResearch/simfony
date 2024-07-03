@@ -150,6 +150,7 @@ pub enum Error {
     IntegerOutOfBounds(UIntType),
     UndefinedVariable(Identifier),
     UndefinedAlias(Identifier),
+    VariableReuseInPattern(Identifier),
 }
 
 #[rustfmt::skip]
@@ -203,6 +204,10 @@ impl fmt::Display for Error {
             Error::UndefinedAlias(identifier) => write!(
                 f,
                 "Type alias `{identifier}` is not defined"
+            ),
+            Error::VariableReuseInPattern(identifier) => write!(
+                f,
+                "Variable `{identifier}` is used twice in the pattern"
             ),
         }
     }
