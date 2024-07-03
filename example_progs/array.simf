@@ -11,9 +11,6 @@ let i: [u256; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
 let []: [u1; 0] = a;
 
 let [d0, d1, d2]: [u8; 3] = d;
-let one: u8 = 1;
-let two: u8 = 2;
-let three: u8 = 3;
-jet_verify(jet_eq_8(d0, one));
-jet_verify(jet_eq_8(d1, two));
-jet_verify(jet_eq_8(d2, three));
+jet_verify(jet_eq_8(d0, 1));
+jet_verify(jet_eq_8(d1, 2));
+jet_verify(jet_eq_8(d2, 3));
