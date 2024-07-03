@@ -1,11 +1,99 @@
+use std::fmt;
 use std::sync::Arc;
 
 use miniscript::iter::{Tree, TreeLike};
 
 use crate::array::BTreeSlice;
 use crate::named::{PairBuilder, SelectorBuilder};
-use crate::parse::{Identifier, Pattern};
+use crate::parse::Identifier;
 use crate::ProgNode;
+
+/// Pattern for binding values to variables.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum Pattern {
+    /// Match any value and bind it to variable name.
+    Identifier(Identifier),
+    /// Match any value but ignore it.
+    Ignore,
+    /// Recursively match the components of a tuple value
+    Tuple(Arc<[Self]>),
+    /// Recursively match the elements of an array value.
+    Array(Arc<[Self]>),
+}
+
+impl Pattern {
+    /// Construct a product pattern.
+    pub fn product(l: Self, r: Self) -> Self {
+        Self::tuple([l, r])
+    }
+
+    /// Construct a tuple pattern.
+    pub fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
+        Self::Tuple(elements.into_iter().collect())
+    }
+
+    /// Construct an array pattern.
+    pub fn array<I: IntoIterator<Item = Self>>(elements: I) -> Self {
+        Self::Array(elements.into_iter().collect())
+    }
+}
+
+impl<'a> TreeLike for &'a Pattern {
+    fn as_node(&self) -> Tree<Self> {
+        match self {
+            Pattern::Identifier(_) | Pattern::Ignore => Tree::Nullary,
+            Pattern::Tuple(elements) | Pattern::Array(elements) => {
+                Tree::Nary(elements.iter().collect())
+            }
+        }
+    }
+}
+
+impl fmt::Display for Pattern {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for data in self.verbose_pre_order_iter() {
+            match data.node {
+                Pattern::Identifier(i) => write!(f, "{i}")?,
+                Pattern::Ignore => write!(f, "_")?,
+                Pattern::Tuple(elements) => match data.n_children_yielded {
+                    0 => {
+                        f.write_str("(")?;
+                        if 0 == elements.len() {
+                            f.write_str(")")?;
+                        }
+                    }
+                    n if n == elements.len() => {
+                        if n == 1 {
+                            f.write_str(",")?;
+                        }
+                        f.write_str(")")?;
+                    }
+                    n => {
+                        debug_assert!(n < elements.len());
+                        f.write_str(", ")?
+                    }
+                },
+                Pattern::Array(elements) => match data.n_children_yielded {
+                    0 => {
+                        f.write_str("[")?;
+                        if 0 == elements.len() {
+                            f.write_str("]")?;
+                        }
+                    }
+                    n if n == elements.len() => {
+                        f.write_str("]")?;
+                    }
+                    n => {
+                        debug_assert!(n < elements.len());
+                        f.write_str(", ")?;
+                    }
+                },
+            }
+        }
+
+        Ok(())
+    }
+}
 
 /// Basic structure of a Simfony value for pattern matching.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]

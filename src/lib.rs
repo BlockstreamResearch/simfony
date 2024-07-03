@@ -32,7 +32,8 @@ use crate::{
     compile::GlobalScope,
     error::{RichError, WithFile},
     named::{NamedCommitNode, NamedExt},
-    parse::{Pattern, PestParse, Program},
+    parse::{PestParse, Program},
+    pattern::Pattern,
 };
 
 #[derive(Parser)]

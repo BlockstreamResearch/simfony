@@ -8,8 +8,8 @@ use simplicity::{jet::Elements, Cmr, FailEntropy};
 
 use crate::array::{BTreeSlice, Partition};
 use crate::num::NonZeroPow2Usize;
-use crate::parse::{Identifier, Match, Pattern, SingleExpressionInner, Span};
-use crate::pattern::BasePattern;
+use crate::parse::{Identifier, Match, SingleExpressionInner, Span};
+use crate::pattern::{BasePattern, Pattern};
 use crate::types::AliasedType;
 use crate::value::{StructuralValue, UIntValue};
 use crate::{
