@@ -9,7 +9,7 @@ pub mod error;
 pub mod named;
 pub mod num;
 pub mod parse;
-pub mod scope;
+pub mod pattern;
 pub mod types;
 pub mod value;
 
@@ -29,10 +29,10 @@ pub extern crate simplicity;
 pub use simplicity::elements;
 
 use crate::{
+    compile::GlobalScope,
     error::{RichError, WithFile},
     named::{NamedCommitNode, NamedExt},
     parse::{Pattern, PestParse, Program},
-    scope::GlobalScope,
 };
 
 #[derive(Parser)]
