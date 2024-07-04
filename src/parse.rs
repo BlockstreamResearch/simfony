@@ -3,6 +3,7 @@
 
 use std::fmt;
 use std::num::NonZeroUsize;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use either::Either;
@@ -12,7 +13,7 @@ use simplicity::elements::hex::FromHex;
 use crate::error::{Error, RichError, WithSpan};
 use crate::num::NonZeroPow2Usize;
 use crate::pattern::Pattern;
-use crate::types::{AliasedType, TypeConstructible, UIntType};
+use crate::types::{AliasedType, BuiltinAlias, TypeConstructible, UIntType};
 use crate::Rule;
 
 /// Position of an object inside a file.
@@ -899,9 +900,14 @@ impl PestParse for AliasedType {
 
         for data in pair.post_order_iter() {
             match data.node.0.as_rule() {
-                Rule::identifier => {
-                    let identifier = Identifier::parse(data.node.0)?;
+                Rule::alias_name => {
+                    let pair = data.node.0.into_inner().next().unwrap();
+                    let identifier = Identifier::parse(pair)?;
                     output.push(Item::Type(AliasedType::alias(identifier)));
+                }
+                Rule::builtin_alias => {
+                    let builtin = BuiltinAlias::parse(data.node.0)?;
+                    output.push(Item::Type(AliasedType::builtin(builtin)));
                 }
                 Rule::unsigned_type => {
                     let uint_ty = UIntType::parse(data.node.0)?;
@@ -981,6 +987,15 @@ impl PestParse for UIntType {
     }
 }
 
+impl PestParse for BuiltinAlias {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
+        assert!(matches!(pair.as_rule(), Rule::builtin_alias));
+        Self::from_str(pair.as_str())
+            .map_err(Error::CannotParse)
+            .with_span(&pair)
+    }
+}
+
 /// Pair of tokens from the 'pattern' rule.
 #[derive(Clone, Debug)]
 struct PatternPair<'a>(pest::iterators::Pair<'a, Rule>);
@@ -1015,7 +1030,8 @@ impl<'a> TreeLike for TyPair<'a> {
             | Rule::unsigned_type
             | Rule::array_size
             | Rule::list_bound
-            | Rule::identifier => Tree::Nullary,
+            | Rule::alias_name
+            | Rule::builtin_alias => Tree::Nullary,
             Rule::ty | Rule::option_type => {
                 let l = it.next().unwrap();
                 Tree::Unary(TyPair(l))

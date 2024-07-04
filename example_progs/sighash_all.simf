@@ -9,8 +9,6 @@
  * the value that was returned from the dedicated jet.
  */
 
-type Ctx8 = (List<u8, 64>, (u64, u256));
-
 // jet_sig_all_hash
 let ctx: Ctx8 = jet_sha_256_ctx_8_init();
 let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_genesis_block_hash());
