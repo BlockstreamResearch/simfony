@@ -122,6 +122,30 @@ impl UIntValue {
             UIntType::U256 => s.parse::<U256>().map_err(Error::from).map(Self::U256),
         }
     }
+
+    /// Create an integer of the given typed from a bit string.
+    pub fn parse_bits(bits: &Bits, ty: UIntType) -> Result<Self, Error> {
+        let value = Self::from(bits);
+        match value.is_of_type(ty) {
+            true => Ok(value),
+            false => Err(Error::ExpressionTypeMismatch(
+                ty.into(),
+                value.get_type().into(),
+            )),
+        }
+    }
+
+    /// Create an integer of the given typed from a byte string.
+    pub fn parse_bytes(bytes: &Bytes, ty: UIntType) -> Result<Self, Error> {
+        let value = Self::from(bytes);
+        match value.is_of_type(ty) {
+            true => Ok(value),
+            false => Err(Error::ExpressionTypeMismatch(
+                ty.into(),
+                value.get_type().into(),
+            )),
+        }
+    }
 }
 
 impl From<u8> for UIntValue {
