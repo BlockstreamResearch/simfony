@@ -185,8 +185,8 @@ impl<'a, A: Clone> TreeLike for Partition<'a, A> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parse::{Identifier, Pattern};
-    use crate::scope::BasePattern;
+    use crate::parse::Identifier;
+    use crate::pattern::{BasePattern, Pattern};
 
     #[test]
     #[rustfmt::skip]

@@ -5,12 +5,13 @@ use std::fmt;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
+use either::Either;
 use miniscript::iter::{Tree, TreeLike};
 use simplicity::elements::hex::FromHex;
-use simplicity::Value;
 
 use crate::error::{Error, RichError, WithSpan};
-use crate::num::{NonZeroPow2Usize, U256};
+use crate::num::NonZeroPow2Usize;
+use crate::pattern::Pattern;
 use crate::types::{AliasedType, TypeConstructible, UIntType};
 use crate::Rule;
 
@@ -103,93 +104,6 @@ pub enum Statement {
     Expression(Expression),
     /// A type alias.
     TypeAlias(TypeAlias),
-}
-
-/// Pattern for binding values to variables.
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub enum Pattern {
-    /// Match any value and bind it to variable name.
-    Identifier(Identifier),
-    /// Match any value but ignore it.
-    Ignore,
-    /// Recursively match the components of a tuple value
-    Tuple(Arc<[Self]>),
-    /// Recursively match the elements of an array value.
-    Array(Arc<[Self]>),
-}
-
-impl Pattern {
-    /// Construct a product pattern.
-    pub fn product(l: Self, r: Self) -> Self {
-        Self::tuple([l, r])
-    }
-
-    /// Construct a tuple pattern.
-    pub fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
-        Self::Tuple(elements.into_iter().collect())
-    }
-
-    /// Construct an array pattern.
-    pub fn array<I: IntoIterator<Item = Self>>(elements: I) -> Self {
-        Self::Array(elements.into_iter().collect())
-    }
-}
-
-impl<'a> TreeLike for &'a Pattern {
-    fn as_node(&self) -> Tree<Self> {
-        match self {
-            Pattern::Identifier(_) | Pattern::Ignore => Tree::Nullary,
-            Pattern::Tuple(elements) | Pattern::Array(elements) => {
-                Tree::Nary(elements.iter().collect())
-            }
-        }
-    }
-}
-
-impl fmt::Display for Pattern {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for data in self.verbose_pre_order_iter() {
-            match data.node {
-                Pattern::Identifier(i) => write!(f, "{i}")?,
-                Pattern::Ignore => write!(f, "_")?,
-                Pattern::Tuple(elements) => match data.n_children_yielded {
-                    0 => {
-                        f.write_str("(")?;
-                        if 0 == elements.len() {
-                            f.write_str(")")?;
-                        }
-                    }
-                    n if n == elements.len() => {
-                        if n == 1 {
-                            f.write_str(",")?;
-                        }
-                        f.write_str(")")?;
-                    }
-                    n => {
-                        debug_assert!(n < elements.len());
-                        f.write_str(", ")?
-                    }
-                },
-                Pattern::Array(elements) => match data.n_children_yielded {
-                    0 => {
-                        f.write_str("[")?;
-                        if 0 == elements.len() {
-                            f.write_str("]")?;
-                        }
-                    }
-                    n if n == elements.len() => {
-                        f.write_str("]")?;
-                    }
-                    n => {
-                        debug_assert!(n < elements.len());
-                        f.write_str(", ")?;
-                    }
-                },
-            }
-        }
-
-        Ok(())
-    }
 }
 
 /// Identifier of a variable.
@@ -307,23 +221,17 @@ pub struct SingleExpression {
 /// The kind of single expression.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum SingleExpressionInner {
-    /// Left wrapper expression
-    Left(Arc<Expression>),
-    /// Right wrapper expression
-    Right(Arc<Expression>),
-    /// None literal expression
-    None,
-    /// Some wrapper expression
-    Some(Arc<Expression>),
-    /// False literal expression
-    False,
-    /// True literal expression
-    True,
-    /// Unsigned integer literal expression
-    UnsignedInteger(UnsignedDecimal),
-    /// Bit string literal expression
+    /// Either wrapper expression
+    Either(Either<Arc<Expression>, Arc<Expression>>),
+    /// Option wrapper expression
+    Option(Option<Arc<Expression>>),
+    /// Boolean literal expression
+    Boolean(bool),
+    /// Unsigned integer literal in decimal representation
+    Decimal(UnsignedDecimal),
+    /// Unsigned integer literal in bit string representation
     BitString(Bits),
-    /// Byte string literal expression
+    /// Unsigned integer literal in byte string representation
     ByteString(Bytes),
     /// Witness identifier expression
     Witness(WitnessName),
@@ -440,16 +348,6 @@ impl Bits {
             _ => None,
         }
     }
-
-    /// Convert the bit string into a Simplicity type.
-    pub fn to_simplicity(&self) -> Arc<Value> {
-        match &self.0 {
-            BitsInner::U1(byte) => Value::u1(*byte),
-            BitsInner::U2(byte) => Value::u2(*byte),
-            BitsInner::U4(byte) => Value::u4(*byte),
-            BitsInner::Long(bytes) => Value::power_of_two(bytes),
-        }
-    }
 }
 
 /// Byte string whose length is a power of two.
@@ -462,13 +360,6 @@ pub struct Bytes(Arc<[u8]>);
 impl AsRef<[u8]> for Bytes {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
-    }
-}
-
-impl Bytes {
-    /// Convert the byte string into a Simplicity value.
-    pub fn to_simplicity(&self) -> Arc<Value> {
-        Value::power_of_two(self.0.as_ref())
     }
 }
 
@@ -565,28 +456,6 @@ impl fmt::Display for MatchPattern {
             MatchPattern::False => write!(f, "false"),
             MatchPattern::True => write!(f, "true"),
         }
-    }
-}
-
-impl UIntType {
-    /// Parse a decimal string for the type.
-    pub fn parse_decimal(&self, decimal: &UnsignedDecimal) -> Result<Arc<Value>, Error> {
-        if let UIntType::U256 = self {
-            let u256 = decimal.as_inner().parse::<U256>().map_err(Error::from)?;
-            return Ok(Value::u256_from_slice(u256.as_ref()));
-        }
-        match self {
-            UIntType::U1 => decimal.as_inner().parse::<u8>().map(Value::u1),
-            UIntType::U2 => decimal.as_inner().parse::<u8>().map(Value::u2),
-            UIntType::U4 => decimal.as_inner().parse::<u8>().map(Value::u4),
-            UIntType::U8 => decimal.as_inner().parse::<u8>().map(Value::u8),
-            UIntType::U16 => decimal.as_inner().parse::<u16>().map(Value::u16),
-            UIntType::U32 => decimal.as_inner().parse::<u32>().map(Value::u32),
-            UIntType::U64 => decimal.as_inner().parse::<u64>().map(Value::u64),
-            UIntType::U128 => decimal.as_inner().parse::<u128>().map(Value::u128),
-            UIntType::U256 => unreachable!("Covered by previous if-let"),
-        }
-        .map_err(Error::from)
     }
 }
 
@@ -775,24 +644,33 @@ impl PestParse for SingleExpression {
         let inner = match inner_pair.as_rule() {
             Rule::left_expr => {
                 let l = inner_pair.into_inner().next().unwrap();
-                SingleExpressionInner::Left(Expression::parse(l).map(Arc::new)?)
+                Expression::parse(l)
+                    .map(Arc::new)
+                    .map(Either::Left)
+                    .map(SingleExpressionInner::Either)?
             }
             Rule::right_expr => {
                 let r = inner_pair.into_inner().next().unwrap();
-                SingleExpressionInner::Right(Expression::parse(r).map(Arc::new)?)
+                Expression::parse(r)
+                    .map(Arc::new)
+                    .map(Either::Right)
+                    .map(SingleExpressionInner::Either)?
             }
-            Rule::none_expr => SingleExpressionInner::None,
+            Rule::none_expr => SingleExpressionInner::Option(None),
             Rule::some_expr => {
                 let r = inner_pair.into_inner().next().unwrap();
-                SingleExpressionInner::Some(Expression::parse(r).map(Arc::new)?)
+                Expression::parse(r)
+                    .map(Arc::new)
+                    .map(Some)
+                    .map(SingleExpressionInner::Option)?
             }
-            Rule::false_expr => SingleExpressionInner::False,
-            Rule::true_expr => SingleExpressionInner::True,
+            Rule::false_expr => SingleExpressionInner::Boolean(false),
+            Rule::true_expr => SingleExpressionInner::Boolean(true),
             Rule::call_expr => SingleExpressionInner::Call(Call::parse(inner_pair)?),
-            Rule::bit_string => SingleExpressionInner::BitString(Bits::parse(inner_pair)?),
-            Rule::byte_string => SingleExpressionInner::ByteString(Bytes::parse(inner_pair)?),
-            Rule::unsigned_integer => {
-                SingleExpressionInner::UnsignedInteger(UnsignedDecimal::parse(inner_pair)?)
+            Rule::bit_string => Bits::parse(inner_pair).map(SingleExpressionInner::BitString)?,
+            Rule::byte_string => Bytes::parse(inner_pair).map(SingleExpressionInner::ByteString)?,
+            Rule::unsigned_decimal => {
+                UnsignedDecimal::parse(inner_pair).map(SingleExpressionInner::Decimal)?
             }
             Rule::witness_expr => {
                 let witness_pair = inner_pair.into_inner().next().unwrap();
@@ -834,7 +712,7 @@ impl PestParse for SingleExpression {
 
 impl PestParse for UnsignedDecimal {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Rule::unsigned_integer));
+        assert!(matches!(pair.as_rule(), Rule::unsigned_decimal));
         let decimal = Arc::from(pair.as_str().replace('_', ""));
         Ok(Self(decimal))
     }

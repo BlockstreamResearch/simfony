@@ -1,6 +1,7 @@
 use std::fmt;
 use std::sync::Arc;
 
+use either::Either;
 use miniscript::iter::{Tree, TreeLike};
 use simplicity::Value as SimValue;
 
@@ -198,13 +199,9 @@ impl<'a> From<&'a Bytes> for UIntValue {
 }
 
 /// Various value constructors.
-pub trait ValueConstructible: Sized + From<Option<Self>> + From<bool> + From<UIntValue> {
-    /// Create the left value `Either::Left(inner)`.
-    fn left(inner: Self) -> Self;
-
-    /// Create the right value `Either::Right(inner)`.
-    fn right(inner: Self) -> Self;
-
+pub trait ValueConstructible:
+    Sized + From<Option<Self>> + From<Either<Self, Self>> + From<bool> + From<UIntValue>
+{
     /// Create a tuple from the given `elements`.
     ///
     /// The empty tuple is the unit value.
@@ -241,9 +238,7 @@ pub trait ValueConstructible: Sized + From<Option<Self>> + From<bool> + From<UIn
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Value {
     /// Left value.
-    Left(Arc<Self>),
-    /// Right value.
-    Right(Arc<Self>),
+    Either(Either<Arc<Self>, Arc<Self>>),
     /// Option value.
     Option(Option<Arc<Self>>),
     /// Boolean value.
@@ -269,7 +264,9 @@ impl<'a> TreeLike for &'a Value {
     fn as_node(&self) -> Tree<Self> {
         match self {
             Value::Option(None) | Value::Boolean(_) | Value::UInt(_) => Tree::Nullary,
-            Value::Left(l) | Value::Right(l) | Value::Option(Some(l)) => Tree::Unary(l),
+            Value::Either(Either::Left(l))
+            | Value::Either(Either::Right(l))
+            | Value::Option(Some(l)) => Tree::Unary(l),
             Value::Tuple(elements) | Value::Array(elements) | Value::List(elements, _) => {
                 Tree::Nary(elements.iter().collect())
             }
@@ -281,23 +278,21 @@ impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for data in self.verbose_pre_order_iter() {
             match &data.node {
-                Value::Left(_) => match data.n_children_yielded {
-                    0 => f.write_str("Left(")?,
+                Value::Either(either) => match data.n_children_yielded {
+                    0 => match either {
+                        Either::Left(..) => f.write_str("Left(")?,
+                        Either::Right(..) => f.write_str("Right(")?,
+                    },
                     n => {
                         debug_assert_eq!(n, 1);
                         f.write_str(")")?;
                     }
                 },
-                Value::Right(_) => match data.n_children_yielded {
-                    0 => f.write_str("Right(")?,
-                    n => {
-                        debug_assert_eq!(n, 1);
-                        f.write_str(")")?;
-                    }
-                },
-                Value::Option(None) => f.write_str("None")?,
-                Value::Option(Some(_)) => match data.n_children_yielded {
-                    0 => f.write_str("Some(")?,
+                Value::Option(option) => match data.n_children_yielded {
+                    0 => match option {
+                        None => f.write_str("None")?,
+                        Some(..) => f.write_str("Some(")?,
+                    },
                     n => {
                         debug_assert_eq!(n, 1);
                         f.write_str(")")?;
@@ -356,14 +351,6 @@ impl fmt::Display for Value {
 }
 
 impl ValueConstructible for Value {
-    fn left(inner: Self) -> Self {
-        Self::Left(Arc::new(inner))
-    }
-
-    fn right(inner: Self) -> Self {
-        Self::Right(Arc::new(inner))
-    }
-
     fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
         Self::Tuple(elements.into_iter().collect())
     }
@@ -384,6 +371,12 @@ impl ValueConstructible for Value {
 impl From<Option<Self>> for Value {
     fn from(value: Option<Self>) -> Self {
         Self::Option(value.map(Arc::new))
+    }
+}
+
+impl From<Either<Self, Self>> for Value {
+    fn from(value: Either<Self, Self>) -> Self {
+        Self::Either(value.map(Arc::new))
     }
 }
 
@@ -416,8 +409,8 @@ impl Value {
                 (Value::Boolean(_), TypeInner::Boolean)
                 | (Value::UInt(_), TypeInner::UInt(_))
                 | (Value::Option(None), TypeInner::Option(_)) => {}
-                (Value::Left(val_l), TypeInner::Either(ty_l, _))
-                | (Value::Right(val_l), TypeInner::Either(_, ty_l))
+                (Value::Either(Either::Left(val_l)), TypeInner::Either(ty_l, _))
+                | (Value::Either(Either::Right(val_l)), TypeInner::Either(_, ty_l))
                 | (Value::Option(Some(val_l)), TypeInner::Option(ty_l)) => {
                     stack.push((val_l, ty_l))
                 }
@@ -512,14 +505,6 @@ impl TreeLike for StructuralValue {
 }
 
 impl ValueConstructible for StructuralValue {
-    fn left(inner: Self) -> Self {
-        Self(SimValue::sum_l(inner.0))
-    }
-
-    fn right(inner: Self) -> Self {
-        Self(SimValue::sum_r(inner.0))
-    }
-
     fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
         let elements: Vec<Self> = elements.into_iter().collect();
         let tree = BTreeSlice::from_slice(&elements);
@@ -560,8 +545,17 @@ impl ValueConstructible for StructuralValue {
 impl From<Option<Self>> for StructuralValue {
     fn from(value: Option<Self>) -> Self {
         match value {
-            None => Self::left(Self::unit()),
-            Some(inner) => Self::right(inner),
+            None => Self(SimValue::sum_l(SimValue::unit())),
+            Some(inner) => Self(SimValue::sum_r(inner.0)),
+        }
+    }
+}
+
+impl From<Either<Self, Self>> for StructuralValue {
+    fn from(value: Either<Self, Self>) -> Self {
+        match value {
+            Either::Left(left) => Self(SimValue::sum_l(left.0)),
+            Either::Right(right) => Self(SimValue::sum_r(right.0)),
         }
     }
 }
@@ -569,8 +563,8 @@ impl From<Option<Self>> for StructuralValue {
 impl From<bool> for StructuralValue {
     fn from(value: bool) -> Self {
         match value {
-            false => Self::left(Self::unit()),
-            true => Self::right(Self::unit()),
+            false => Self(SimValue::sum_l(SimValue::unit())),
+            true => Self(SimValue::sum_r(SimValue::unit())),
         }
     }
 }
@@ -596,13 +590,13 @@ impl<'a> From<&'a Value> for StructuralValue {
         let mut output = vec![];
         for data in value.post_order_iter() {
             match &data.node {
-                Value::Left(_) => {
+                Value::Either(Either::Left(_)) => {
                     let inner = output.pop().unwrap();
-                    output.push(Self::left(inner));
+                    output.push(Self::from(Either::Left(inner)));
                 }
-                Value::Right(_) => {
+                Value::Either(Either::Right(_)) => {
                     let inner = output.pop().unwrap();
-                    output.push(Self::right(inner));
+                    output.push(Self::from(Either::Right(inner)));
                 }
                 Value::Option(None) => output.push(Self::from(None)),
                 Value::Option(Some(_)) => {

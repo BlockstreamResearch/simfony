@@ -1,170 +1,97 @@
-use std::collections::HashMap;
+use std::fmt;
 use std::sync::Arc;
 
 use miniscript::iter::{Tree, TreeLike};
 
 use crate::array::BTreeSlice;
 use crate::named::{PairBuilder, SelectorBuilder};
-use crate::parse::{Identifier, Pattern};
-use crate::types::{AliasedType, ResolvedType};
+use crate::parse::Identifier;
 use crate::ProgNode;
 
-/// Each Simfony expression expects an _input value_.
-/// A Simfony expression is translated into a Simplicity expression
-/// that similarly expects an _input value_.
-///
-/// Simfony variable names are translated into Simplicity expressions
-/// that extract the seeked value from the _input value_.
-///
-/// Each (nested) block expression introduces a new scope.
-/// Bindings from inner scopes overwrite bindings from outer scopes.
-/// Bindings live as long as their scope.
-#[derive(Debug, Clone)]
-pub struct GlobalScope {
-    /// For each scope, the set of assigned variables.
-    ///
-    /// A stack of scopes. Each scope is a stack of patterns.
-    /// New patterns are pushed onto the top _(current, innermost)_ scope.
-    ///
-    /// ## Input pattern
-    ///
-    /// The stack of scopes corresponds to an _input pattern_.
-    /// All valid input values match the input pattern.
-    ///
-    /// ## Example
-    ///
-    /// The stack `[[p1], [p2, p3]]` corresponds to a nested product pattern:
-    ///
-    /// ```text
-    ///    .
-    ///   / \
-    /// p3   .
-    ///     / \
-    ///   p2   p1
-    /// ```
-    ///
-    /// Inner scopes occur higher in the tree than outer scopes.
-    /// Later assignments occur higher in the tree than earlier assignments.
-    /// ```
-    variables: Vec<Vec<Pattern>>,
-    /// For each scope, the mapping of type aliases to resolved types.
-    aliases: Vec<HashMap<Identifier, ResolvedType>>,
+/// Pattern for binding values to variables.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum Pattern {
+    /// Match any value and bind it to variable name.
+    Identifier(Identifier),
+    /// Match any value but ignore it.
+    Ignore,
+    /// Recursively match the components of a tuple value
+    Tuple(Arc<[Self]>),
+    /// Recursively match the elements of an array value.
+    Array(Arc<[Self]>),
 }
 
-impl GlobalScope {
-    /// Create a new [`GlobalScope`] for an `input` value that matches the pattern.
-    pub fn new(input: Pattern) -> Self {
-        GlobalScope {
-            variables: vec![vec![input]],
-            aliases: vec![HashMap::new()],
+impl Pattern {
+    /// Construct a product pattern.
+    pub fn product(l: Self, r: Self) -> Self {
+        Self::tuple([l, r])
+    }
+
+    /// Construct a tuple pattern.
+    pub fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
+        Self::Tuple(elements.into_iter().collect())
+    }
+
+    /// Construct an array pattern.
+    pub fn array<I: IntoIterator<Item = Self>>(elements: I) -> Self {
+        Self::Array(elements.into_iter().collect())
+    }
+}
+
+impl<'a> TreeLike for &'a Pattern {
+    fn as_node(&self) -> Tree<Self> {
+        match self {
+            Pattern::Identifier(_) | Pattern::Ignore => Tree::Nullary,
+            Pattern::Tuple(elements) | Pattern::Array(elements) => {
+                Tree::Nary(elements.iter().collect())
+            }
         }
     }
+}
 
-    /// Push a new scope onto the stack.
-    pub fn push_scope(&mut self) {
-        self.variables.push(Vec::new());
-        self.aliases.push(HashMap::new());
-    }
+impl fmt::Display for Pattern {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for data in self.verbose_pre_order_iter() {
+            match data.node {
+                Pattern::Identifier(i) => write!(f, "{i}")?,
+                Pattern::Ignore => write!(f, "_")?,
+                Pattern::Tuple(elements) => match data.n_children_yielded {
+                    0 => {
+                        f.write_str("(")?;
+                        if 0 == elements.len() {
+                            f.write_str(")")?;
+                        }
+                    }
+                    n if n == elements.len() => {
+                        if n == 1 {
+                            f.write_str(",")?;
+                        }
+                        f.write_str(")")?;
+                    }
+                    n => {
+                        debug_assert!(n < elements.len());
+                        f.write_str(", ")?
+                    }
+                },
+                Pattern::Array(elements) => match data.n_children_yielded {
+                    0 => {
+                        f.write_str("[")?;
+                        if 0 == elements.len() {
+                            f.write_str("]")?;
+                        }
+                    }
+                    n if n == elements.len() => {
+                        f.write_str("]")?;
+                    }
+                    n => {
+                        debug_assert!(n < elements.len());
+                        f.write_str(", ")?;
+                    }
+                },
+            }
+        }
 
-    /// Pop the current scope from the stack.
-    ///
-    /// # Panics
-    ///
-    /// The stack is empty.
-    pub fn pop_scope(&mut self) {
-        self.variables.pop().expect("Empty stack");
-        self.aliases.pop().expect("Empty stack");
-    }
-
-    /// Push an assignment to the current scope.
-    ///
-    /// Update the input pattern accordingly:
-    ///
-    /// ```text
-    ///   .
-    ///  / \
-    /// p   previous
-    /// ```
-    ///
-    /// ## Panics
-    ///
-    /// The stack is empty.
-    pub fn insert(&mut self, pattern: Pattern) {
-        self.variables
-            .last_mut()
-            .expect("Empty stack")
-            .push(pattern);
-    }
-
-    /// Resolve a type with aliases to a type without aliases.
-    pub fn resolve(&mut self, ty: &AliasedType) -> Result<ResolvedType, Identifier> {
-        let get_alias = |name: &Identifier| -> Option<ResolvedType> {
-            self.aliases
-                .iter()
-                .rev()
-                .find_map(|scope| scope.get(name))
-                .cloned()
-        };
-        ty.resolve(get_alias)
-    }
-
-    /// Push a type alias to the current scope.
-    ///
-    /// ## Panics
-    ///
-    /// The stack is empty.
-    pub fn insert_alias(&mut self, name: Identifier, ty: AliasedType) -> Result<(), Identifier> {
-        let resolved_ty = self.resolve(&ty)?;
-        self.aliases
-            .last_mut()
-            .expect("Empty stack")
-            .insert(name, resolved_ty);
         Ok(())
-    }
-
-    /// Get the input pattern.
-    ///
-    /// All valid input values match the input pattern.
-    ///
-    /// ## Panics
-    ///
-    /// The stack is empty.
-    fn get_input_pattern(&self) -> Pattern {
-        let mut it = self.variables.iter().flat_map(|scope| scope.iter());
-        let first = it.next().expect("Empty stack");
-        it.cloned()
-            .fold(first.clone(), |acc, next| Pattern::product(next, acc))
-    }
-
-    /// Compute a Simplicity expression that takes a valid input value (that matches the input pattern)
-    /// and that produces as output a value that matches the `target` pattern.
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// let a: u8 = 0;
-    /// let b = {
-    ///     let b: u8 = 1;
-    ///     let c: u8 = 2;
-    ///     (a, b)  // here we seek the value of `(a, b)`
-    /// };
-    /// ```
-    ///
-    /// The input pattern looks like this:
-    ///
-    /// ```text
-    ///   .
-    ///  / \
-    /// c   .
-    ///    / \
-    ///   b   .
-    ///      / \
-    ///     a   _
-    /// ```
-    ///
-    /// The expression `drop (IOH & OH)` returns the seeked value.
-    pub fn get(&self, target: &BasePattern) -> Option<ProgNode> {
-        BasePattern::from(&self.get_input_pattern()).translate(target)
     }
 }
 
