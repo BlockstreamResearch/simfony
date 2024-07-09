@@ -32,9 +32,13 @@ fn run() -> Result<(), String> {
 
     // Check if a second argument (arg2) is provided.
     if args.len() >= 3 {
-        let witness_file = &args[2];
-        let wit_path = std::path::Path::new(witness_file);
-        let res = satisfy(prog_path, wit_path)?;
+        // TODO: Re-enable witness file parsing
+        println!(
+            "Warning: Witness expressions are temporarily disabled. Skipping the witness file..."
+        );
+        // let witness_file = &args[2];
+        // let wit_path = std::path::Path::new(witness_file);
+        let res = satisfy(prog_path)?;
         let redeem_bytes = res.encode_to_vec();
         println!("{}", Base64Display::new(&redeem_bytes, &STANDARD));
     } else {
