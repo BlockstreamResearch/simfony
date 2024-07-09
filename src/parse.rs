@@ -494,10 +494,10 @@ trait PestParse: Sized {
 }
 
 impl Program {
-    pub fn parse(file: Arc<str>) -> Result<Self, RichError> {
-        let mut pairs = IdentParser::parse(Rule::program, &file)
+    pub fn parse(file: &str) -> Result<Self, RichError> {
+        let mut pairs = IdentParser::parse(Rule::program, file)
             .map_err(RichError::from)
-            .with_file(file.clone())?;
+            .with_file(file)?;
         let pair = pairs.next().unwrap();
 
         debug_assert!(matches!(pair.as_rule(), Rule::program));

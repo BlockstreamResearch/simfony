@@ -15,7 +15,7 @@ pub mod pattern;
 pub mod types;
 pub mod value;
 
-use std::{path::Path, sync::Arc};
+use std::sync::Arc;
 
 use named::ConstructExt;
 use simplicity::{dag::NoSharing, jet::Elements, node::Redeem, CommitNode, RedeemNode};
@@ -26,19 +26,18 @@ use simplicity::node::SimpleFinalizer;
 
 use crate::{error::WithFile, named::NamedExt};
 
-pub fn compile(file: &Path) -> Result<Arc<CommitNode<Elements>>, String> {
-    let file = Arc::<str>::from(std::fs::read_to_string(file).unwrap());
-    let parse_program = parse::Program::parse(file.clone())?;
-    let ast_program = ast::Program::analyze(&parse_program).with_file(file.clone())?;
-    let simplicity_named_construct = ast_program.compile().with_file(file.clone())?;
+pub fn compile(prog_text: &str) -> Result<Arc<CommitNode<Elements>>, String> {
+    let parse_program = parse::Program::parse(prog_text)?;
+    let ast_program = ast::Program::analyze(&parse_program).with_file(prog_text)?;
+    let simplicity_named_construct = ast_program.compile().with_file(prog_text)?;
     let simplicity_named_commit = simplicity_named_construct
         .finalize_types_main()
         .expect("Failed to set program source and target type to unit");
     Ok(simplicity_named_commit.to_commit_node())
 }
 
-pub fn satisfy(prog: &Path) -> Result<Arc<RedeemNode<Elements>>, String> {
-    let simplicity_named_commit = compile(prog)?;
+pub fn satisfy(prog_text: &str) -> Result<Arc<RedeemNode<Elements>>, String> {
+    let simplicity_named_commit = compile(prog_text)?;
     let mut finalizer = SimpleFinalizer::new(std::iter::empty());
     simplicity_named_commit
         .convert::<NoSharing, Redeem<Elements>, _>(&mut finalizer)
@@ -52,6 +51,7 @@ mod tests {
     use base64::display::Base64Display;
     use base64::engine::general_purpose::STANDARD;
     use simplicity::{encode, BitMachine, BitWriter};
+    use std::path::Path;
 
     use crate::*;
 
@@ -76,8 +76,9 @@ mod tests {
 
     fn _test_progs(file: &str) {
         println!("Testing {file}");
-        let file = Path::new(file);
-        let redeem_prog = match satisfy(file) {
+        let path = Path::new(file);
+        let text = std::fs::read_to_string(path).unwrap();
+        let redeem_prog = match satisfy(&text) {
             Ok(commit) => commit,
             Err(error) => {
                 panic!("{error}");

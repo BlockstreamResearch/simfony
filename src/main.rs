@@ -26,6 +26,7 @@ fn run() -> Result<(), String> {
 
     let prog_file = &args[1];
     let prog_path = std::path::Path::new(prog_file);
+    let prog_text = std::fs::read_to_string(prog_path).map_err(|e| e.to_string())?;
 
     if args.len() >= 3 {
         // TODO: Re-enable witness file parsing
@@ -34,12 +35,12 @@ fn run() -> Result<(), String> {
         );
         // let witness_file = &args[2];
         // let wit_path = std::path::Path::new(witness_file);
-        let res = satisfy(prog_path)?;
+        let res = satisfy(&prog_text)?;
         let redeem_bytes = res.encode_to_vec();
         println!("{}", Base64Display::new(&redeem_bytes, &STANDARD));
     } else {
         // No second argument is provided. Just compile the program.
-        let prog = compile(prog_path)?;
+        let prog = compile(&prog_text)?;
         let res = prog.encode_to_vec();
         println!("{}", Base64Display::new(&res, &STANDARD));
     }
