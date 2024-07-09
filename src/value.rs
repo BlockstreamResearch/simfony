@@ -71,7 +71,7 @@ impl UIntValue {
         self.get_type() == ty
     }
 
-    /// Create a value of type [`u1`].
+    /// Create a value of type `u1`.
     ///
     /// ## Errors
     ///
@@ -83,7 +83,7 @@ impl UIntValue {
         }
     }
 
-    /// Create a value of type [`u2`].
+    /// Create a value of type `u2`.
     ///
     /// ## Errors
     ///
@@ -95,7 +95,7 @@ impl UIntValue {
         }
     }
 
-    /// Create a value of type [`u4`].
+    /// Create a value of type `u4`.
     ///
     /// ## Errors
     ///
