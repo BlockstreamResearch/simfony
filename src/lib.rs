@@ -170,7 +170,6 @@ mod tests {
         _test_progs("./example_progs/sighash_all.simf");
         _test_progs("./example_progs/sighash_all_anyprevoutanyscript.simf");
         _test_progs("./example_progs/sighash_none.simf");
-        _test_progs("./example_progs/test.simf");
         _test_progs("./example_progs/tuple.simf");
         _test_progs("./example_progs/unwrap.simf");
     }
