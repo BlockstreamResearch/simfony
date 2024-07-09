@@ -21,10 +21,10 @@ array_pattern     =  { "[" ~ (pattern ~ ("," ~ pattern)* ~ ","?)? ~ "]" }
 pattern           =  { ignore_pattern | tuple_pattern | array_pattern | variable_pattern }
 assignment        =  { "let" ~ pattern ~ ":" ~ ty ~ "=" ~ expression }
 
-left_pattern      =  { "Left(" ~ identifier ~ ")" }
-right_pattern     =  { "Right(" ~ identifier ~ ")" }
+left_pattern      =  { "Left(" ~ identifier ~ ":" ~ ty ~ ")" }
+right_pattern     =  { "Right(" ~ identifier ~ ":" ~ ty ~ ")" }
 none_pattern      = @{ "None" }
-some_pattern      =  { "Some(" ~ identifier ~ ")" }
+some_pattern      =  { "Some(" ~ identifier ~ ":" ~ ty ~ ")" }
 false_pattern     = @{ "false" }
 true_pattern      = @{ "true" }
 match_pattern     =  { left_pattern | right_pattern | none_pattern | some_pattern | false_pattern | true_pattern }
@@ -51,7 +51,10 @@ none_expr         = @{ "None" }
 some_expr         =  { "Some(" ~ expression ~ ")" }
 false_expr        = @{ "false" }
 true_expr         = @{ "true" }
-call_name         = ${ jet | "unwrap_left" | "unwrap_right" | "unwrap" }
+unwrap_left       = ${ "unwrap_left::<" ~ ty ~ ">" }
+unwrap_right      = ${ "unwrap_right::<" ~ ty ~ ">" }
+unwrap            = @{ "unwrap" }
+call_name         = ${ jet | unwrap_left | unwrap_right | unwrap }
 call_args         =  { "(" ~ (expression ~ ("," ~ expression)*)? ~ ")" }
 call_expr         =  { call_name ~ call_args }
 unsigned_decimal  = @{ (ASCII_DIGIT | "_")+ }

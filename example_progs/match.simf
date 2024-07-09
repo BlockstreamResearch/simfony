@@ -1,15 +1,15 @@
-let bit: u1 = match Left(11) {
-    Left(x) => jet_le_32(10, x),
-    Right(y) => jet_le_32(y, 10),
+let bit: bool = match Left(11) {
+    Left(x: u32) => jet_le_32(10, x),
+    Right(y: u32) => jet_le_32(y, 10),
 };
 jet_verify(bit);
-let bit: u1 = match Some(11) {
-    Some(x) => jet_le_32(10, x),
-    None => 0,
+let bit: bool = match Some(11) {
+    Some(x: u32) => jet_le_32(10, x),
+    None => false,
 };
 jet_verify(bit);
-let bit: bool = match true {
-    true => 1,
-    false => 0,
+let bit: bool = match false {
+    true => false,
+    false => true,
 };
 jet_verify(bit);

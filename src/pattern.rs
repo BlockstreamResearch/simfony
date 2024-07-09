@@ -1,11 +1,15 @@
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 
 use miniscript::iter::{Tree, TreeLike};
 
 use crate::array::BTreeSlice;
+use crate::error::Error;
 use crate::named::{PairBuilder, SelectorBuilder};
 use crate::parse::Identifier;
+use crate::types::{ResolvedType, TypeInner};
 use crate::ProgNode;
 
 /// Pattern for binding values to variables.
@@ -35,6 +39,36 @@ impl Pattern {
     /// Construct an array pattern.
     pub fn array<I: IntoIterator<Item = Self>>(elements: I) -> Self {
         Self::Array(elements.into_iter().collect())
+    }
+
+    /// Check if the pattern matches the given type.
+    ///
+    /// Return a map of bound variable identifiers to their assigned type.
+    pub fn is_of_type(
+        &self,
+        ty: &ResolvedType,
+    ) -> Result<HashMap<Identifier, ResolvedType>, Error> {
+        let mut stack = vec![(self, ty)];
+        let mut output = HashMap::new();
+        while let Some((pattern, ty)) = stack.pop() {
+            match (pattern, ty.as_inner()) {
+                (Pattern::Identifier(i), _) => match output.entry(i.clone()) {
+                    Entry::Occupied(..) => return Err(Error::VariableReuseInPattern(i.clone())),
+                    Entry::Vacant(entry) => {
+                        entry.insert(ty.clone());
+                    }
+                },
+                (Pattern::Ignore, _) => {}
+                (Pattern::Tuple(pats), TypeInner::Tuple(types)) => {
+                    stack.extend(pats.iter().zip(types.iter().map(Arc::as_ref)));
+                }
+                (Pattern::Array(pats), TypeInner::Array(ty, size)) if pats.len() == *size => {
+                    stack.extend(pats.iter().zip(std::iter::repeat(ty.as_ref())));
+                }
+                _ => return Err(Error::TypeValueMismatch(ty.clone())),
+            }
+        }
+        Ok(output)
     }
 }
 

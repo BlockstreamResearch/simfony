@@ -153,9 +153,9 @@ pub enum CallName {
     /// Name of a jet.
     Jet(JetName),
     /// Left unwrap function.
-    UnwrapLeft,
+    UnwrapLeft(AliasedType),
     /// Right unwrap function.
-    UnwrapRight,
+    UnwrapRight(AliasedType),
     /// Some unwrap function.
     Unwrap,
 }
@@ -409,6 +409,18 @@ impl Match {
     pub fn right(&self) -> &MatchArm {
         &self.right
     }
+
+    /// Get the type of the expression that is matched.
+    pub fn scrutinee_type(&self) -> AliasedType {
+        match (&self.left.pattern, &self.right.pattern) {
+            (MatchPattern::Left(_, ty_l), MatchPattern::Right(_, ty_r)) => {
+                AliasedType::either(ty_l.clone(), ty_r.clone())
+            }
+            (MatchPattern::None, MatchPattern::Some(_, ty_r)) => AliasedType::option(ty_r.clone()),
+            (MatchPattern::False, MatchPattern::True) => AliasedType::boolean(),
+            _ => unreachable!("Match expressions have valid left and right arms"),
+        }
+    }
 }
 
 /// Arm of a match expression.
@@ -424,13 +436,13 @@ pub struct MatchArm {
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum MatchPattern {
     /// Bind inner value of left value to variable name.
-    Left(Identifier),
+    Left(Identifier, AliasedType),
     /// Bind inner value of right value to variable name.
-    Right(Identifier),
+    Right(Identifier, AliasedType),
     /// Match none value (no binding).
     None,
     /// Bind inner value of some value to variable name.
-    Some(Identifier),
+    Some(Identifier, AliasedType),
     /// Match false value (no binding).
     False,
     /// Match true value (no binding).
@@ -438,10 +450,22 @@ pub enum MatchPattern {
 }
 
 impl MatchPattern {
-    /// Get the variable identifier bound in the pattern.
-    pub fn get_identifier(&self) -> Option<&Identifier> {
+    /// Access the identifier of a pattern that binds a variable.
+    pub fn as_variable(&self) -> Option<&Identifier> {
         match self {
-            MatchPattern::Left(i) | MatchPattern::Right(i) | MatchPattern::Some(i) => Some(i),
+            MatchPattern::Left(i, _) | MatchPattern::Right(i, _) | MatchPattern::Some(i, _) => {
+                Some(i)
+            }
+            MatchPattern::None | MatchPattern::False | MatchPattern::True => None,
+        }
+    }
+
+    /// Access the identifier and the type of a pattern that binds a variable.
+    pub fn as_typed_variable(&self) -> Option<(&Identifier, &AliasedType)> {
+        match self {
+            MatchPattern::Left(i, ty) | MatchPattern::Right(i, ty) | MatchPattern::Some(i, ty) => {
+                Some((i, ty))
+            }
             MatchPattern::None | MatchPattern::False | MatchPattern::True => None,
         }
     }
@@ -450,10 +474,10 @@ impl MatchPattern {
 impl fmt::Display for MatchPattern {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MatchPattern::Left(i) => write!(f, "Left({i}"),
-            MatchPattern::Right(i) => write!(f, "Right({i}"),
+            MatchPattern::Left(i, ty) => write!(f, "Left({i}: {ty}"),
+            MatchPattern::Right(i, ty) => write!(f, "Right({i}: {ty}"),
             MatchPattern::None => write!(f, "None"),
-            MatchPattern::Some(i) => write!(f, "Some({i}"),
+            MatchPattern::Some(i, ty) => write!(f, "Some({i}: {ty}"),
             MatchPattern::False => write!(f, "false"),
             MatchPattern::True => write!(f, "true"),
         }
@@ -574,17 +598,19 @@ impl PestParse for Call {
 impl PestParse for CallName {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::call_name));
-        match pair.as_str() {
-            "unwrap_left" => Ok(CallName::UnwrapLeft),
-            "unwrap_right" => Ok(CallName::UnwrapRight),
-            "unwrap" => Ok(CallName::Unwrap),
-            _ => {
+        let pair = pair.into_inner().next().unwrap();
+        match pair.as_rule() {
+            Rule::jet => JetName::parse(pair).map(Self::Jet),
+            Rule::unwrap_left => {
                 let inner = pair.into_inner().next().unwrap();
-                match inner.as_rule() {
-                    Rule::jet => JetName::parse(inner).map(CallName::Jet),
-                    _ => panic!("Corrupt grammar"),
-                }
+                AliasedType::parse(inner).map(Self::UnwrapLeft)
             }
+            Rule::unwrap_right => {
+                let inner = pair.into_inner().next().unwrap();
+                AliasedType::parse(inner).map(Self::UnwrapRight)
+            }
+            Rule::unwrap => Ok(Self::Unwrap),
+            _ => panic!("Corrupt grammar"),
         }
     }
 }
@@ -840,17 +866,17 @@ impl PestParse for MatchArm {
 impl PestParse for MatchPattern {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Rule::match_pattern));
-        let inner_pair = pair.into_inner().next().unwrap();
-        let rule = inner_pair.as_rule();
-        let ret = match rule {
-            Rule::left_pattern | Rule::right_pattern | Rule::some_pattern => {
-                let identifier_pair = inner_pair.into_inner().next().unwrap();
-                let identifier = Identifier::parse(identifier_pair)?;
+        let pair = pair.into_inner().next().unwrap();
+        let ret = match pair.as_rule() {
+            rule @ (Rule::left_pattern | Rule::right_pattern | Rule::some_pattern) => {
+                let mut it = pair.into_inner();
+                let identifier = Identifier::parse(it.next().unwrap())?;
+                let ty = AliasedType::parse(it.next().unwrap())?;
 
                 match rule {
-                    Rule::left_pattern => MatchPattern::Left(identifier),
-                    Rule::right_pattern => MatchPattern::Right(identifier),
-                    Rule::some_pattern => MatchPattern::Some(identifier),
+                    Rule::left_pattern => MatchPattern::Left(identifier, ty),
+                    Rule::right_pattern => MatchPattern::Right(identifier, ty),
+                    Rule::some_pattern => MatchPattern::Some(identifier, ty),
                     _ => unreachable!("Covered by outer match"),
                 }
             }

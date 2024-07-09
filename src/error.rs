@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use simplicity::elements;
 
-use crate::parse::{Identifier, JetName, MatchPattern, Position, Span};
+use crate::parse::{Identifier, JetName, MatchPattern, Position, Span, WitnessName};
 use crate::types::{ResolvedType, UIntType};
 use crate::Rule;
 
@@ -147,9 +147,13 @@ pub enum Error {
     CannotCompile(String),
     JetDoesNotExist(JetName),
     TypeValueMismatch(ResolvedType),
+    InvalidNumberOfArguments(usize, usize),
+    ExpressionTypeMismatch(ResolvedType, ResolvedType),
     IntegerOutOfBounds(UIntType),
     UndefinedVariable(Identifier),
     UndefinedAlias(Identifier),
+    VariableReuseInPattern(Identifier),
+    ReusedWitness(WitnessName),
 }
 
 #[rustfmt::skip]
@@ -192,6 +196,14 @@ impl fmt::Display for Error {
                 f,
                 "Value does not match the assigned type `{ty}`"
             ),
+            Error::InvalidNumberOfArguments(expected, found) => write!(
+                f,
+                "Expected {expected} arguments, found {found} arguments"
+            ),
+            Error::ExpressionTypeMismatch(expected, found) => write!(
+                f,
+                "Expected expression of type `{expected}`, found type `{found}`"
+            ),
             Error::IntegerOutOfBounds(ty) => write!(
                 f,
                 "Value is out of bounds for type `{ty}`"
@@ -203,6 +215,14 @@ impl fmt::Display for Error {
             Error::UndefinedAlias(identifier) => write!(
                 f,
                 "Type alias `{identifier}` is not defined"
+            ),
+            Error::VariableReuseInPattern(identifier) => write!(
+                f,
+                "Variable `{identifier}` is used twice in the pattern"
+            ),
+            Error::ReusedWitness(name) => write!(
+                f,
+                "Witness `{name}` has been used before somewhere in the program"
             ),
         }
     }
