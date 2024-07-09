@@ -1,0 +1,10 @@
+[package]
+name = "codegen"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.61.0"
+description = "Generator of Rust code as interface between Simfony and Rust."
+publish = false
+
+[dependencies]
+simfony = { path = ".." }
