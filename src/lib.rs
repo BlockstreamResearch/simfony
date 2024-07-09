@@ -17,13 +17,8 @@ pub mod value;
 
 use std::{path::Path, sync::Arc};
 
-use named::{ConstructExt, Named};
-use simplicity::{
-    dag::NoSharing,
-    jet::Elements,
-    node::{Commit, Node, Redeem},
-    CommitNode, RedeemNode,
-};
+use named::ConstructExt;
+use simplicity::{dag::NoSharing, jet::Elements, node::Redeem, CommitNode, RedeemNode};
 
 pub extern crate simplicity;
 pub use simplicity::elements;
@@ -31,20 +26,15 @@ use simplicity::node::SimpleFinalizer;
 
 use crate::{error::WithFile, named::NamedExt};
 
-pub fn _compile(file: &Path) -> Result<Arc<Node<Named<Commit<Elements>>>>, String> {
+pub fn compile(file: &Path) -> Result<Arc<CommitNode<Elements>>, String> {
     let file = Arc::<str>::from(std::fs::read_to_string(file).unwrap());
     let parse_program = parse::Program::parse(file.clone())?;
     let ast_program = ast::Program::analyze(&parse_program).with_file(file.clone())?;
-    let simplicity_named_commit = ast_program.compile().with_file(file.clone())?;
-    let simplicity_redeem = simplicity_named_commit
+    let simplicity_named_construct = ast_program.compile().with_file(file.clone())?;
+    let simplicity_named_commit = simplicity_named_construct
         .finalize_types_main()
-        .expect("Type check error");
-    Ok(simplicity_redeem)
-}
-
-pub fn compile(file: &Path) -> Result<CommitNode<Elements>, String> {
-    let simplicity_named_commit = _compile(file)?;
-    Ok(Arc::try_unwrap(simplicity_named_commit.to_commit_node()).unwrap())
+        .expect("Failed to set program source and target type to unit");
+    Ok(simplicity_named_commit.to_commit_node())
 }
 
 pub fn satisfy(prog: &Path) -> Result<Arc<RedeemNode<Elements>>, String> {
