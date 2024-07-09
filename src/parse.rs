@@ -8,13 +8,18 @@ use std::sync::Arc;
 
 use either::Either;
 use miniscript::iter::{Tree, TreeLike};
+use pest::Parser;
+use pest_derive::Parser;
 use simplicity::elements::hex::FromHex;
 
-use crate::error::{Error, RichError, WithSpan};
+use crate::error::{Error, RichError, WithFile, WithSpan};
 use crate::num::NonZeroPow2Usize;
 use crate::pattern::Pattern;
 use crate::types::{AliasedType, BuiltinAlias, TypeConstructible, UIntType};
-use crate::Rule;
+
+#[derive(Parser)]
+#[grammar = "minimal.pest"]
+pub struct IdentParser;
 
 /// Position of an object inside a file.
 ///
@@ -484,22 +489,27 @@ impl fmt::Display for MatchPattern {
     }
 }
 
-pub trait PestParse: Sized {
+trait PestParse: Sized {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError>;
 }
 
-impl PestParse for Program {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Rule::program));
-        let mut stmts = Vec::new();
-        for inner_pair in pair.into_inner() {
-            match inner_pair.as_rule() {
-                Rule::statement => stmts.push(Statement::parse(inner_pair)?),
-                Rule::EOI => (),
-                _ => unreachable!(),
-            };
-        }
-        Ok(Program { statements: stmts })
+impl Program {
+    pub fn parse(file: Arc<str>) -> Result<Self, RichError> {
+        let mut pairs = IdentParser::parse(Rule::program, &file)
+            .map_err(RichError::from)
+            .with_file(file.clone())?;
+        let pair = pairs.next().unwrap();
+
+        debug_assert!(matches!(pair.as_rule(), Rule::program));
+        let statements = pair
+            .into_inner()
+            .filter_map(|pair| match pair.as_rule() {
+                Rule::statement => Some(Statement::parse(pair)),
+                Rule::EOI => None,
+                _ => unreachable!("Corrupt grammar"),
+            })
+            .collect::<Result<Vec<Statement>, RichError>>()?;
+        Ok(Program { statements })
     }
 }
 

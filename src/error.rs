@@ -3,9 +3,8 @@ use std::sync::Arc;
 
 use simplicity::elements;
 
-use crate::parse::{Identifier, JetName, MatchPattern, Position, Span, WitnessName};
+use crate::parse::{Identifier, JetName, MatchPattern, Position, Rule, Span, WitnessName};
 use crate::types::{ResolvedType, UIntType};
-use crate::Rule;
 
 /// Helper trait to convert `Result<T, E>` into `Result<T, RichError>`.
 pub trait WithSpan<T> {

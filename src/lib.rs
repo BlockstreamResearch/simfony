@@ -18,8 +18,6 @@ pub mod value;
 use std::{collections::HashMap, path::Path, sync::Arc};
 
 use named::{ConstructExt, Named};
-use pest::Parser;
-use pest_derive::Parser;
 use simplicity::{
     dag::{NoSharing, PostOrderIterItem},
     jet::Elements,
@@ -31,21 +29,13 @@ pub extern crate simplicity;
 pub use simplicity::elements;
 
 use crate::{
-    error::{RichError, WithFile},
+    error::WithFile,
     named::{NamedCommitNode, NamedExt},
-    parse::PestParse,
 };
 
-#[derive(Parser)]
-#[grammar = "minimal.pest"]
-pub struct IdentParser;
-
 pub fn _compile(file: &Path) -> Result<Arc<Node<Named<Commit<Elements>>>>, String> {
-    let file = Arc::from(std::fs::read_to_string(file).unwrap());
-    let parse_program = IdentParser::parse(Rule::program, &file)
-        .map_err(RichError::from)
-        .and_then(|mut pairs| parse::Program::parse(pairs.next().unwrap()))
-        .with_file(file.clone())?;
+    let file = Arc::<str>::from(std::fs::read_to_string(file).unwrap());
+    let parse_program = parse::Program::parse(file.clone())?;
     let ast_program = ast::Program::analyze(&parse_program).with_file(file.clone())?;
     let simplicity_named_commit = ast_program.compile().with_file(file.clone())?;
     let simplicity_redeem = simplicity_named_commit
