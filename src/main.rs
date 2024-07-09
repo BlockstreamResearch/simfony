@@ -15,10 +15,8 @@ fn main() {
 }
 
 fn run() -> Result<(), String> {
-    // Get the command-line arguments as a Vec<String>.
     let args: Vec<String> = env::args().collect();
 
-    // Check if at least two arguments are provided.
     if args.len() < 2 {
         println!("Usage: {} <prog.simpl> [sig.wit (optional)]", args[0]);
         println!("If no witness file is provided, the program will be compiled and printed.");
@@ -26,11 +24,9 @@ fn run() -> Result<(), String> {
         return Ok(());
     }
 
-    // Extract the first argument (arg1).
     let prog_file = &args[1];
     let prog_path = std::path::Path::new(prog_file);
 
-    // Check if a second argument (arg2) is provided.
     if args.len() >= 3 {
         // TODO: Re-enable witness file parsing
         println!(
