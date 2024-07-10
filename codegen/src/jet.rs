@@ -588,8 +588,8 @@ Return `None` is the input does not exist."#,
 Return `None` if the input does not exist."#,
         Elements::InputPegin => r#"Return the parent genesis block hash if the input at the given index is a peg-in.
 
-Return `Some(None)` if the input is not a peg-in.
-Return `None` if the input does not exist."#,
+- Return `Some(None)` if the input is not a peg-in.
+- Return `None` if the input does not exist."#,
         Elements::InputPrevOutpoint => r#"Return the previous outpoint of the input at the given index.
 
 Return `None` if the input does not exist."#,
@@ -599,6 +599,7 @@ Return `None` if the input does not exist."#,
         Elements::InputScriptSigHash => r#"Return the SHA256 hash of the scriptSigKey of the input at the given index.
 
 Return `None` if the input does not exist.
+
 SegWit UTXOs enforce scriptSig to be the empty string. In such cases, we return the SHA256 hash of the empty string."#,
         Elements::InputSequence => r#"Return the nSequence of the input at the given index.
 
@@ -608,26 +609,26 @@ Return `None` if the input does not exist."#,
 We assume that Simplicity can be spent in Taproot outputs only, so there always exists an internal key."#,
         Elements::IssuanceAssetAmount => r#"Return the possibly confidential amount of the issuance if the input at the given index has an issuance.
 
-Return `Some(None)` if the input does not have an issuance.
-Return `None` if the input does not exist."#,
+- Return `Some(None)` if the input does not have an issuance.
+- Return `None` if the input does not exist."#,
         Elements::IssuanceAssetProof  => r#"Return the SHA256 hash of the range proof for the amount of the issuance at the given input index.
 
-Return the hash of the empty string if the input does not have an issuance.
-Return `None` if the input does not exist."#,
+- Return the hash of the empty string if the input does not have an issuance.
+- Return `None` if the input does not exist."#,
         Elements::IssuanceTokenAmount => r#"Return the possibly confidential amount of the reissuance tokens if the input at the given index has an issuance.
 
-Return `Some(Some(Right 0))` if the input is itself a reissuance.
-Return `Some(None)` if the input does not have an issuance.
-Return `None` if the input does not exist."#,
+- Return `Some(Some(Right(0)))` if the input is itself a reissuance.
+- Return `Some(None)` if the input does not have an issuance.
+- Return `None` if the input does not exist."#,
         Elements::IssuanceTokenProof  => r#"Return the SHA256 hash of the range proof for the amount of the reissuance tokens at the given input index.
 
-Returns the hash of the empty string if the input does not have an issuance.
-Return `None` if the input does not exist."#,
+- Return the hash of the empty string if the input does not have an issuance.
+- Return `None` if the input does not exist."#,
         Elements::LockTime => "Return the lock time of the transaction.",
         Elements::NewIssuanceContract => r#"Return the contract hash for the new issuance at the given input index.
 
-Return `Some(None)` if the input does not have a new issuance.
-Return `None` if the input does not exist."#,
+- Return `Some(None)` if the input does not have a new issuance.
+- Return `None` if the input does not exist."#,
         Elements::NumInputs => "Return the number of inputs of the transaction.",
         Elements::NumOutputs => "Return the number of outputs of the transaction.",
         Elements::OutputAmount => r#"Return the asset amount of the output at the given index.
@@ -641,20 +642,21 @@ Return `None` if the output does not exist."#,
 Return `None` if the output does not exist."#,
         Elements::OutputNonce => r#"Return the nonce of the output at the given index.
 
-Return `Some(None)` if the output does not have a nonce.
-Return `None` if the output does not exist."#,
-        Elements::OutputNullDatum => r#"Return the nth entry of a null data (OP_RETURN) output at the given index.
+- Return `Some(None)` if the output does not have a nonce.
+- Return `None` if the output does not exist."#,
+        Elements::OutputNullDatum => r#"Return the `b`-th entry of a null data (`OP_RETURN`) output at index `a`.
 
-- Return `Some(Some(Right(Right (x-1))))` if the item is OP_x for x in the range 1..16.
-- Return `Some(Some(Right(Left 0)))` if the item is OP_1NEGATE
-- Return `Some(Some(Right(Left 1)))` if the item is OP_RESERVED
-- Return `Some(Some(Left (x,hash)))` where hash is the SHA256 hash of the data pushed and x indicates how the data was pushed:
-    - x == 0 means the push was an immediate 0 to 75 bytes;
-    - x == 1 means the push was an OP_PUSHDATA1;
-    - x == 2 means the push was an OP_PUSHDATA2;
-    - x == 3 means the push was an OP_PUSHDATA4.
-- Return `Some(None)` if the null data has fewer than n entries.
+- Return `Some(Some(Right(Right(x-1))))` if the entry is `OP_x` for `x` in the range 1..=16.
+- Return `Some(Some(Right(Left(0))))` if the entry is `OP_1NEGATE`.
+- Return `Some(Some(Right(Left(1))))` if the entry is `OP_RESERVED`.
+- Return `Some(Some(Left((x, hash))))` if the entry is pushed data. `hash` is the SHA256 hash of the data pushed and `x` indicates how the data was pushed:
+    - `x == 0` means the push was an immediate 0 to 75 bytes.
+    - `x == 1` means the push was an `OP_PUSHDATA1`.
+    - `x == 2` means the push was an `OP_PUSHDATA2`.
+    - `x == 3` means the push was an `OP_PUSHDATA4`.
+- Return `Some(None)` if the null data has fewer than `b` entries.
 - Return `None` if the output is not a null data output.
+
 Use this jet to read peg-out data from an output."#,
         Elements::OutputRangeProof => r#"Return the SHA256 hash of the range proof of the output at the given index.
 
@@ -667,12 +669,12 @@ Return `None` if the output does not exist."#,
 Return `None` if the output does not exist."#,
         Elements::ReissuanceBlinding => r#"Return the blinding factor used for the reissuance at the given input index.
 
-Return `Some(None)` if the input does not have a reissuance.
-Return `None` if the input does not exist."#,
+- Return `Some(None)` if the input does not have a reissuance.
+- Return `None` if the input does not exist."#,
         Elements::ReissuanceEntropy => r#"Return the entropy used for the reissuance at the given input index.
 
-Return `Some(None)` if the input does not have a reissuance.
-Return `None` if the input does not exist."#,
+- Return `Some(None)` if the input does not have a reissuance.
+- Return `None` if the input does not exist."#,
         Elements::ScriptCMR => r#"Return the CMR of the Simplicity program in the current input.
 
 This is the CMR of the currently executed Simplicity program."#,
