@@ -1,153 +1,179 @@
-use simplicity::dag::{InternalSharing, PostOrderIterItem};
-use simplicity::human_encoding::{ErrorSet, Position};
-use simplicity::jet::{Elements, Jet};
-use simplicity::node::{
-    self, Commit, CommitData, CommitNode, Converter, Inner, NoDisconnect, NoWitness, Node,
-};
-use simplicity::node::{
-    Construct, ConstructData, Constructible, CoreConstructible, JetConstructible,
-};
-use simplicity::types;
-use simplicity::types::arrow::{Arrow, FinalArrow};
-use simplicity::{encode, FailEntropy, Value};
-use simplicity::{BitWriter, Cmr};
-
-use std::io;
-use std::marker::PhantomData;
 use std::sync::Arc;
 
-use crate::ProgNode;
+use simplicity::dag::{InternalSharing, PostOrderIterItem};
+use simplicity::jet::{Elements, Jet};
+use simplicity::node::{
+    self, CommitData, Converter, CoreConstructible, Inner, JetConstructible, NoDisconnect,
+    NoWitness, Node, WitnessConstructible,
+};
+use simplicity::types::arrow::Arrow;
+use simplicity::Cmr;
+use simplicity::{types, CommitNode};
 
-pub type NamedCommitNode = Node<Named<Commit<Elements>>>;
+use crate::parse::WitnessName;
 
+/// Marker for [`ConstructNode`].
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
-pub struct Named<N> {
+pub struct Construct<N> {
     /// Makes the type non-constructible.
     never: std::convert::Infallible,
     /// Required by Rust.
     phantom: std::marker::PhantomData<N>,
 }
 
-impl<J: Jet> node::Marker for Named<Commit<J>> {
-    type CachedData = NamedCommitData<J>;
-    type Witness = NoWitness;
-    type Disconnect = <Commit<J> as node::Marker>::Disconnect;
-    type SharingId = Arc<str>;
+/// Sharing ID of [`ConstructNode`].
+/// Cannot be constructed because there is no sharing.
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+pub enum ConstructId {}
+
+impl<J: Jet> node::Marker for Construct<J> {
+    type CachedData = ConstructData<J>;
+    type Witness = WitnessName;
+    type Disconnect = NoDisconnect;
+    type SharingId = ConstructId;
     type Jet = J;
 
-    fn compute_sharing_id(_: Cmr, _cached_data: &Self::CachedData) -> Option<Arc<str>> {
+    fn compute_sharing_id(_: Cmr, _cached_data: &Self::CachedData) -> Option<Self::SharingId> {
         None
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct NamedCommitData<J> {
-    /// Data related to the node itself
-    internal: Arc<CommitData<J>>,
-    /// Name assigned to the node.
-    name: Arc<str>,
-}
+/// [`simplicity::ConstructNode`] with named witness nodes.
+///
+/// Nodes other than witness don't have names.
+pub type ConstructNode = Node<Construct<Elements>>;
 
-pub trait NamedExt {
-    /// Accessor for the node's name
-    fn name(&self) -> &Arc<str>;
+// FIXME: The following methods cannot be implemented for simplicity::node::Node because that is a foreign type
 
-    /// Accessor for the node's type arrow
-    fn arrow(&self) -> &FinalArrow;
+/// Convert [`ConstructNode`] into [`CommitNode`] by dropping the name of witness nodes.
+pub fn to_commit_node(node: &ConstructNode) -> Result<Arc<CommitNode<Elements>>, types::Error> {
+    struct Forgetter;
 
-    /// Forget the names, yielding an ordinary [`CommitNode`].
-    fn to_commit_node(&self) -> Arc<CommitNode<Elements>>;
+    impl<J: Jet> Converter<Construct<J>, node::Commit<J>> for Forgetter {
+        type Error = types::Error;
 
-    /// Encode a Simplicity expression to bits without any witness data
-    fn encode<W: io::Write>(&self, w: &mut BitWriter<W>) -> io::Result<usize>;
-
-    /// Encode a Simplicity program to a vector of bytes, without any witness data.
-    fn encode_to_vec(&self) -> Vec<u8>;
-}
-
-impl NamedExt for NamedCommitNode {
-    /// Accessor for the node's name
-    fn name(&self) -> &Arc<str> {
-        &self.cached_data().name
-    }
-
-    /// Accessor for the node's type arrow
-    fn arrow(&self) -> &FinalArrow {
-        self.cached_data().internal.arrow()
-    }
-
-    /// Forget the names, yielding an ordinary [`CommitNode`].
-    fn to_commit_node(&self) -> Arc<CommitNode<Elements>> {
-        struct Forgetter;
-
-        impl Converter<Named<Commit<Elements>>, Commit<Elements>> for Forgetter {
-            type Error = std::convert::Infallible;
-            fn convert_witness(
-                &mut self,
-                _: &PostOrderIterItem<&NamedCommitNode>,
-                _: &NoWitness,
-            ) -> Result<NoWitness, Self::Error> {
-                Ok(NoWitness)
-            }
-
-            fn convert_disconnect(
-                &mut self,
-                _: &PostOrderIterItem<&NamedCommitNode>,
-                _: Option<&Arc<CommitNode<Elements>>>,
-                _: &NoDisconnect,
-            ) -> Result<NoDisconnect, Self::Error> {
-                Ok(NoDisconnect)
-            }
-
-            fn convert_data(
-                &mut self,
-                data: &PostOrderIterItem<&NamedCommitNode>,
-                _: node::Inner<&Arc<CommitNode<Elements>>, Elements, &NoDisconnect, &NoWitness>,
-            ) -> Result<Arc<CommitData<Elements>>, Self::Error> {
-                Ok(Arc::clone(&data.node.cached_data().internal))
-            }
+        fn convert_witness(
+            &mut self,
+            _: &PostOrderIterItem<&Node<Construct<J>>>,
+            _: &WitnessName,
+        ) -> Result<NoWitness, Self::Error> {
+            Ok(NoWitness)
         }
 
-        self.convert::<InternalSharing, _, _>(&mut Forgetter)
-            .unwrap()
+        fn convert_disconnect(
+            &mut self,
+            _: &PostOrderIterItem<&Node<Construct<J>>>,
+            _: Option<&Arc<CommitNode<J>>>,
+            _: &NoDisconnect,
+        ) -> Result<NoDisconnect, Self::Error> {
+            Ok(NoDisconnect)
+        }
+
+        fn convert_data(
+            &mut self,
+            data: &PostOrderIterItem<&Node<Construct<J>>>,
+            inner: Inner<&Arc<CommitNode<J>>, J, &NoDisconnect, &NoWitness>,
+        ) -> Result<Arc<CommitData<J>>, Self::Error> {
+            let arrow = data.node.cached_data().arrow();
+            let inner = inner.map(Arc::as_ref).map(CommitNode::<J>::cached_data);
+            CommitData::new(arrow, inner).map(Arc::new)
+        }
     }
 
-    /// Encode a Simplicity expression to bits without any witness data
-    fn encode<W: io::Write>(&self, w: &mut BitWriter<W>) -> io::Result<usize> {
-        let program_bits = encode::encode_program(self.to_commit_node().as_ref(), w)?;
-        w.flush_all()?;
-        Ok(program_bits)
-    }
+    node.convert::<InternalSharing, _, _>(&mut Forgetter)
+}
 
-    /// Encode a Simplicity program to a vector of bytes, without any witness data.
-    fn encode_to_vec(&self) -> Vec<u8> {
-        let mut program_and_witness_bytes = Vec::<u8>::new();
-        let mut writer = BitWriter::new(&mut program_and_witness_bytes);
-        self.encode(&mut writer)
-            .expect("write to vector never fails");
-        debug_assert!(!program_and_witness_bytes.is_empty());
+/// Copy of [`node::ConstructData`] with an implementation of [`WitnessConstructible<WitnessName>`].
+#[derive(Clone, Debug)]
+pub struct ConstructData<J> {
+    arrow: Arrow,
+    phantom: std::marker::PhantomData<J>,
+}
 
-        program_and_witness_bytes
+impl<J> ConstructData<J> {
+    /// Access the arrow of the node.
+    pub fn arrow(&self) -> &Arrow {
+        &self.arrow
     }
 }
 
-pub type NamedConstructNode = Node<Named<Construct<Elements>>>;
-
-impl node::Marker for Named<Construct<Elements>> {
-    type CachedData = NamedConstructData;
-    type Witness = NoWitness;
-    type Disconnect = NoDisconnect;
-    type SharingId = Arc<str>;
-    type Jet = Elements;
-
-    fn compute_sharing_id(_: Cmr, cached_data: &Self::CachedData) -> Option<Arc<str>> {
-        Some(Arc::clone(&cached_data.name))
+impl<J> From<Arrow> for ConstructData<J> {
+    fn from(arrow: Arrow) -> Self {
+        Self {
+            arrow,
+            phantom: std::marker::PhantomData,
+        }
     }
 }
 
-pub trait ProgExt: CoreConstructible + Sized {
-    fn witness(ident: Arc<str>) -> Self;
+impl<J> CoreConstructible for ConstructData<J> {
+    fn iden() -> Self {
+        Arrow::iden().into()
+    }
 
+    fn unit() -> Self {
+        Arrow::unit().into()
+    }
+
+    fn injl(child: &Self) -> Self {
+        Arrow::injl(&child.arrow).into()
+    }
+
+    fn injr(child: &Self) -> Self {
+        Arrow::injr(&child.arrow).into()
+    }
+
+    fn take(child: &Self) -> Self {
+        Arrow::take(&child.arrow).into()
+    }
+
+    fn drop_(child: &Self) -> Self {
+        Arrow::drop_(&child.arrow).into()
+    }
+
+    fn comp(left: &Self, right: &Self) -> Result<Self, types::Error> {
+        Arrow::comp(&left.arrow, &right.arrow).map(Self::from)
+    }
+
+    fn case(left: &Self, right: &Self) -> Result<Self, types::Error> {
+        Arrow::case(&left.arrow, &right.arrow).map(Self::from)
+    }
+
+    fn assertl(left: &Self, right: Cmr) -> Result<Self, types::Error> {
+        Arrow::assertl(&left.arrow, right).map(Self::from)
+    }
+
+    fn assertr(left: Cmr, right: &Self) -> Result<Self, types::Error> {
+        Arrow::assertr(left, &right.arrow).map(Self::from)
+    }
+
+    fn pair(left: &Self, right: &Self) -> Result<Self, types::Error> {
+        Arrow::pair(&left.arrow, &right.arrow).map(Self::from)
+    }
+
+    fn fail(entropy: simplicity::FailEntropy) -> Self {
+        Arrow::fail(entropy).into()
+    }
+
+    fn const_word(word: Arc<simplicity::Value>) -> Self {
+        Arrow::const_word(word).into()
+    }
+}
+
+impl<J: Jet> JetConstructible<J> for ConstructData<J> {
+    fn jet(jet: J) -> Self {
+        Arrow::jet(jet).into()
+    }
+}
+
+impl<J> WitnessConstructible<WitnessName> for ConstructData<J> {
+    fn witness(_: WitnessName) -> Self {
+        Arrow::for_witness().into()
+    }
+}
+
+/// More constructors for types that implement [`CoreConstructible`].
+pub trait CoreExt: CoreConstructible + Sized {
     fn h() -> PairBuilder<Self> {
         PairBuilder(Self::iden())
     }
@@ -158,14 +184,6 @@ pub trait ProgExt: CoreConstructible + Sized {
 
     fn i() -> SelectorBuilder<Self> {
         SelectorBuilder::default().i()
-    }
-
-    fn _false() -> Self {
-        Self::injl(&Self::unit())
-    }
-
-    fn _true() -> Self {
-        Self::injr(&Self::unit())
     }
 
     fn unit_comp(&self) -> Self {
@@ -201,6 +219,8 @@ pub trait ProgExt: CoreConstructible + Sized {
     }
 }
 
+impl<N: CoreConstructible> CoreExt for N {}
+
 /// Builder of expressions that contain
 /// `take`, `drop` and `iden` only.
 ///
@@ -208,19 +228,19 @@ pub trait ProgExt: CoreConstructible + Sized {
 #[derive(Debug, Clone, Hash)]
 pub struct SelectorBuilder<P> {
     selection: Vec<bool>,
-    program: PhantomData<P>,
+    program: std::marker::PhantomData<P>,
 }
 
 impl<P> Default for SelectorBuilder<P> {
     fn default() -> Self {
         Self {
             selection: Vec::default(),
-            program: PhantomData,
+            program: std::marker::PhantomData,
         }
     }
 }
 
-impl<P: ProgExt> SelectorBuilder<P> {
+impl<P: CoreExt> SelectorBuilder<P> {
     /// Select the first component '0' of the input pair.
     pub fn o(mut self) -> Self {
         self.selection.push(false);
@@ -254,7 +274,7 @@ impl<P: ProgExt> SelectorBuilder<P> {
 #[derive(Debug, Clone, Hash)]
 pub struct PairBuilder<P>(P);
 
-impl<P: ProgExt> PairBuilder<P> {
+impl<P: CoreExt> PairBuilder<P> {
     /// Take the expression.
     pub fn take(self) -> Self {
         Self(P::take(&self.0))
@@ -299,332 +319,5 @@ impl<P> PairBuilder<P> {
     /// Build the expression.
     pub fn get(self) -> P {
         self.0
-    }
-}
-
-impl ProgExt for ProgNode {
-    fn witness(ident: Arc<str>) -> Self {
-        Arc::new(
-            NamedConstructNode::new(
-                ident,
-                Position::default(),
-                Arc::new([]),
-                Arc::new([]),
-                Inner::Witness(NoWitness),
-            )
-            .unwrap(),
-        )
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct NamedConstructData {
-    /// Data related to the node itself
-    internal: ConstructData<Elements>,
-    /// Name assigned to the node
-    name: Arc<str>,
-    /// Position of the node, if it comes from source code.
-    position: Position,
-    /// User-provided type bounds on the source (will be checked for consistency
-    /// but only after the type checking has completed.)
-    user_source_types: Arc<[types::Type]>,
-    /// User-provided type bounds on the target (will be checked for consistency
-    /// but only after the type checking has completed.)
-    user_target_types: Arc<[types::Type]>,
-}
-
-pub trait ConstructExt: Sized {
-    fn _new(
-        inner: node::Inner<Arc<Self>, Elements, NoDisconnect, NoWitness>,
-    ) -> Result<Self, types::Error>;
-
-    /// Construct a named construct node from parts.
-    fn new(
-        name: Arc<str>,
-        position: Position,
-        user_source_types: Arc<[types::Type]>,
-        user_target_types: Arc<[types::Type]>,
-        inner: node::Inner<Arc<Self>, Elements, NoDisconnect, NoWitness>,
-    ) -> Result<Self, types::Error>;
-
-    /// Creates a copy of a node with a different name.
-    fn renamed(&self, new_name: Arc<str>) -> Self;
-
-    /// Accessor for the node's name
-    fn name(&self) -> &Arc<str>;
-
-    /// Accessor for the node's position
-    fn position(&self) -> Position;
-
-    /// Accessor for the node's arrow
-    fn arrow(&self) -> &Arrow;
-
-    /// Finalizes the types of the underlying [`ConstructNode`].
-    fn finalize_types_main(&self) -> Result<Arc<NamedCommitNode>, ErrorSet>;
-
-    /// Finalizes the types of the underlying [`ConstructNode`], without setting
-    /// the root node's arrow to 1->1.
-    fn finalize_types_non_main(&self) -> Result<Arc<NamedCommitNode>, ErrorSet>;
-
-    fn finalize_types_inner(&self, for_main: bool) -> Result<Arc<NamedCommitNode>, ErrorSet>;
-}
-
-fn unnamed_data(construct_data: ConstructData<Elements>) -> NamedConstructData {
-    NamedConstructData {
-        internal: construct_data,
-        name: Arc::from("NOT NAMED YET!"),
-        position: Position::default(),
-        user_source_types: Arc::new([]),
-        user_target_types: Arc::new([]),
-    }
-}
-
-impl CoreConstructible for NamedConstructData {
-    fn unit() -> Self {
-        unnamed_data(ConstructData::unit())
-    }
-    fn iden() -> Self {
-        unnamed_data(ConstructData::iden())
-    }
-    fn injl(inner: &Self) -> Self {
-        unnamed_data(ConstructData::injl(&inner.internal))
-    }
-    fn injr(inner: &Self) -> Self {
-        unnamed_data(ConstructData::injr(&inner.internal))
-    }
-    fn take(inner: &Self) -> Self {
-        unnamed_data(ConstructData::take(&inner.internal))
-    }
-    fn drop_(inner: &Self) -> Self {
-        unnamed_data(ConstructData::drop_(&inner.internal))
-    }
-    fn comp(left: &Self, right: &Self) -> Result<Self, types::Error> {
-        ConstructData::comp(&left.internal, &right.internal).map(unnamed_data)
-    }
-    fn case(left: &Self, right: &Self) -> Result<Self, types::Error> {
-        ConstructData::case(&left.internal, &right.internal).map(unnamed_data)
-    }
-
-    fn assertl(left: &Self, right: Cmr) -> Result<Self, types::Error> {
-        ConstructData::assertl(&left.internal, right).map(unnamed_data)
-    }
-    fn assertr(left: Cmr, right: &Self) -> Result<Self, types::Error> {
-        ConstructData::assertr(left, &right.internal).map(unnamed_data)
-    }
-    fn pair(left: &Self, right: &Self) -> Result<Self, types::Error> {
-        ConstructData::pair(&left.internal, &right.internal).map(unnamed_data)
-    }
-
-    fn fail(entropy: FailEntropy) -> Self {
-        unnamed_data(ConstructData::fail(entropy))
-    }
-    fn const_word(value: Arc<Value>) -> Self {
-        unnamed_data(ConstructData::const_word(value))
-    }
-}
-
-impl JetConstructible<Elements> for NamedConstructData {
-    fn jet(j: Elements) -> Self {
-        unnamed_data(ConstructData::jet(j))
-    }
-}
-
-impl ConstructExt for NamedConstructNode {
-    /// Construct a named construct node from parts.
-    fn _new(
-        inner: node::Inner<Arc<Self>, Elements, NoDisconnect, NoWitness>,
-    ) -> Result<Self, types::Error> {
-        let construct_data = ConstructData::from_inner(
-            inner
-                .as_ref()
-                .map(|data| &data.cached_data().internal)
-                .map_disconnect(|_| &None)
-                .copy_witness(),
-        )?;
-        Ok(Node::from_parts(inner, unnamed_data(construct_data)))
-    }
-
-    /// Construct a named construct node from parts.
-    fn new(
-        name: Arc<str>,
-        position: Position,
-        user_source_types: Arc<[types::Type]>,
-        user_target_types: Arc<[types::Type]>,
-        inner: node::Inner<Arc<Self>, Elements, NoDisconnect, NoWitness>,
-    ) -> Result<Self, types::Error> {
-        let construct_data = ConstructData::from_inner(
-            inner
-                .as_ref()
-                .map(|data| &data.cached_data().internal)
-                .map_disconnect(|_| &None)
-                .copy_witness(),
-        )?;
-        let named_data = NamedConstructData {
-            internal: construct_data,
-            name,
-            position,
-            user_source_types,
-            user_target_types,
-        };
-        Ok(Node::from_parts(inner, named_data))
-    }
-
-    /// Creates a copy of a node with a different name.
-    fn renamed(&self, new_name: Arc<str>) -> Self {
-        let data = NamedConstructData {
-            internal: self.cached_data().internal.clone(),
-            user_source_types: Arc::clone(&self.cached_data().user_source_types),
-            user_target_types: Arc::clone(&self.cached_data().user_target_types),
-            name: new_name,
-            position: self.position(),
-        };
-        Self::from_parts(self.inner().clone(), data)
-    }
-
-    /// Accessor for the node's name
-    fn name(&self) -> &Arc<str> {
-        &self.cached_data().name
-    }
-
-    /// Accessor for the node's position
-    fn position(&self) -> Position {
-        self.cached_data().position
-    }
-
-    /// Accessor for the node's arrow
-    fn arrow(&self) -> &Arrow {
-        self.cached_data().internal.arrow()
-    }
-
-    /// Finalizes the types of the underlying [`ConstructNode`].
-    fn finalize_types_main(&self) -> Result<Arc<NamedCommitNode>, ErrorSet> {
-        self.finalize_types_inner(true)
-    }
-
-    /// Finalizes the types of the underlying [`ConstructNode`], without setting
-    /// the root node's arrow to 1->1.
-    fn finalize_types_non_main(&self) -> Result<Arc<NamedCommitNode>, ErrorSet> {
-        self.finalize_types_inner(false)
-    }
-
-    fn finalize_types_inner(&self, for_main: bool) -> Result<Arc<NamedCommitNode>, ErrorSet> {
-        struct FinalizeTypes<J: Jet> {
-            for_main: bool,
-            errors: ErrorSet,
-            phantom: PhantomData<J>,
-        }
-
-        impl Converter<Named<Construct<Elements>>, Named<Commit<Elements>>> for FinalizeTypes<Elements> {
-            type Error = ErrorSet;
-            fn convert_witness(
-                &mut self,
-                _: &PostOrderIterItem<&NamedConstructNode>,
-                _: &NoWitness,
-            ) -> Result<NoWitness, Self::Error> {
-                Ok(NoWitness)
-            }
-
-            fn convert_disconnect(
-                &mut self,
-                _: &PostOrderIterItem<&NamedConstructNode>,
-                _: Option<&Arc<NamedCommitNode>>,
-                _: &NoDisconnect,
-            ) -> Result<NoDisconnect, Self::Error> {
-                Ok(NoDisconnect)
-            }
-
-            fn convert_data(
-                &mut self,
-                data: &PostOrderIterItem<&NamedConstructNode>,
-                inner: node::Inner<&Arc<NamedCommitNode>, Elements, &NoDisconnect, &NoWitness>,
-            ) -> Result<NamedCommitData<Elements>, Self::Error> {
-                let converted_data = inner
-                    .as_ref()
-                    .map(|node| &node.cached_data().internal)
-                    .map_disconnect(|disc| *disc)
-                    .copy_witness();
-
-                if !self.for_main {
-                    // For non-`main` fragments, treat the ascriptions as normative, and apply them
-                    // before finalizing the type.
-                    let arrow = data.node.arrow();
-                    for ty in data.node.cached_data().user_source_types.as_ref() {
-                        if let Err(e) = arrow.source.unify(ty, "binding source type annotation") {
-                            self.errors.add(data.node.position(), e);
-                        }
-                    }
-                    for ty in data.node.cached_data().user_target_types.as_ref() {
-                        if let Err(e) = arrow.target.unify(ty, "binding target type annotation") {
-                            self.errors.add(data.node.position(), e);
-                        }
-                    }
-                }
-
-                let commit_data = match CommitData::new(data.node.arrow(), converted_data) {
-                    Ok(commit_data) => Arc::new(commit_data),
-                    Err(e) => {
-                        self.errors.add(data.node.position(), e);
-                        return Err(self.errors.clone());
-                    }
-                };
-
-                if self.for_main {
-                    // For `main`, only apply type ascriptions *after* inference has completely
-                    // determined the type.
-                    let source_bound =
-                        types::Bound::Complete(Arc::clone(&commit_data.arrow().source));
-                    let source_ty = types::Type::from(source_bound);
-                    for ty in data.node.cached_data().user_source_types.as_ref() {
-                        if let Err(e) = source_ty.unify(ty, "binding source type annotation") {
-                            self.errors.add(data.node.position(), e);
-                        }
-                    }
-                    let target_bound =
-                        types::Bound::Complete(Arc::clone(&commit_data.arrow().target));
-                    let target_ty = types::Type::from(target_bound);
-                    for ty in data.node.cached_data().user_target_types.as_ref() {
-                        if let Err(e) = target_ty.unify(ty, "binding target type annotation") {
-                            self.errors.add(data.node.position(), e);
-                        }
-                    }
-                }
-
-                Ok(NamedCommitData {
-                    name: Arc::clone(&data.node.cached_data().name),
-                    internal: commit_data,
-                })
-            }
-        }
-
-        let mut finalizer = FinalizeTypes {
-            for_main,
-            errors: ErrorSet::default(),
-            phantom: PhantomData,
-        };
-
-        if for_main {
-            let unit_ty = types::Type::unit();
-            if self.cached_data().user_source_types.is_empty() {
-                if let Err(e) = self
-                    .arrow()
-                    .source
-                    .unify(&unit_ty, "setting root source to unit")
-                {
-                    finalizer.errors.add(self.position(), e);
-                }
-            }
-            if self.cached_data().user_target_types.is_empty() {
-                if let Err(e) = self
-                    .arrow()
-                    .target
-                    .unify(&unit_ty, "setting root source to unit")
-                {
-                    finalizer.errors.add(self.position(), e);
-                }
-            }
-        }
-
-        let root = self.convert::<InternalSharing, _, _>(&mut finalizer)?;
-        finalizer.errors.into_result(root)
     }
 }

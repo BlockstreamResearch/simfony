@@ -1,6 +1,6 @@
 /// Library for parsing and compiling simfony
 
-pub type ProgNode = Arc<named::NamedConstructNode>;
+pub type ProgNode = Arc<named::ConstructNode>;
 
 mod array;
 pub mod ast;
@@ -18,24 +18,22 @@ pub mod witness;
 
 use std::sync::Arc;
 
-use named::ConstructExt;
 use simplicity::{dag::NoSharing, jet::Elements, node::Redeem, CommitNode, RedeemNode};
 
 pub extern crate simplicity;
 pub use simplicity::elements;
 use simplicity::node::SimpleFinalizer;
 
+use crate::error::WithFile;
 use crate::parse::ParseFromStr;
-use crate::{error::WithFile, named::NamedExt};
 
 pub fn compile(prog_text: &str) -> Result<Arc<CommitNode<Elements>>, String> {
     let parse_program = parse::Program::parse_from_str(prog_text)?;
     let ast_program = ast::Program::analyze(&parse_program).with_file(prog_text)?;
     let simplicity_named_construct = ast_program.compile().with_file(prog_text)?;
-    let simplicity_named_commit = simplicity_named_construct
-        .finalize_types_main()
+    let simplicity_commit = named::to_commit_node(&simplicity_named_construct)
         .expect("Failed to set program source and target type to unit");
-    Ok(simplicity_named_commit.to_commit_node())
+    Ok(simplicity_commit)
 }
 
 pub fn satisfy(prog_text: &str) -> Result<Arc<RedeemNode<Elements>>, String> {

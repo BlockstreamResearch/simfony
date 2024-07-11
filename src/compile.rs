@@ -1,7 +1,7 @@
 //! Compile the parsed ast into a simplicity program
 
 use either::Either;
-use simplicity::node::{CoreConstructible as _, JetConstructible as _};
+use simplicity::node::{CoreConstructible as _, JetConstructible as _, WitnessConstructible as _};
 use simplicity::{Cmr, FailEntropy};
 
 use crate::array::{BTreeSlice, Partition};
@@ -10,7 +10,7 @@ use crate::ast::{
     SingleExpressionInner, Statement,
 };
 use crate::error::{Error, RichError, WithSpan};
-use crate::named::{ConstructExt, ProgExt};
+use crate::named::CoreExt;
 use crate::pattern::{BasePattern, Pattern};
 use crate::types::{StructuralType, TypeDeconstructible};
 use crate::value::StructuralValue;
@@ -208,7 +208,7 @@ impl SingleExpression {
                 let value = StructuralValue::from(value);
                 ProgNode::unit_comp(&ProgNode::const_word(value.into()))
             }
-            SingleExpressionInner::Witness(name) => ProgNode::witness(name.as_inner().clone()),
+            SingleExpressionInner::Witness(name) => ProgNode::witness(name.clone()),
             SingleExpressionInner::Variable(identifier) => scope
                 .get(&BasePattern::Identifier(identifier.clone()))
                 .ok_or(Error::UndefinedVariable(identifier.clone()))
@@ -247,7 +247,7 @@ impl SingleExpression {
                             })
                         })
                         .map(|res| res.map(|array| ProgNode::injr(&array)))
-                        .unwrap_or_else(|| Ok(ProgNode::_false()))
+                        .unwrap_or_else(|| Ok(ProgNode::bit_false()))
                     };
 
                 partition.fold(process, |res_a, res_b| {
@@ -268,7 +268,8 @@ impl SingleExpression {
             SingleExpressionInner::Match(match_) => match_.compile(scope)?,
         };
 
-        expr.arrow()
+        expr.cached_data()
+            .arrow()
             .target
             .unify(&StructuralType::from(self.ty()).to_unfinalized(), "")
             .map_err(|e| Error::CannotCompile(e.to_string()))
