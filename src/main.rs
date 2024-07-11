@@ -15,10 +15,8 @@ fn main() {
 }
 
 fn run() -> Result<(), String> {
-    // Get the command-line arguments as a Vec<String>.
     let args: Vec<String> = env::args().collect();
 
-    // Check if at least two arguments are provided.
     if args.len() < 2 {
         println!("Usage: {} <prog.simpl> [sig.wit (optional)]", args[0]);
         println!("If no witness file is provided, the program will be compiled and printed.");
@@ -26,20 +24,23 @@ fn run() -> Result<(), String> {
         return Ok(());
     }
 
-    // Extract the first argument (arg1).
     let prog_file = &args[1];
     let prog_path = std::path::Path::new(prog_file);
+    let prog_text = std::fs::read_to_string(prog_path).map_err(|e| e.to_string())?;
 
-    // Check if a second argument (arg2) is provided.
     if args.len() >= 3 {
-        let witness_file = &args[2];
-        let wit_path = std::path::Path::new(witness_file);
-        let res = satisfy(prog_path, wit_path)?;
+        // TODO: Re-enable witness file parsing
+        println!(
+            "Warning: Witness expressions are temporarily disabled. Skipping the witness file..."
+        );
+        // let witness_file = &args[2];
+        // let wit_path = std::path::Path::new(witness_file);
+        let res = satisfy(&prog_text)?;
         let redeem_bytes = res.encode_to_vec();
         println!("{}", Base64Display::new(&redeem_bytes, &STANDARD));
     } else {
         // No second argument is provided. Just compile the program.
-        let prog = compile(prog_path)?;
+        let prog = compile(&prog_text)?;
         let res = prog.encode_to_vec();
         println!("{}", Base64Display::new(&res, &STANDARD));
     }

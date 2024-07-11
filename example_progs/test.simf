@@ -1,4 +1,0 @@
-let wit_a: u32 = witness("a");
-let a: u32 = 10;
-let res: u32 = 20;
-jet_verify(jet_eq_32(jet_max_32(a, wit_a), res));
