@@ -489,18 +489,40 @@ impl fmt::Display for MatchPattern {
     }
 }
 
+/// Trait for types that can be parsed from a PEST pair.
 trait PestParse: Sized {
+    /// Expected rule for parsing the type.
+    const RULE: Rule;
+
+    /// Parse a value of the type from a PEST pair.
+    ///
+    /// # Panics
+    ///
+    /// The rule of the pair is not the expected rule ([`Self::RULE`]).
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError>;
 }
 
-impl Program {
-    pub fn parse(file: &str) -> Result<Self, RichError> {
-        let mut pairs = IdentParser::parse(Rule::program, file)
-            .map_err(RichError::from)
-            .with_file(file)?;
-        let pair = pairs.next().unwrap();
+/// Copy of [`std::std::FromStr`] that internally uses the PEST parser.
+pub trait ParseFromStr: Sized {
+    /// Parse a value from the string `s`.
+    fn parse_from_str(s: &str) -> Result<Self, RichError>;
+}
 
-        debug_assert!(matches!(pair.as_rule(), Rule::program));
+impl<A: PestParse> ParseFromStr for A {
+    fn parse_from_str(s: &str) -> Result<Self, RichError> {
+        let mut pairs = IdentParser::parse(A::RULE, s)
+            .map_err(RichError::from)
+            .with_file(s)?;
+        let pair = pairs.next().unwrap();
+        A::parse(pair).with_file(s)
+    }
+}
+
+impl PestParse for Program {
+    const RULE: Rule = Rule::program;
+
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
+        assert!(matches!(pair.as_rule(), Self::RULE));
         let statements = pair
             .into_inner()
             .filter_map(|pair| match pair.as_rule() {
@@ -514,8 +536,10 @@ impl Program {
 }
 
 impl PestParse for Statement {
+    const RULE: Rule = Rule::statement;
+
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Rule::statement));
+        assert!(matches!(pair.as_rule(), Self::RULE));
         let inner_pair = pair.into_inner().next().unwrap();
         match inner_pair.as_rule() {
             Rule::assignment => Assignment::parse(inner_pair).map(Statement::Assignment),
@@ -527,8 +551,10 @@ impl PestParse for Statement {
 }
 
 impl PestParse for Pattern {
+    const RULE: Rule = Rule::pattern;
+
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Rule::pattern));
+        assert!(matches!(pair.as_rule(), Self::RULE));
         let pair = PatternPair(pair);
         let mut output = vec![];
 
@@ -564,16 +590,20 @@ impl PestParse for Pattern {
 }
 
 impl PestParse for Identifier {
+    const RULE: Rule = Rule::identifier;
+
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Rule::identifier));
+        assert!(matches!(pair.as_rule(), Self::RULE));
         let identifier = Arc::from(pair.as_str());
         Ok(Identifier(identifier))
     }
 }
 
 impl PestParse for Assignment {
+    const RULE: Rule = Rule::assignment;
+
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Rule::assignment));
+        assert!(matches!(pair.as_rule(), Self::RULE));
         let span = Span::from(&pair);
         let mut inner_pair = pair.into_inner();
         let pattern = Pattern::parse(inner_pair.next().unwrap())?;
@@ -589,8 +619,10 @@ impl PestParse for Assignment {
 }
 
 impl PestParse for Call {
+    const RULE: Rule = Rule::call_expr;
+
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Rule::call_expr));
+        assert!(matches!(pair.as_rule(), Self::RULE));
         let span = Span::from(&pair);
         let mut it = pair.into_inner();
         let name = CallName::parse(it.next().unwrap())?;
@@ -606,8 +638,10 @@ impl PestParse for Call {
 }
 
 impl PestParse for CallName {
+    const RULE: Rule = Rule::call_name;
+
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Rule::call_name));
+        assert!(matches!(pair.as_rule(), Self::RULE));
         let pair = pair.into_inner().next().unwrap();
         match pair.as_rule() {
             Rule::jet => JetName::parse(pair).map(Self::Jet),
@@ -626,16 +660,20 @@ impl PestParse for CallName {
 }
 
 impl PestParse for JetName {
+    const RULE: Rule = Rule::jet;
+
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Rule::jet));
+        assert!(matches!(pair.as_rule(), Self::RULE));
         let jet_name = pair.as_str().strip_prefix("jet_").unwrap();
         Ok(Self(Arc::from(jet_name)))
     }
 }
 
 impl PestParse for TypeAlias {
+    const RULE: Rule = Rule::type_alias;
+
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Rule::type_alias));
+        assert!(matches!(pair.as_rule(), Self::RULE));
         let span = Span::from(&pair);
         let mut it = pair.into_inner();
         let name = Identifier::parse(it.next().unwrap())?;
@@ -645,6 +683,8 @@ impl PestParse for TypeAlias {
 }
 
 impl PestParse for Expression {
+    const RULE: Rule = Rule::expression;
+
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         let span = Span::from(&pair);
         let pair = match pair.as_rule() {
@@ -672,8 +712,10 @@ impl PestParse for Expression {
 }
 
 impl PestParse for SingleExpression {
+    const RULE: Rule = Rule::single_expression;
+
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Rule::single_expression));
+        assert!(matches!(pair.as_rule(), Self::RULE));
 
         let span = Span::from(&pair);
         let inner_pair = pair.into_inner().next().unwrap();
@@ -748,16 +790,20 @@ impl PestParse for SingleExpression {
 }
 
 impl PestParse for UnsignedDecimal {
+    const RULE: Rule = Rule::unsigned_decimal;
+
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Rule::unsigned_decimal));
+        assert!(matches!(pair.as_rule(), Self::RULE));
         let decimal = Arc::from(pair.as_str().replace('_', ""));
         Ok(Self(decimal))
     }
 }
 
 impl PestParse for Bits {
+    const RULE: Rule = Rule::bit_string;
+
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Rule::bit_string));
+        assert!(matches!(pair.as_rule(), Self::RULE));
         let bit_string = pair.as_str();
         debug_assert!(&bit_string[0..2] == "0b");
 
@@ -801,8 +847,10 @@ impl PestParse for Bits {
 }
 
 impl PestParse for Bytes {
+    const RULE: Rule = Rule::byte_string;
+
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Rule::byte_string));
+        assert!(matches!(pair.as_rule(), Self::RULE));
         let hex_string = pair.as_str();
 
         let hex_digits = hex_string
@@ -822,16 +870,20 @@ impl PestParse for Bytes {
 }
 
 impl PestParse for WitnessName {
+    const RULE: Rule = Rule::witness_name;
+
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Rule::witness_name));
+        assert!(matches!(pair.as_rule(), Self::RULE));
         let name = Arc::from(pair.as_str());
         Ok(Self(name))
     }
 }
 
 impl PestParse for Match {
+    const RULE: Rule = Rule::match_expr;
+
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Rule::match_expr));
+        assert!(matches!(pair.as_rule(), Self::RULE));
         let span = Span::from(&pair);
         let mut it = pair.into_inner();
         let scrutinee_pair = it.next().unwrap();
@@ -861,8 +913,10 @@ impl PestParse for Match {
 }
 
 impl PestParse for MatchArm {
+    const RULE: Rule = Rule::match_arm;
+
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Rule::match_arm));
+        assert!(matches!(pair.as_rule(), Self::RULE));
         let mut it = pair.into_inner();
         let pattern = MatchPattern::parse(it.next().unwrap())?;
         let expression = Expression::parse(it.next().unwrap()).map(Arc::new)?;
@@ -874,8 +928,10 @@ impl PestParse for MatchArm {
 }
 
 impl PestParse for MatchPattern {
+    const RULE: Rule = Rule::match_pattern;
+
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Rule::match_pattern));
+        assert!(matches!(pair.as_rule(), Self::RULE));
         let pair = pair.into_inner().next().unwrap();
         let ret = match pair.as_rule() {
             rule @ (Rule::left_pattern | Rule::right_pattern | Rule::some_pattern) => {
@@ -900,6 +956,8 @@ impl PestParse for MatchPattern {
 }
 
 impl PestParse for AliasedType {
+    const RULE: Rule = Rule::ty;
+
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         enum Item {
             Type(AliasedType),
@@ -930,7 +988,7 @@ impl PestParse for AliasedType {
             }
         }
 
-        assert!(matches!(pair.as_rule(), Rule::ty));
+        assert!(matches!(pair.as_rule(), Self::RULE));
         let pair = TyPair(pair);
         let mut output = vec![];
 
@@ -1005,8 +1063,10 @@ impl PestParse for AliasedType {
 }
 
 impl PestParse for UIntType {
+    const RULE: Rule = Rule::unsigned_type;
+
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Rule::unsigned_type));
+        assert!(matches!(pair.as_rule(), Self::RULE));
         let ret = match pair.as_str() {
             "u1" => UIntType::U1,
             "u2" => UIntType::U2,
@@ -1024,8 +1084,10 @@ impl PestParse for UIntType {
 }
 
 impl PestParse for BuiltinAlias {
+    const RULE: Rule = Rule::builtin_alias;
+
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Rule::builtin_alias));
+        assert!(matches!(pair.as_rule(), Self::RULE));
         Self::from_str(pair.as_str())
             .map_err(Error::CannotParse)
             .with_span(&pair)

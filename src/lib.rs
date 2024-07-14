@@ -24,10 +24,11 @@ pub extern crate simplicity;
 pub use simplicity::elements;
 use simplicity::node::SimpleFinalizer;
 
+use crate::parse::ParseFromStr;
 use crate::{error::WithFile, named::NamedExt};
 
 pub fn compile(prog_text: &str) -> Result<Arc<CommitNode<Elements>>, String> {
-    let parse_program = parse::Program::parse(prog_text)?;
+    let parse_program = parse::Program::parse_from_str(prog_text)?;
     let ast_program = ast::Program::analyze(&parse_program).with_file(prog_text)?;
     let simplicity_named_construct = ast_program.compile().with_file(prog_text)?;
     let simplicity_named_commit = simplicity_named_construct
