@@ -148,6 +148,7 @@ pub enum Error {
     TypeValueMismatch(ResolvedType),
     InvalidNumberOfArguments(usize, usize),
     ExpressionTypeMismatch(ResolvedType, ResolvedType),
+    ExpressionNotConstant,
     IntegerOutOfBounds(UIntType),
     UndefinedVariable(Identifier),
     UndefinedAlias(Identifier),
@@ -204,6 +205,10 @@ impl fmt::Display for Error {
             Error::ExpressionTypeMismatch(expected, found) => write!(
                 f,
                 "Expected expression of type `{expected}`, found type `{found}`"
+            ),
+            Error::ExpressionNotConstant => write!(
+                f,
+                "Expression cannot be evaluated at compile time"
             ),
             Error::IntegerOutOfBounds(ty) => write!(
                 f,
