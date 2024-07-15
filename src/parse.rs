@@ -51,12 +51,14 @@ impl Position {
 
 /// Area that an object spans inside a file.
 ///
+/// The area cannot be empty.
+///
 /// [`pest::Span<'i>`] forces us to track lifetimes, so we introduce our own struct.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Span {
-    /// Position where the object starts.
+    /// Position where the object starts, inclusively.
     pub start: Position,
-    /// Position where the object ends.
+    /// Position where the object ends, inclusively.
     pub end: Position,
 }
 
@@ -91,6 +93,18 @@ impl<'a> From<&'a pest::iterators::Pair<'_, Rule>> for Span {
         let (line, col) = pair.as_span().end_pos().line_col();
         let end = Position::new(line, col);
         Self::new(start, end)
+    }
+}
+
+impl<'a> From<&'a str> for Span {
+    fn from(s: &str) -> Self {
+        let start = Position::new(1, 1);
+        let end_line = std::cmp::max(1, s.lines().count());
+        let end_col = std::cmp::max(1, s.lines().next_back().unwrap_or("").len());
+        let end = Position::new(end_line, end_col);
+        debug_assert!(start.line <= end.line);
+        debug_assert!(start.line < end.line || start.col <= end.col);
+        Span::new(start, end)
     }
 }
 

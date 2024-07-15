@@ -267,8 +267,8 @@ mod tests {
     const FILE: &str = r#"let a1: List<u32, 5> = None;
 let x: u32 = Left(
     Right(0)
-);
-"#;
+);"#;
+    const EMPTY_FILE: &str = "";
 
     #[test]
     fn display_single_line() {
@@ -296,5 +296,46 @@ let x: u32 = Left(
 4 | );
   | ^^^^^^^^^^^^^^^^^^ Cannot parse: Expected value of type `u32`, got `Either<Either<_, u32>, _>`"#;
         assert_eq!(&expected[1..], &error.to_string());
+    }
+
+    #[test]
+    fn display_entire_file() {
+        let error = Error::CannotParse("This span covers the entire file".to_string())
+            .with_span(Span::from(FILE))
+            .with_file(Arc::from(FILE));
+        let expected = r#"
+  |
+1 | let a1: List<u32, 5> = None;
+2 | let x: u32 = Left(
+3 |     Right(0)
+4 | );
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Cannot parse: This span covers the entire file"#;
+        assert_eq!(&expected[1..], &error.to_string());
+    }
+
+    #[test]
+    fn display_no_file() {
+        let error = Error::CannotParse("This error has no file".to_string())
+            .with_span(Span::from(EMPTY_FILE));
+        let expected = "Cannot parse: This error has no file";
+        assert_eq!(&expected, &error.to_string());
+
+        let error = Error::CannotParse("This error has no file".to_string())
+            .with_span(Span::new(Position::new(1, 1), Position::new(2, 2)));
+        assert_eq!(&expected, &error.to_string());
+    }
+
+    #[test]
+    fn display_empty_file() {
+        let error = Error::CannotParse("This error has an empty file".to_string())
+            .with_span(Span::from(EMPTY_FILE))
+            .with_file(Arc::from(EMPTY_FILE));
+        let expected = "Cannot parse: This error has an empty file";
+        assert_eq!(&expected, &error.to_string());
+
+        let error = Error::CannotParse("This error has an empty file".to_string())
+            .with_span(Span::new(Position::new(1, 1), Position::new(2, 2)))
+            .with_file(Arc::from(EMPTY_FILE));
+        assert_eq!(&expected, &error.to_string());
     }
 }
