@@ -3,14 +3,16 @@ use std::sync::Arc;
 use simplicity::dag::{InternalSharing, PostOrderIterItem};
 use simplicity::jet::{Elements, Jet};
 use simplicity::node::{
-    self, CommitData, Converter, CoreConstructible, Inner, JetConstructible, NoDisconnect,
-    NoWitness, Node, WitnessConstructible,
+    self, CommitData, Constructible, Converter, CoreConstructible, Inner, JetConstructible,
+    NoDisconnect, NoWitness, Node, WitnessConstructible, WitnessData,
 };
 use simplicity::types::arrow::Arrow;
-use simplicity::Cmr;
 use simplicity::{types, CommitNode};
+use simplicity::{Cmr, WitnessNode};
 
 use crate::parse::WitnessName;
+use crate::value::{StructuralValue, TypedValue};
+use crate::witness::WitnessValues;
 
 /// Marker for [`ConstructNode`].
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
@@ -81,6 +83,74 @@ pub fn to_commit_node(node: &ConstructNode) -> Result<Arc<CommitNode<Elements>>,
     }
 
     node.convert::<InternalSharing, _, _>(&mut Forgetter)
+}
+
+/// Convert [`ConstructNode`] into [`WitnessNode`] by populating witness nodes with their assigned values.
+///
+/// Each witness node has a name. If there is no value assigned to this name,
+/// then the node is left empty.
+///
+/// When [`WitnessNode`] is finalized to [`node::RedeemNode`], there will be an error if any witness
+/// node on a used (unpruned) branch is empty. It is the responsibility of the caller to ensure that
+/// all used witness nodes have an assigned value.
+///
+/// ## Soundness
+///
+/// It is the responsibility of the caller to ensure that the given witness `values` match the
+/// types in the construct `node`. This can be done by calling [`WitnessValues::is_consistent`]
+/// on the original Simfony program before it is compiled to Simplicity.
+pub fn to_witness_node(node: &ConstructNode, values: &WitnessValues) -> Arc<WitnessNode<Elements>> {
+    struct Populator<'a> {
+        values: &'a WitnessValues,
+    }
+
+    impl<'a, J: Jet> Converter<Construct<J>, node::Witness<J>> for Populator<'a> {
+        type Error = ();
+
+        fn convert_witness(
+            &mut self,
+            _: &PostOrderIterItem<&Node<Construct<J>>>,
+            witness: &WitnessName,
+        ) -> Result<Option<Arc<simplicity::Value>>, Self::Error> {
+            let maybe_value = self
+                .values
+                .get(witness)
+                .map(TypedValue::value)
+                .map(StructuralValue::from)
+                .map(Arc::<simplicity::Value>::from);
+            Ok(maybe_value)
+        }
+
+        fn convert_disconnect(
+            &mut self,
+            _: &PostOrderIterItem<&Node<Construct<J>>>,
+            _: Option<&Arc<WitnessNode<J>>>,
+            _: &NoDisconnect,
+        ) -> Result<Option<Arc<WitnessNode<J>>>, Self::Error> {
+            Ok(None)
+        }
+
+        fn convert_data(
+            &mut self,
+            _: &PostOrderIterItem<&Node<Construct<J>>>,
+            inner: Inner<
+                &Arc<WitnessNode<J>>,
+                J,
+                &Option<Arc<WitnessNode<J>>>,
+                &Option<Arc<simplicity::Value>>,
+            >,
+        ) -> Result<WitnessData<J>, Self::Error> {
+            let inner = inner
+                .map(Arc::as_ref)
+                .map(WitnessNode::<J>::cached_data)
+                .map_witness(Option::<Arc<simplicity::Value>>::clone);
+            Ok(WitnessData::from_inner(inner).unwrap())
+        }
+    }
+
+    let mut populator = Populator { values };
+    node.convert::<InternalSharing, _, _>(&mut populator)
+        .unwrap()
 }
 
 /// Copy of [`node::ConstructData`] with an implementation of [`WitnessConstructible<WitnessName>`].
