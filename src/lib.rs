@@ -14,6 +14,7 @@ pub mod parse;
 pub mod pattern;
 pub mod types;
 pub mod value;
+pub mod witness;
 
 use std::sync::Arc;
 

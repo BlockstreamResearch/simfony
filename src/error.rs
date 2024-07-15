@@ -153,6 +153,8 @@ pub enum Error {
     UndefinedAlias(Identifier),
     VariableReuseInPattern(Identifier),
     ReusedWitness(WitnessName),
+    WitnessTypeMismatch(WitnessName, ResolvedType, ResolvedType),
+    WitnessReassigned(WitnessName),
 }
 
 #[rustfmt::skip]
@@ -223,6 +225,14 @@ impl fmt::Display for Error {
                 f,
                 "Witness `{name}` has been used before somewhere in the program"
             ),
+            Error::WitnessTypeMismatch(name, declared, assigned) => write!(
+                f,
+                "Witness `{name}` was declared with type `{declared}` but its assigned value is of type `{assigned}`"
+            ),
+            Error::WitnessReassigned(name) => write!(
+                f,
+                "Witness `{name}` has already been assigned a value"
+            )
         }
     }
 }
