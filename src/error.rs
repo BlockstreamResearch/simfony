@@ -18,7 +18,7 @@ impl<T, E: Into<Error>> WithSpan<T> for Result<T, E> {
     }
 }
 
-/// Helper trait to update `Result<A, RichError>` with the the affected source file.
+/// Helper trait to update `Result<A, RichError>` with the affected source file.
 pub trait WithFile<T> {
     /// Update the result with the affected source file.
     ///
@@ -231,8 +231,8 @@ impl std::error::Error for Error {}
 
 impl Error {
     /// Update the error with the affected span.
-    pub fn with_span<S: Into<Span>>(self, span: S) -> RichError {
-        RichError::new(self, span.into())
+    pub fn with_span(self, span: Span) -> RichError {
+        RichError::new(self, span)
     }
 }
 
