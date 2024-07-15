@@ -1,10 +1,14 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::fmt;
 
-use crate::ast;
-use crate::error::Error;
-use crate::parse::WitnessName;
+use serde::{de, Deserialize, Deserializer};
+
+use crate::error::{Error, RichError, WithFile, WithSpan};
+use crate::parse::{ParseFromStr, WitnessName};
+use crate::types::{AliasedType, ResolvedType};
 use crate::value::TypedValue;
+use crate::{ast, parse};
 
 /// Mapping of witness names to their assigned values.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -64,5 +68,130 @@ impl WitnessValues {
         }
 
         Ok(())
+    }
+}
+
+impl ParseFromStr for ResolvedType {
+    fn parse_from_str(s: &str) -> Result<Self, RichError> {
+        let aliased = AliasedType::parse_from_str(s)?;
+        aliased
+            .resolve_builtin()
+            .map_err(Error::UndefinedAlias)
+            .with_span(s)
+            .with_file(s)
+    }
+}
+
+struct WitnessMapVisitor;
+
+impl<'de> de::Visitor<'de> for WitnessMapVisitor {
+    type Value = WitnessValues;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("a map with string keys and value-map values")
+    }
+
+    fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+    where
+        M: de::MapAccess<'de>,
+    {
+        let mut witness = WitnessValues::empty();
+        while let Some((key, value)) = access.next_entry()? {
+            witness.insert(key, value).map_err(de::Error::custom)?;
+        }
+        Ok(witness)
+    }
+}
+
+impl<'de> Deserialize<'de> for WitnessValues {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_map(WitnessMapVisitor)
+    }
+}
+
+struct ValueMapVisitor;
+
+impl<'de> de::Visitor<'de> for ValueMapVisitor {
+    type Value = TypedValue;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("a map with \"value\" and \"type\" fields")
+    }
+
+    fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+    where
+        M: de::MapAccess<'de>,
+    {
+        let mut value = None;
+        let mut ty = None;
+
+        while let Some(key) = access.next_key::<&str>()? {
+            match key {
+                "value" => {
+                    if value.is_some() {
+                        return Err(de::Error::duplicate_field("value"));
+                    }
+                    value = Some(access.next_value::<&str>()?);
+                }
+                "type" => {
+                    if ty.is_some() {
+                        return Err(de::Error::duplicate_field("type"));
+                    }
+                    ty = Some(access.next_value::<&str>()?);
+                }
+                _ => {
+                    return Err(de::Error::unknown_field(key, &["value", "type"]));
+                }
+            }
+        }
+
+        let ty = match ty {
+            Some(s) => ResolvedType::parse_from_str(s).map_err(de::Error::custom)?,
+            None => return Err(de::Error::missing_field("type")),
+        };
+        let expression = match value {
+            Some(s) => parse::Expression::parse_from_str(s).map_err(de::Error::custom)?,
+            None => return Err(de::Error::missing_field("value")),
+        };
+
+        TypedValue::from_const_expr(&expression, &ty).map_err(de::Error::custom)
+    }
+}
+
+impl<'de> Deserialize<'de> for TypedValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_map(ValueMapVisitor)
+    }
+}
+
+struct ParserVisitor<A>(std::marker::PhantomData<A>);
+
+impl<'de, A: ParseFromStr> de::Visitor<'de> for ParserVisitor<A> {
+    type Value = A;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("a valid string")
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        A::parse_from_str(value).map_err(E::custom)
+    }
+}
+
+impl<'de> Deserialize<'de> for WitnessName {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(ParserVisitor::<Self>(std::marker::PhantomData))
     }
 }
