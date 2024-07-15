@@ -67,7 +67,10 @@ mod tests {
             ("add.simf", "empty.wit"),
             ("array.simf", "empty.wit"),
             // ("cat.simf", "empty.wit"),
-            ("checksigfromstackverify.simf", "empty.wit"),
+            (
+                "checksigfromstackverify.simf",
+                "checksigfromstackverify.wit",
+            ),
             ("ctv.simf", "empty.wit"),
             ("list.simf", "empty.wit"),
             ("match.simf", "empty.wit"),
@@ -75,8 +78,11 @@ mod tests {
             ("recursive-covenant.simf", "empty.wit"),
             ("scopes.simf", "empty.wit"),
             ("sighash_all.simf", "empty.wit"),
-            ("sighash_all_anyprevoutanyscript.simf", "empty.wit"),
-            ("sighash_none.simf", "empty.wit"),
+            (
+                "sighash_all_anyprevoutanyscript.simf",
+                "sighash_all_anyprevoutanyscript.wit",
+            ),
+            ("sighash_none.simf", "sighash_none.wit"),
             ("tuple.simf", "empty.wit"),
             ("unwrap.simf", "empty.wit"),
         ] {
