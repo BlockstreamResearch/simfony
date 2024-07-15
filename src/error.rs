@@ -71,36 +71,36 @@ impl RichError {
 
 impl fmt::Display for RichError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let start_line_index = self.span.start.line.get() - 1;
-        let end_line_index = self.span.end.line.get() - 1;
-        let line_num_width = self.span.end.line.get().to_string().len();
-        writeln!(f, "{:width$} |", " ", width = line_num_width)?;
+        match self.file {
+            Some(ref file) if !file.is_empty() => {
+                let start_line_index = self.span.start.line.get() - 1;
+                let n_spanned_lines = self.span.end.line.get() - start_line_index;
+                let line_num_width = self.span.end.line.get().to_string().len();
+                writeln!(f, "{:width$} |", " ", width = line_num_width)?;
 
-        if let Some(ref file) = self.file {
-            let mut lines = file.lines().skip(start_line_index).peekable();
-            let start_line_len = lines.peek().map(|l| l.len()).unwrap_or(0);
-            for (relative_line_index, line_str) in lines
-                .take(end_line_index - start_line_index + 1)
-                .enumerate()
-            {
-                let line_num = start_line_index + relative_line_index + 1;
-                writeln!(f, "{line_num:line_num_width$} | {line_str}")?;
+                let mut lines = file.lines().skip(start_line_index).peekable();
+                let start_line_len = lines.peek().map(|l| l.len()).unwrap_or(0);
+
+                for (relative_line_index, line_str) in lines.take(n_spanned_lines).enumerate() {
+                    let line_num = start_line_index + relative_line_index + 1;
+                    writeln!(f, "{line_num:line_num_width$} | {line_str}")?;
+                }
+
+                let (underline_start, underline_length) = match self.span.is_multiline() {
+                    true => (0, start_line_len),
+                    false => (
+                        self.span.start.col.get(),
+                        self.span.end.col.get() - self.span.start.col.get(),
+                    ),
+                };
+                write!(f, "{:width$} |", " ", width = line_num_width)?;
+                write!(f, "{:width$}", " ", width = underline_start)?;
+                write!(f, "{:^<width$} ", "", width = underline_length)?;
+                write!(f, "{}", self.error)
             }
-            let (underline_start, underline_length) = if self.span.is_multiline() {
-                (0, start_line_len)
-            } else {
-                (
-                    self.span.start.col.get(),
-                    self.span.end.col.get() - self.span.start.col.get(),
-                )
-            };
-            write!(f, "{:width$} |", " ", width = line_num_width)?;
-            write!(f, "{:width$}", " ", width = underline_start)?;
-            write!(f, "{:^<width$} ", "", width = underline_length)?;
-            write!(f, "{}", self.error)
-        } else {
-            let start_line_num = self.span.end.line.get();
-            write!(f, "{start_line_num} | {}", self.error)
+            _ => {
+                write!(f, "{}", self.error)
+            }
         }
     }
 }
