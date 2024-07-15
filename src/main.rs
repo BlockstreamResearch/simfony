@@ -1,6 +1,7 @@
 use base64::display::Base64Display;
 use base64::engine::general_purpose::STANDARD;
 
+use simfony::witness::WitnessValues;
 use simfony::{compile, satisfy};
 
 use std::env;
@@ -29,13 +30,12 @@ fn run() -> Result<(), String> {
     let prog_text = std::fs::read_to_string(prog_path).map_err(|e| e.to_string())?;
 
     if args.len() >= 3 {
-        // TODO: Re-enable witness file parsing
-        println!(
-            "Warning: Witness expressions are temporarily disabled. Skipping the witness file..."
-        );
-        // let witness_file = &args[2];
-        // let wit_path = std::path::Path::new(witness_file);
-        let res = satisfy(&prog_text)?;
+        let wit_file = &args[2];
+        let wit_path = std::path::Path::new(wit_file);
+        let wit_text = std::fs::read_to_string(wit_path).map_err(|e| e.to_string())?;
+        let witness = serde_json::from_str::<WitnessValues>(&wit_text).unwrap();
+
+        let res = satisfy(&prog_text, &witness)?;
         let redeem_bytes = res.encode_to_vec();
         println!("{}", Base64Display::new(&redeem_bytes, &STANDARD));
     } else {

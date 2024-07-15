@@ -18,14 +18,14 @@ pub mod witness;
 
 use std::sync::Arc;
 
-use simplicity::{dag::NoSharing, jet::Elements, node::Redeem, CommitNode, RedeemNode};
+use simplicity::{jet::Elements, CommitNode, RedeemNode};
 
 pub extern crate simplicity;
 pub use simplicity::elements;
-use simplicity::node::SimpleFinalizer;
 
 use crate::error::WithFile;
 use crate::parse::ParseFromStr;
+use crate::witness::WitnessValues;
 
 pub fn compile(prog_text: &str) -> Result<Arc<CommitNode<Elements>>, String> {
     let parse_program = parse::Program::parse_from_str(prog_text)?;
@@ -36,14 +36,19 @@ pub fn compile(prog_text: &str) -> Result<Arc<CommitNode<Elements>>, String> {
     Ok(simplicity_commit)
 }
 
-pub fn satisfy(prog_text: &str) -> Result<Arc<RedeemNode<Elements>>, String> {
-    let simplicity_named_commit = compile(prog_text)?;
-    let mut finalizer = SimpleFinalizer::new(std::iter::empty());
-    simplicity_named_commit
-        .convert::<NoSharing, Redeem<Elements>, _>(&mut finalizer)
-        .map_err(|_| {
-            "Witness expressions are temporarily not supported. Cannot satisfy.".to_string()
-        })
+pub fn satisfy(
+    prog_text: &str,
+    witness: &WitnessValues,
+) -> Result<Arc<RedeemNode<Elements>>, String> {
+    let parse_program = parse::Program::parse_from_str(prog_text)?;
+    let ast_program = ast::Program::analyze(&parse_program).with_file(prog_text)?;
+    let simplicity_named_construct = ast_program.compile().with_file(prog_text)?;
+    witness
+        .is_consistent(&ast_program)
+        .map_err(|e| e.to_string())?;
+
+    let simplicity_witness = named::to_witness_node(&simplicity_named_construct, witness);
+    simplicity_witness.finalize().map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -51,35 +56,52 @@ mod tests {
     use base64::display::Base64Display;
     use base64::engine::general_purpose::STANDARD;
     use simplicity::{encode, BitMachine, BitWriter};
-    use std::path::Path;
+    use std::path::PathBuf;
 
     use crate::*;
 
     #[test]
     fn test_progs() {
-        _test_progs("./example_progs/add.simf");
-        _test_progs("./example_progs/array.simf");
-        // _test_progs("./example_progs/cat.simf");
-        _test_progs("./example_progs/checksigfromstackverify.simf");
-        _test_progs("./example_progs/ctv.simf");
-        _test_progs("./example_progs/list.simf");
-        _test_progs("./example_progs/match.simf");
-        _test_progs("./example_progs/nesting.simf");
-        _test_progs("./example_progs/recursive-covenant.simf");
-        _test_progs("./example_progs/scopes.simf");
-        _test_progs("./example_progs/sighash_all.simf");
-        _test_progs("./example_progs/sighash_all_anyprevoutanyscript.simf");
-        _test_progs("./example_progs/sighash_none.simf");
-        _test_progs("./example_progs/tuple.simf");
-        _test_progs("./example_progs/unwrap.simf");
+        for (prog_file, wit_file) in [
+            ("add.simf", "empty.wit"),
+            ("add.simf", "empty.wit"),
+            ("array.simf", "empty.wit"),
+            // ("cat.simf", "empty.wit"),
+            ("checksigfromstackverify.simf", "empty.wit"),
+            ("ctv.simf", "empty.wit"),
+            ("list.simf", "empty.wit"),
+            ("match.simf", "empty.wit"),
+            ("nesting.simf", "empty.wit"),
+            ("recursive-covenant.simf", "empty.wit"),
+            ("scopes.simf", "empty.wit"),
+            ("sighash_all.simf", "empty.wit"),
+            ("sighash_all_anyprevoutanyscript.simf", "empty.wit"),
+            ("sighash_none.simf", "empty.wit"),
+            ("tuple.simf", "empty.wit"),
+            ("unwrap.simf", "empty.wit"),
+        ] {
+            _test_progs(prog_file, wit_file)
+        }
     }
 
-    fn _test_progs(file: &str) {
-        println!("Testing {file}");
-        let path = Path::new(file);
-        let text = std::fs::read_to_string(path).unwrap();
-        let redeem_prog = match satisfy(&text) {
-            Ok(commit) => commit,
+    fn _test_progs(prog_file: &str, wit_file: &str) {
+        println!("Testing {prog_file}");
+        let parent_path = PathBuf::from("./example_progs");
+        let mut prog_path = parent_path.clone();
+        prog_path.push(prog_file);
+        let mut wit_path = parent_path;
+        wit_path.push(wit_file);
+
+        let prog_text = std::fs::read_to_string(prog_path).unwrap();
+        let wit_text = std::fs::read_to_string(wit_path).unwrap();
+        let witness = match serde_json::from_str::<WitnessValues>(&wit_text) {
+            Ok(x) => x,
+            Err(error) => {
+                panic!("{error}")
+            }
+        };
+        let redeem_prog = match satisfy(&prog_text, &witness) {
+            Ok(x) => x,
             Err(error) => {
                 panic!("{error}");
             }
