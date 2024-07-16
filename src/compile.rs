@@ -171,7 +171,6 @@ fn compile_blk(
             let right = compile_blk(stmts, scope, index + 1, last_expr)?;
             combine_seq(&left, &right).with_span(expression)
         }
-        Statement::TypeAlias => compile_blk(stmts, scope, index + 1, last_expr),
     }
 }
 
@@ -184,7 +183,7 @@ fn combine_seq(a: &ProgNode, b: &ProgNode) -> Result<ProgNode, simplicity::types
 impl Program {
     pub fn compile(&self) -> Result<ProgNode, RichError> {
         let mut scope = Scope::new(Pattern::Ignore);
-        compile_blk(self.statements(), &mut scope, 0, None)
+        self.main().compile(&mut scope)
     }
 }
 

@@ -1,18 +1,23 @@
-WHITESPACE = _{ " " | "\t" | "\n" | "\r" }
-COMMENT = _{ ("/*" ~ (!"*/" ~ ANY)* ~ "*/") | ("//" ~ (!"\n" ~ ANY)*) }
+WHITESPACE        = _{ " " | "\t" | "\n" | "\r" }
+COMMENT           = _{ ("/*" ~ (!"*/" ~ ANY)* ~ "*/") | ("//" ~ (!"\n" ~ ANY)*) }
 
-program = {
-    SOI ~
-    (statement ~ ";")* ~
-    EOI
-}
-statement = { assignment | type_alias | expression }
+program           =  { SOI ~ item* ~ EOI }
+item              =  { type_alias | function }
+statement         =  { assignment | expression }
+expression        =  { block_expression | single_expression }
+block_expression  =  { "{" ~ (statement ~ ";")* ~ expression? ~ "}" }
 
 identifier        = @{ !(reserved ~ !ASCII_ALPHANUMERIC) ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
 jet               = @{ "jet_" ~ (ASCII_ALPHANUMERIC | "_")+ }
 witness_name      = @{ (ASCII_ALPHANUMERIC | "_")+ }
 builtin_type      = @{ "Either" | "Option" | "bool" | unsigned_type | "List" }
 reserved          = @{ jet | builtin_type }
+
+function_name     =  { identifier }
+typed_identifier  =  { identifier ~ ":" ~ ty }
+function_params   =  { "(" ~ (typed_identifier ~ ("," ~ typed_identifier)*)? ~ ")" }
+function_return   =  { "->" ~ ty }
+function          =  { "fn" ~ function_name ~ function_params ~ function_return? ~ block_expression }
 
 variable_pattern  =  { identifier }
 ignore_pattern    = @{ "_" }
@@ -43,8 +48,6 @@ builtin_alias     = @{ "Ctx8" | "Pubkey" | "Message64" | "Signature" | "Scalar" 
 alias_name        =  { !builtin_alias ~ identifier }
 type_alias        =  { "type" ~ alias_name ~ "=" ~ ty }
 
-expression        =  { block_expression | single_expression }
-block_expression  =  { "{" ~ (statement ~ ";")* ~ expression? ~ "}" }
 left_expr         =  { "Left(" ~ expression ~ ")" }
 right_expr        =  { "Right(" ~ expression ~ ")" }
 none_expr         = @{ "None" }

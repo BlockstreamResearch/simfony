@@ -203,9 +203,11 @@ mod tests {
 
     #[test]
     fn witness_reuse() {
-        let s = r#"let a: u32 = witness("a");
-let also_a: u32 = witness("a");
-jet_verify(jet_eq_32(a, b));"#;
+        let s = r#"fn main() {
+    let a: u32 = witness("a");
+    let also_a: u32 = witness("a");
+    jet_verify(jet_eq_32(a, b));
+}"#;
         let program = parse::Program::parse_from_str(s).expect("parsing works");
         match ast::Program::analyze(&program).map_err(Error::from) {
             Ok(_) => panic!("Witness reuse was falsely accepted"),
@@ -216,8 +218,10 @@ jet_verify(jet_eq_32(a, b));"#;
 
     #[test]
     fn witness_type_mismatch() {
-        let s = r#"let a: u32 = witness("a");
-jet_verify(jet_is_zero_32(a));"#;
+        let s = r#"fn main() {
+    let a: u32 = witness("a");
+    jet_verify(jet_is_zero_32(a));
+}"#;
 
         let mut witness = WitnessValues::empty();
         let a = WitnessName::parse_from_str("a").unwrap();

@@ -8,7 +8,7 @@ use simplicity::jet::Elements;
 
 use crate::error::{Error, RichError, WithSpan};
 use crate::parse;
-use crate::parse::{Identifier, MatchPattern, Span, WitnessName};
+use crate::parse::{FunctionName, Identifier, MatchPattern, Span, WitnessName};
 use crate::pattern::Pattern;
 use crate::types::{AliasedType, ResolvedType, TypeConstructible, TypeDeconstructible};
 use crate::value::{UIntValue, Value};
@@ -24,17 +24,22 @@ impl DeclaredWitnesses {
     }
 }
 
-/// A program is a sequence of statements.
+/// A program consists of the main function.
+///
+/// Other items such as custom functions or type aliases
+/// are resolved during the creation of the AST.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Program {
-    statements: Arc<[Statement]>,
+    main: Expression,
     witnesses: DeclaredWitnesses,
 }
 
 impl Program {
-    /// Access the statements of the program.
-    pub fn statements(&self) -> &[Statement] {
-        &self.statements
+    /// Access the main function.
+    ///
+    /// There is exactly one main function for each program.
+    pub fn main(&self) -> &Expression {
+        &self.main
     }
 
     /// Access the map of declared witnesses.
@@ -43,9 +48,41 @@ impl Program {
     }
 }
 
-/// A statement is a program component.
+/// An item is a component of a program.
 ///
-/// Statements can define variables or type aliases,
+/// All items except for the main function are resolved during the creation of the AST.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum Item {
+    /// A type alias.
+    ///
+    /// A stub because the alias was resolved during the creation of the AST.
+    TypeAlias,
+    /// A function.
+    Function(Function),
+}
+
+/// Definition of a function.
+///
+/// All functions except for the main function are resolved during the creation of the AST.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum Function {
+    /// A custom function.
+    ///
+    /// A stub because the definition of the function was moved to its calls in the main function.
+    Custom,
+    /// The main function.
+    ///
+    /// An expression that takes no inputs (unit) and that produces no output (unit).
+    /// The expression may panic midway through, signalling failure.
+    /// Otherwise, the expression signals success.
+    ///
+    /// This expression is evaluated when the program is run.
+    Main(Expression),
+}
+
+/// A statement is a component of a block expression.
+///
+/// Statements can define variables or run validating expressions,
 /// but they never return values.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Statement {
@@ -53,11 +90,6 @@ pub enum Statement {
     Assignment(Assignment),
     /// Expression that returns nothing (the unit value).
     Expression(Expression),
-    /// Type alias.
-    ///
-    /// The alias was resolved when the abstract syntax tree was created.
-    /// We keep the alias statement simply because it is annoying to remove parts of the tree during analysis.
-    TypeAlias,
 }
 
 /// Assignment of a value to a variable identifier.
@@ -254,28 +286,22 @@ impl MatchArm {
 /// 1. Assigning types to each variable
 /// 2. Resolving type aliases
 /// 3. Assigning types to each witness expression
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 struct Scope {
     variables: Vec<HashMap<Identifier, ResolvedType>>,
-    aliases: Vec<HashMap<Identifier, ResolvedType>>,
+    aliases: HashMap<Identifier, ResolvedType>,
     witnesses: HashMap<WitnessName, ResolvedType>,
 }
 
-impl Default for Scope {
-    fn default() -> Self {
-        Self {
-            variables: vec![HashMap::new()],
-            aliases: vec![HashMap::new()],
-            witnesses: HashMap::new(),
-        }
-    }
-}
-
 impl Scope {
+    /// Check if the current scope is topmost.
+    pub fn is_topmost(&self) -> bool {
+        self.variables.is_empty()
+    }
+
     /// Push a new scope onto the stack.
     pub fn push_scope(&mut self) {
         self.variables.push(HashMap::new());
-        self.aliases.push(HashMap::new());
     }
 
     /// Pop the current scope from the stack.
@@ -285,7 +311,6 @@ impl Scope {
     /// The stack is empty.
     pub fn pop_scope(&mut self) {
         self.variables.pop().expect("Stack is empty");
-        self.aliases.pop().expect("Stack is empty");
     }
 
     /// Push a variable onto the current stack.
@@ -314,31 +339,19 @@ impl Scope {
     ///
     /// There are any undefined aliases.
     pub fn resolve(&self, ty: &AliasedType) -> Result<ResolvedType, Error> {
-        let get_alias = |name: &Identifier| -> Option<ResolvedType> {
-            self.aliases
-                .iter()
-                .rev()
-                .find_map(|scope| scope.get(name))
-                .cloned()
-        };
+        let get_alias =
+            |name: &Identifier| -> Option<ResolvedType> { self.aliases.get(name).cloned() };
         ty.resolve(get_alias).map_err(Error::UndefinedAlias)
     }
 
-    /// Push a type alias onto the current scope.
+    /// Push a type alias into the global map.
     ///
     /// ## Errors
     ///
     /// There are any undefined aliases.
-    ///
-    /// ## Panics
-    ///
-    /// The stack is empty.
     pub fn insert_alias(&mut self, alias: Identifier, ty: AliasedType) -> Result<(), Error> {
         let resolved_ty = self.resolve(&ty)?;
-        self.aliases
-            .last_mut()
-            .expect("Stack is empty")
-            .insert(alias, resolved_ty);
+        self.aliases.insert(alias, resolved_ty);
         Ok(())
     }
 
@@ -383,17 +396,83 @@ impl Program {
     pub fn analyze(from: &parse::Program) -> Result<Self, RichError> {
         let unit = ResolvedType::unit();
         let mut scope = Scope::default();
-        let statements = from
-            .statements
+        let items = from
+            .items()
             .iter()
-            .map(|s| Statement::analyze(s, &unit, &mut scope))
-            .collect::<Result<Arc<[Statement]>, RichError>>()?;
+            .map(|s| Item::analyze(s, &unit, &mut scope))
+            .collect::<Result<Vec<Item>, RichError>>()?;
+        debug_assert!(scope.is_topmost());
         let witnesses = DeclaredWitnesses(scope.into_witnesses());
 
-        Ok(Self {
-            statements,
-            witnesses,
-        })
+        let mut mains = items
+            .into_iter()
+            .filter_map(|item| match item {
+                Item::Function(Function::Main(expr)) => Some(expr),
+                _ => None,
+            })
+            .collect::<Vec<Expression>>();
+        let main = match mains.len() {
+            0 => return Err(Error::MainRequired).with_span(from),
+            1 => mains.pop().unwrap(),
+            _ => {
+                return Err(Error::FunctionRedefined(FunctionName::main()))
+                    .with_span(mains.first().unwrap())
+            }
+        };
+
+        Ok(Self { main, witnesses })
+    }
+}
+
+impl AbstractSyntaxTree for Item {
+    type From = parse::Item;
+
+    fn analyze(from: &Self::From, ty: &ResolvedType, scope: &mut Scope) -> Result<Self, RichError> {
+        assert!(ty.is_unit(), "Items cannot return anything");
+        assert!(scope.is_topmost(), "Items live in the topmost scope only");
+
+        match from {
+            parse::Item::TypeAlias(alias) => {
+                scope
+                    .insert_alias(alias.name.clone(), alias.ty.clone())
+                    .with_span(alias)?;
+                Ok(Self::TypeAlias)
+            }
+            parse::Item::Function(function) => {
+                Function::analyze(function, ty, scope).map(Self::Function)
+            }
+        }
+    }
+}
+
+impl AbstractSyntaxTree for Function {
+    type From = parse::Function;
+
+    fn analyze(from: &Self::From, ty: &ResolvedType, scope: &mut Scope) -> Result<Self, RichError> {
+        assert!(ty.is_unit(), "Function definitions cannot return anything");
+        assert!(scope.is_topmost(), "Items live in the topmost scope only");
+
+        // TODO: Handle custom functions once we can call them
+        // Skip custom functions because we cannot call them with the current grammar
+        if from.name().as_inner() != "main" {
+            return Ok(Self::Custom);
+        }
+
+        if !from.params().is_empty() {
+            return Err(Error::MainNoInputs).with_span(from);
+        }
+        if let Some(aliased) = from.ret() {
+            let resolved = scope.resolve(aliased).with_span(from)?;
+            if !resolved.is_unit() {
+                return Err(Error::MainNoOutput).with_span(from);
+            }
+        }
+
+        scope.push_scope();
+        let body = Expression::analyze(from.body(), ty, scope)?;
+        scope.pop_scope();
+        debug_assert!(scope.is_topmost());
+        Ok(Self::Main(body))
     }
 }
 
@@ -408,12 +487,6 @@ impl AbstractSyntaxTree for Statement {
             }
             parse::Statement::Expression(expression) => {
                 Expression::analyze(expression, ty, scope).map(Self::Expression)
-            }
-            parse::Statement::TypeAlias(alias) => {
-                scope
-                    .insert_alias(alias.name.clone(), alias.ty.clone())
-                    .with_span(alias)?;
-                Ok(Self::TypeAlias)
             }
         }
     }

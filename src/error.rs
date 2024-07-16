@@ -3,7 +3,9 @@ use std::sync::Arc;
 
 use simplicity::elements;
 
-use crate::parse::{Identifier, JetName, MatchPattern, Position, Rule, Span, WitnessName};
+use crate::parse::{
+    FunctionName, Identifier, JetName, MatchPattern, Position, Rule, Span, WitnessName,
+};
 use crate::types::{ResolvedType, UIntType};
 
 /// Helper trait to convert `Result<T, E>` into `Result<T, RichError>`.
@@ -152,6 +154,10 @@ pub enum Error {
     CannotCompile(String),
     JetDoesNotExist(JetName),
     TypeValueMismatch(ResolvedType),
+    MainNoInputs,
+    MainNoOutput,
+    MainRequired,
+    FunctionRedefined(FunctionName),
     InvalidNumberOfArguments(usize, usize),
     ExpressionTypeMismatch(ResolvedType, ResolvedType),
     ExpressionNotConstant,
@@ -203,6 +209,22 @@ impl fmt::Display for Error {
             Error::TypeValueMismatch(ty) => write!(
                 f,
                 "Value does not match the assigned type `{ty}`"
+            ),
+            Error::MainNoInputs => write!(
+                f,
+                "Main function takes no input parameters"
+            ),
+            Error::MainNoOutput => write!(
+                f,
+                "Main function produces no output"
+            ),
+            Error::MainRequired => write!(
+                f,
+                "Main function is required"
+            ),
+            Error::FunctionRedefined(name) => write!(
+                f,
+                "Function `{name}` was defined multiple times"
             ),
             Error::InvalidNumberOfArguments(expected, found) => write!(
                 f,

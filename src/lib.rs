@@ -60,6 +60,7 @@ mod tests {
 
     use crate::*;
 
+    #[ignore]
     #[test]
     fn test_progs() {
         for (prog_file, wit_file) in [

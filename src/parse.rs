@@ -139,22 +139,102 @@ macro_rules! wrapped_string {
     };
 }
 
-/// A complete simplicity program.
+/// A program is a sequence of items.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Program {
-    /// The statements in the program.
-    pub statements: Vec<Statement>,
+    items: Arc<[Item]>,
+    span: Span,
 }
 
-/// A statement in a simplicity program.
+impl Program {
+    /// Access the items of the program.
+    pub fn items(&self) -> &[Item] {
+        &self.items
+    }
+}
+
+/// An item is a component of a program.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum Item {
+    /// A type alias.
+    TypeAlias(TypeAlias),
+    /// A function.
+    Function(Function),
+}
+
+/// Definition of a function.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct Function {
+    name: FunctionName,
+    params: Arc<[FunctionParam]>,
+    ret: Option<AliasedType>,
+    body: Expression,
+    span: Span,
+}
+
+impl Function {
+    /// Access the name of the function.
+    pub fn name(&self) -> &FunctionName {
+        &self.name
+    }
+
+    /// Access the parameters of the function.
+    pub fn params(&self) -> &[FunctionParam] {
+        &self.params
+    }
+
+    /// Access the return type of the function.
+    ///
+    /// An empty return type means that the function returns the unit value.
+    pub fn ret(&self) -> Option<&AliasedType> {
+        self.ret.as_ref()
+    }
+
+    /// Access the body of the function.
+    pub fn body(&self) -> &Expression {
+        &self.body
+    }
+}
+
+/// Parameter of a function.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct FunctionParam {
+    identifier: Identifier,
+    ty: AliasedType,
+}
+
+impl FunctionParam {
+    /// Access the identifier of the parameter.
+    pub fn identifier(&self) -> &Identifier {
+        &self.identifier
+    }
+
+    /// Access the type of the parameter.
+    pub fn ty(&self) -> &AliasedType {
+        &self.ty
+    }
+}
+
+/// Name of a function.
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct FunctionName(Arc<str>);
+
+wrapped_string!(FunctionName);
+
+impl FunctionName {
+    /// Return the name of the main function.
+    pub fn main() -> Self {
+        Self(Arc::from("main"))
+    }
+}
+
+/// A statement is a component of a block expression.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Statement {
     /// A declaration of variables inside a pattern.
     Assignment(Assignment),
     /// An expression that returns nothing (the unit value).
     Expression(Expression),
-    /// A type alias.
-    TypeAlias(TypeAlias),
 }
 
 /// Identifier of a variable.
@@ -526,15 +606,89 @@ impl PestParse for Program {
 
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Self::RULE));
-        let statements = pair
+        let span = Span::from(&pair);
+        let items = pair
             .into_inner()
             .filter_map(|pair| match pair.as_rule() {
-                Rule::statement => Some(Statement::parse(pair)),
+                Rule::item => Some(Item::parse(pair)),
                 Rule::EOI => None,
                 _ => unreachable!("Corrupt grammar"),
             })
-            .collect::<Result<Vec<Statement>, RichError>>()?;
-        Ok(Program { statements })
+            .collect::<Result<Arc<[Item]>, RichError>>()?;
+        Ok(Program { items, span })
+    }
+}
+
+impl PestParse for Item {
+    const RULE: Rule = Rule::item;
+
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
+        assert!(matches!(pair.as_rule(), Self::RULE));
+        let pair = pair.into_inner().next().unwrap();
+        match pair.as_rule() {
+            Rule::type_alias => TypeAlias::parse(pair).map(Item::TypeAlias),
+            Rule::function => Function::parse(pair).map(Item::Function),
+            _ => unreachable!("Corrupt grammar"),
+        }
+    }
+}
+
+impl PestParse for Function {
+    const RULE: Rule = Rule::function;
+
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
+        assert!(matches!(pair.as_rule(), Self::RULE));
+        let span = Span::from(&pair);
+        let mut it = pair.into_inner();
+        let name = FunctionName::parse(it.next().unwrap())?;
+        let params = {
+            let pair = it.next().unwrap();
+            debug_assert!(matches!(pair.as_rule(), Rule::function_params));
+            pair.into_inner()
+                .map(FunctionParam::parse)
+                .collect::<Result<Arc<[FunctionParam]>, RichError>>()?
+        };
+        let ret = match it.peek().unwrap().as_rule() {
+            Rule::function_return => {
+                let pair = it.next().unwrap();
+                debug_assert!(matches!(pair.as_rule(), Rule::function_return));
+                let pair = pair.into_inner().next().unwrap();
+                let ty = AliasedType::parse(pair)?;
+                Some(ty)
+            }
+            _ => None,
+        };
+        let body = Expression::parse(it.next().unwrap())?;
+
+        Ok(Self {
+            name,
+            params,
+            ret,
+            body,
+            span,
+        })
+    }
+}
+
+impl PestParse for FunctionName {
+    const RULE: Rule = Rule::function_name;
+
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
+        assert!(matches!(pair.as_rule(), Self::RULE));
+        let name = Arc::from(pair.as_str());
+        Ok(Self(name))
+    }
+}
+
+impl PestParse for FunctionParam {
+    const RULE: Rule = Rule::typed_identifier;
+
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
+        assert!(matches!(pair.as_rule(), Self::RULE));
+        let mut it = pair.into_inner();
+        let identifier = Identifier::parse(it.next().unwrap())?;
+        let ty = AliasedType::parse(it.next().unwrap())?;
+        Ok(Self { identifier, ty })
     }
 }
 
@@ -547,7 +701,6 @@ impl PestParse for Statement {
         match inner_pair.as_rule() {
             Rule::assignment => Assignment::parse(inner_pair).map(Statement::Assignment),
             Rule::expression => Expression::parse(inner_pair).map(Statement::Expression),
-            Rule::type_alias => TypeAlias::parse(inner_pair).map(Statement::TypeAlias),
             _ => unreachable!("Corrupt grammar"),
         }
     }
@@ -1154,6 +1307,18 @@ impl<'a> TreeLike for TyPair<'a> {
 impl<'a, A: AsRef<Span>> From<&'a A> for Span {
     fn from(value: &'a A) -> Self {
         *value.as_ref()
+    }
+}
+
+impl AsRef<Span> for Program {
+    fn as_ref(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl AsRef<Span> for Function {
+    fn as_ref(&self) -> &Span {
+        &self.span
     }
 }
 
