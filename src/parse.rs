@@ -108,6 +108,36 @@ impl<'a> From<&'a str> for Span {
     }
 }
 
+/// Implementations for newtypes that wrap [`Arc<str>`].
+macro_rules! wrapped_string {
+    ($wrapper:ident) => {
+        impl $wrapper {
+            /// Access the inner string.
+            pub fn as_inner(&self) -> &str {
+                self.0.as_ref()
+            }
+
+            /// Create a wrapped string without checking for validity.
+            #[cfg(test)]
+            pub fn from_str_unchecked(s: &str) -> Self {
+                Self(std::sync::Arc::from(s))
+            }
+        }
+
+        impl std::fmt::Display for $wrapper {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                std::fmt::Display::fmt(&self.0, f)
+            }
+        }
+
+        impl std::fmt::Debug for $wrapper {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                std::fmt::Display::fmt(&self.0, f)
+            }
+        }
+    };
+}
+
 /// A complete simplicity program.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Program {
@@ -127,20 +157,10 @@ pub enum Statement {
 }
 
 /// Identifier of a variable.
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Identifier(Arc<str>);
 
-impl Identifier {
-    pub fn from_str_unchecked(str: &str) -> Self {
-        Self(Arc::from(str))
-    }
-}
-
-impl fmt::Display for Identifier {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+wrapped_string!(Identifier);
 
 /// The output of an expression is assigned to a pattern.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -179,22 +199,11 @@ pub enum CallName {
     Unwrap,
 }
 
-/// String that is a jet name.
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+/// Name of a jet.
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct JetName(Arc<str>);
 
-impl JetName {
-    /// Access the inner jet name.
-    pub fn as_inner(&self) -> &Arc<str> {
-        &self.0
-    }
-}
-
-impl fmt::Display for JetName {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+wrapped_string!(JetName);
 
 /// A type alias.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -274,21 +283,10 @@ pub enum SingleExpressionInner {
 }
 
 /// Valid unsigned decimal string.
-#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct UnsignedDecimal(Arc<str>);
 
-impl UnsignedDecimal {
-    /// Access the inner decimal string.
-    pub fn as_inner(&self) -> &Arc<str> {
-        &self.0
-    }
-}
-
-impl fmt::Display for UnsignedDecimal {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+wrapped_string!(UnsignedDecimal);
 
 /// Bit string whose length is a power of two.
 ///
@@ -384,21 +382,10 @@ impl AsRef<[u8]> for Bytes {
 }
 
 /// String that is a witness name.
-#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct WitnessName(Arc<str>);
 
-impl WitnessName {
-    /// Access the inner witness name.
-    pub fn as_inner(&self) -> &Arc<str> {
-        &self.0
-    }
-}
-
-impl fmt::Display for WitnessName {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+wrapped_string!(WitnessName);
 
 /// Match expression.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
