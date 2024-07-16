@@ -782,14 +782,15 @@ impl PestParse for Call {
         let span = Span::from(&pair);
         let mut it = pair.into_inner();
         let name = CallName::parse(it.next().unwrap())?;
-        let args_pair = it.next().unwrap();
-        assert!(matches!(args_pair.as_rule(), Rule::call_args));
-        let args = args_pair
-            .into_inner()
-            .map(Expression::parse)
-            .collect::<Result<Arc<[Expression]>, _>>()?;
+        let args = {
+            let pair = it.next().unwrap();
+            debug_assert!(matches!(pair.as_rule(), Rule::call_args));
+            pair.into_inner()
+                .map(Expression::parse)
+                .collect::<Result<Arc<[Expression]>, RichError>>()?
+        };
 
-        Ok(Call { name, args, span })
+        Ok(Self { name, args, span })
     }
 }
 
