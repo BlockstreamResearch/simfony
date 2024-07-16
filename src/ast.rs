@@ -311,8 +311,8 @@ impl Scope {
     ///
     /// ## Errors
     ///
-    /// There are any undefined aliases. The method returns the first such undefined alias.
-    pub fn resolve(&self, ty: &AliasedType) -> Result<ResolvedType, Identifier> {
+    /// There are any undefined aliases.
+    pub fn resolve(&self, ty: &AliasedType) -> Result<ResolvedType, Error> {
         let get_alias = |name: &Identifier| -> Option<ResolvedType> {
             self.aliases
                 .iter()
@@ -320,19 +320,19 @@ impl Scope {
                 .find_map(|scope| scope.get(name))
                 .cloned()
         };
-        ty.resolve(get_alias)
+        ty.resolve(get_alias).map_err(Error::UndefinedAlias)
     }
 
     /// Push a type alias onto the current scope.
     ///
     /// ## Errors
     ///
-    /// There are any undefined aliases. The method returns the first such undefined alias.
+    /// There are any undefined aliases.
     ///
     /// ## Panics
     ///
     /// The stack is empty.
-    pub fn insert_alias(&mut self, alias: Identifier, ty: AliasedType) -> Result<(), Identifier> {
+    pub fn insert_alias(&mut self, alias: Identifier, ty: AliasedType) -> Result<(), Error> {
         let resolved_ty = self.resolve(&ty)?;
         self.aliases
             .last_mut()
@@ -411,7 +411,6 @@ impl AbstractSyntaxTree for Statement {
             parse::Statement::TypeAlias(alias) => {
                 scope
                     .insert_alias(alias.name.clone(), alias.ty.clone())
-                    .map_err(Error::UndefinedAlias)
                     .with_span(alias)?;
                 Ok(Self::TypeAlias)
             }
@@ -428,10 +427,7 @@ impl AbstractSyntaxTree for Assignment {
         //
         // However, the expression evaluated in the assignment does have a type,
         // namely the type specified in the assignment.
-        let ty_expr = scope
-            .resolve(&from.ty)
-            .map_err(Error::UndefinedAlias)
-            .with_span(from)?;
+        let ty_expr = scope.resolve(&from.ty).with_span(from)?;
         let typed_variables = from.pattern.is_of_type(&ty_expr).with_span(from)?;
         for (identifier, ty) in typed_variables {
             scope.insert_variable(identifier, ty);
@@ -725,12 +721,10 @@ impl AbstractSyntaxTree for CallName {
             parse::CallName::UnwrapLeft(right_ty) => scope
                 .resolve(right_ty)
                 .map(Self::UnwrapLeft)
-                .map_err(Error::UndefinedAlias)
                 .with_span(from),
             parse::CallName::UnwrapRight(left_ty) => scope
                 .resolve(left_ty)
                 .map(Self::UnwrapRight)
-                .map_err(Error::UndefinedAlias)
                 .with_span(from),
             parse::CallName::Unwrap => Ok(Self::Unwrap),
         }
@@ -742,29 +736,20 @@ impl AbstractSyntaxTree for Match {
 
     fn analyze(from: &Self::From, ty: &ResolvedType, scope: &mut Scope) -> Result<Self, RichError> {
         let scrutinee_ty = from.scrutinee_type();
-        let scrutinee_ty = scope
-            .resolve(&scrutinee_ty)
-            .map_err(Error::UndefinedAlias)
-            .with_span(from)?;
+        let scrutinee_ty = scope.resolve(&scrutinee_ty).with_span(from)?;
         let scrutinee =
             Expression::analyze(from.scrutinee(), &scrutinee_ty, scope).map(Arc::new)?;
 
         scope.push_scope();
         if let Some((id_l, ty_l)) = from.left().pattern.as_typed_variable() {
-            let ty_l = scope
-                .resolve(ty_l)
-                .map_err(Error::UndefinedAlias)
-                .with_span(from)?;
+            let ty_l = scope.resolve(ty_l).with_span(from)?;
             scope.insert_variable(id_l.clone(), ty_l);
         }
         let ast_l = Expression::analyze(&from.left().expression, ty, scope).map(Arc::new)?;
         scope.pop_scope();
         scope.push_scope();
         if let Some((id_r, ty_r)) = from.right().pattern.as_typed_variable() {
-            let ty_r = scope
-                .resolve(ty_r)
-                .map_err(Error::UndefinedAlias)
-                .with_span(from)?;
+            let ty_r = scope.resolve(ty_r).with_span(from)?;
             scope.insert_variable(id_r.clone(), ty_r);
         }
         let ast_r = Expression::analyze(&from.right().expression, ty, scope).map(Arc::new)?;
