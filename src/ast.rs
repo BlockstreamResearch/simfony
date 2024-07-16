@@ -103,11 +103,12 @@ impl Expression {
 /// Variant of an expression.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum ExpressionInner {
-    /// A single expression directly returns its value.
+    /// A single expression directly returns a value.
     Single(SingleExpression),
-    /// A block expression first executes a series of statements inside a local scope,
-    /// and then it returns the value of its final expression.
-    Block(Arc<[Statement]>, Arc<Expression>),
+    /// A block expression first executes a series of statements inside a local scope.
+    /// Then, the block returns the value of its final expression.
+    /// The block returns nothing (unit) if there is no final expression.
+    Block(Arc<[Statement]>, Option<Arc<Expression>>),
 }
 
 /// A single expression directly returns its value.
@@ -461,7 +462,10 @@ impl AbstractSyntaxTree for Expression {
                     .iter()
                     .map(|s| Statement::analyze(s, &ResolvedType::unit(), scope))
                     .collect::<Result<Arc<[Statement]>, RichError>>()?;
-                let ast_expression = Expression::analyze(expression, ty, scope).map(Arc::new)?;
+                let ast_expression = expression
+                    .as_ref()
+                    .map(|expr| Expression::analyze(expr, ty, scope).map(Arc::new))
+                    .transpose()?;
                 scope.pop_scope();
 
                 Ok(Self {

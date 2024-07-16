@@ -7,6 +7,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use either::Either;
+use itertools::Itertools;
 use miniscript::iter::{Tree, TreeLike};
 use pest::Parser;
 use pest_derive::Parser;
@@ -231,11 +232,12 @@ pub struct Expression {
 /// The kind of expression.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum ExpressionInner {
-    /// A block expression executes a series of statements
-    /// and returns the value of the final expression.
-    Block(Vec<Statement>, Arc<Expression>),
     /// A single expression directly returns a value.
     Single(SingleExpression),
+    /// A block expression first executes a series of statements inside a local scope.
+    /// Then, the block returns the value of its final expression.
+    /// The block returns nothing (unit) if there is no final expression.
+    Block(Arc<[Statement]>, Option<Arc<Expression>>),
 }
 
 /// A single expression directly returns a value.
@@ -696,13 +698,16 @@ impl PestParse for Expression {
 
         let inner = match pair.as_rule() {
             Rule::block_expression => {
-                let mut stmts = Vec::new();
-                let mut inner_pair = pair.into_inner();
-                while let Some(Rule::statement) = inner_pair.peek().map(|x| x.as_rule()) {
-                    stmts.push(Statement::parse(inner_pair.next().unwrap())?);
-                }
-                let expr = Expression::parse(inner_pair.next().unwrap())?;
-                ExpressionInner::Block(stmts, Arc::new(expr))
+                let mut it = pair.into_inner().peekable();
+                let statements = it
+                    .peeking_take_while(|pair| matches!(pair.as_rule(), Rule::statement))
+                    .map(Statement::parse)
+                    .collect::<Result<Arc<[Statement]>, RichError>>()?;
+                let expression = it
+                    .next()
+                    .map(|pair| Expression::parse(pair).map(Arc::new))
+                    .transpose()?;
+                ExpressionInner::Block(statements, expression)
             }
             Rule::single_expression => ExpressionInner::Single(SingleExpression::parse(pair)?),
             _ => unreachable!("Corrupt grammar"),

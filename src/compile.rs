@@ -1,5 +1,7 @@
 //! Compile the parsed ast into a simplicity program
 
+use std::sync::Arc;
+
 use either::Either;
 use simplicity::node::{CoreConstructible as _, JetConstructible as _, WitnessConstructible as _};
 use simplicity::{Cmr, FailEntropy};
@@ -191,7 +193,7 @@ impl Expression {
         match self.inner() {
             ExpressionInner::Block(stmts, expr) => {
                 scope.push_scope();
-                let res = compile_blk(stmts, scope, 0, Some(expr.as_ref()));
+                let res = compile_blk(stmts, scope, 0, expr.as_ref().map(Arc::as_ref));
                 scope.pop_scope();
                 res
             }
