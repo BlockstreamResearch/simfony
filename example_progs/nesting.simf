@@ -1,9 +1,11 @@
-let v1: u32 = {
-    let v4: u32 = 1;
-    let v5: u32 = 2;
-    let v6: u32 = 3;
-    let v7: u32 = jet_max_32(v4, jet_max_32(v5, v6));
-    v4
-};
-let res: u32 = 1;
-jet_verify(jet_eq_32(res, v1));
+fn main() {
+    let v1: u32 = {
+        let v4: u32 = 1;
+        let v5: u32 = 2;
+        let v6: u32 = 3;
+        let v7: u32 = jet_max_32(v4, jet_max_32(v5, v6));
+        v4
+    };
+    let res: u32 = 1;
+    jet_verify(jet_eq_32(res, v1));
+}

@@ -3,7 +3,8 @@
  * The scriptPubKey of the UTXO must be repeated
  * in the first output of the spending transaction.
  */
-
-let this_hash:  u256 = jet_current_script_hash();
-let spend_hash: u256 = unwrap(jet_output_script_hash(0));
-jet_verify(jet_eq_256(this_hash, spend_hash));
+fn main () {
+    let this_hash:  u256 = jet_current_script_hash();
+    let spend_hash: u256 = unwrap(jet_output_script_hash(0));
+    jet_verify(jet_eq_256(this_hash, spend_hash));
+}

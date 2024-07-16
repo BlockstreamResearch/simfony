@@ -1,6 +1,8 @@
-let a: List<u32, 2> = list![];
-let b: List<u32, 2> = list![1];
-let c: List<u32, 4> = list![];
-let d: List<u32, 4> = list![1];
-let e: List<u32, 4> = list![1, 2];
-let f: List<u32, 4> = list![1, 2, 3];
+fn main() {
+    let a: List<u32, 2> = list![];
+    let b: List<u32, 2> = list![1];
+    let c: List<u32, 4> = list![];
+    let d: List<u32, 4> = list![1];
+    let e: List<u32, 4> = list![1, 2];
+    let f: List<u32, 4> = list![1, 2, 3];
+}
