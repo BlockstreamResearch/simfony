@@ -1,0 +1,28 @@
+fn checked_add_32(a: u32, b: u32) -> u32 {
+    let (carry, sum): (bool, u32) = jet_add_32(a, b);
+    // FIXME: Need to cast `bool` to `u1`
+    // jet_verify(jet_complement_1(carry));
+    sum
+}
+
+fn first() -> u32 {
+    1
+}
+
+fn second() -> u32 {
+    checked_add_32(first(), first())
+}
+
+fn third() -> u32 {
+    checked_add_32(first(), second())
+}
+
+fn main() {
+    let sum: u32 = checked_add_32(42, 1);
+    let expected: u32 = 43;
+    jet_verify(jet_eq_32(expected, sum));
+
+    let third: u32 = third();
+    let expected: u32 = 3;
+    jet_verify(jet_eq_32(expected, third));
+}
