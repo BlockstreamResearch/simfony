@@ -267,4 +267,23 @@ mod tests {
             ),
         }
     }
+
+    #[test]
+    fn witness_outside_main() {
+        let s = r#"fn f() -> u32 {
+    witness("output_of_f")
+}
+
+fn main() {
+    jet_verify(jet_is_zero_32(f()));
+}"#;
+
+        match crate::compile(s) {
+            Ok(_) => panic!("Witness outside main was falsely accepted"),
+            Err(error) => {
+                assert!(error
+                    .contains("Witness expressions are not allowed outside the `main` function"))
+            }
+        }
+    }
 }

@@ -233,6 +233,49 @@ pub enum CallName {
     UnwrapRight(ResolvedType),
     /// [`Option::unwrap`].
     Unwrap,
+    /// A custom function that was defined previously.
+    ///
+    /// We effectively copy the function body into every call of the function.
+    /// We use [`Arc`] for cheap clones during this process.
+    Custom(CustomFunction),
+}
+
+/// Definition of a custom function.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct CustomFunction {
+    params: Arc<[FunctionParam]>,
+    body: Arc<Expression>,
+}
+
+impl CustomFunction {
+    /// Access the identifiers of the parameters of the function.
+    pub fn params(&self) -> &[FunctionParam] {
+        &self.params
+    }
+
+    /// Access the body of the function.
+    pub fn body(&self) -> &Expression {
+        &self.body
+    }
+}
+
+/// Parameter of a function.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct FunctionParam {
+    identifier: Identifier,
+    ty: ResolvedType,
+}
+
+impl FunctionParam {
+    /// Access the identifier of the parameter.
+    pub fn identifier(&self) -> &Identifier {
+        &self.identifier
+    }
+
+    /// Access the type of the parameter.
+    pub fn ty(&self) -> &ResolvedType {
+        &self.ty
+    }
 }
 
 /// Match expression.
@@ -286,11 +329,14 @@ impl MatchArm {
 /// 1. Assigning types to each variable
 /// 2. Resolving type aliases
 /// 3. Assigning types to each witness expression
+/// 4. Resolving calls to custom functions
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 struct Scope {
     variables: Vec<HashMap<Identifier, ResolvedType>>,
     aliases: HashMap<Identifier, ResolvedType>,
     witnesses: HashMap<WitnessName, ResolvedType>,
+    functions: HashMap<FunctionName, CustomFunction>,
+    is_main: bool,
 }
 
 impl Scope {
@@ -304,6 +350,19 @@ impl Scope {
         self.variables.push(HashMap::new());
     }
 
+    /// Push the scope of the main function onto the stack.
+    ///
+    /// ## Panics
+    ///
+    /// - The current scope is already inside the main function.
+    /// - The current scope is not topmost.
+    pub fn push_main_scope(&mut self) {
+        assert!(!self.is_main, "Already inside main function");
+        assert!(self.is_topmost(), "Current scope is not topmost");
+        self.push_scope();
+        self.is_main = true;
+    }
+
     /// Pop the current scope from the stack.
     ///
     /// ## Panics
@@ -311,6 +370,22 @@ impl Scope {
     /// The stack is empty.
     pub fn pop_scope(&mut self) {
         self.variables.pop().expect("Stack is empty");
+    }
+
+    /// Pop the scope of the main function from the stack.
+    ///
+    /// ## Panics
+    ///
+    /// - The current scope is not inside the main function.
+    /// - The current scope is not nested in the topmost scope.
+    pub fn pop_main_scope(&mut self) {
+        assert!(self.is_main, "Current scope is not inside main function");
+        self.pop_scope();
+        self.is_main = false;
+        assert!(
+            self.is_topmost(),
+            "Current scope is not nested in topmost scope"
+        )
     }
 
     /// Push a variable onto the current stack.
@@ -359,9 +434,13 @@ impl Scope {
     ///
     /// ## Errors
     ///
-    /// The witness name has already been defined somewhere else in the program.
-    /// Witness names may be used at most throughout the entire program.
+    /// - The current scope is not inside the main function.
+    /// - The witness name has already been defined somewhere else in the program.
     pub fn insert_witness(&mut self, name: WitnessName, ty: ResolvedType) -> Result<(), Error> {
+        if !self.is_main {
+            return Err(Error::WitnessOutsideMain);
+        }
+
         match self.witnesses.entry(name.clone()) {
             Entry::Occupied(_) => Err(Error::WitnessReused(name)),
             Entry::Vacant(entry) => {
@@ -376,6 +455,30 @@ impl Scope {
     /// Use this map to finalize the Simfony program with witness values of the same type.
     pub fn into_witnesses(self) -> HashMap<WitnessName, ResolvedType> {
         self.witnesses
+    }
+
+    /// Insert a custom function into the global map.
+    ///
+    /// ## Errors
+    ///
+    /// The function has already been defined.
+    pub fn insert_function(
+        &mut self,
+        name: FunctionName,
+        function: CustomFunction,
+    ) -> Result<(), Error> {
+        match self.functions.entry(name.clone()) {
+            Entry::Occupied(_) => Err(Error::FunctionRedefined(name)),
+            Entry::Vacant(entry) => {
+                entry.insert(function);
+                Ok(())
+            }
+        }
+    }
+
+    /// Get the definition of a custom function.
+    pub fn get_function(&self, name: &FunctionName) -> Option<&CustomFunction> {
+        self.functions.get(name)
     }
 }
 
@@ -452,9 +555,35 @@ impl AbstractSyntaxTree for Function {
         assert!(ty.is_unit(), "Function definitions cannot return anything");
         assert!(scope.is_topmost(), "Items live in the topmost scope only");
 
-        // TODO: Handle custom functions once we can call them
-        // Skip custom functions because we cannot call them with the current grammar
         if from.name().as_inner() != "main" {
+            let params = from
+                .params()
+                .iter()
+                .map(|param| {
+                    let identifier = param.identifier().clone();
+                    let ty = scope.resolve(param.ty())?;
+                    Ok(FunctionParam { identifier, ty })
+                })
+                .collect::<Result<Arc<[FunctionParam]>, Error>>()
+                .with_span(from)?;
+            let ret = from
+                .ret()
+                .as_ref()
+                .map(|aliased| scope.resolve(aliased).with_span(from))
+                .transpose()?
+                .unwrap_or_else(ResolvedType::unit);
+            scope.push_scope();
+            for param in params.iter() {
+                scope.insert_variable(param.identifier().clone(), param.ty().clone());
+            }
+            let body = Expression::analyze(from.body(), &ret, scope).map(Arc::new)?;
+            scope.pop_scope();
+            debug_assert!(scope.is_topmost());
+            let function = CustomFunction { params, body };
+            scope
+                .insert_function(from.name().clone(), function)
+                .with_span(from)?;
+
             return Ok(Self::Custom);
         }
 
@@ -468,10 +597,9 @@ impl AbstractSyntaxTree for Function {
             }
         }
 
-        scope.push_scope();
+        scope.push_main_scope();
         let body = Expression::analyze(from.body(), ty, scope)?;
-        scope.pop_scope();
-        debug_assert!(scope.is_topmost());
+        scope.pop_main_scope();
         Ok(Self::Main(body))
     }
 }
@@ -771,6 +899,25 @@ impl AbstractSyntaxTree for Call {
                     scope,
                 )?])
             }
+            CallName::Custom(function) => {
+                if from.args.len() != function.params().len() {
+                    return Err(Error::InvalidNumberOfArguments(
+                        function.params().len(),
+                        from.args.len(),
+                    ))
+                    .with_span(from);
+                }
+                let out_ty = function.body().ty();
+                if ty != out_ty {
+                    return Err(Error::ExpressionTypeMismatch(ty.clone(), out_ty.clone()))
+                        .with_span(from);
+                }
+                from.args
+                    .iter()
+                    .zip(function.params.iter().map(FunctionParam::ty))
+                    .map(|(arg_parse, arg_ty)| Expression::analyze(arg_parse, arg_ty, scope))
+                    .collect::<Result<Arc<[Expression]>, RichError>>()?
+            }
         };
 
         Ok(Self {
@@ -804,6 +951,12 @@ impl AbstractSyntaxTree for CallName {
                 .map(Self::UnwrapRight)
                 .with_span(from),
             parse::CallName::Unwrap => Ok(Self::Unwrap),
+            parse::CallName::Custom(name) => scope
+                .get_function(name)
+                .cloned()
+                .map(Self::Custom)
+                .ok_or(Error::FunctionUndefined(name.clone()))
+                .with_span(from),
         }
     }
 }

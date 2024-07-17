@@ -158,6 +158,7 @@ pub enum Error {
     MainNoOutput,
     MainRequired,
     FunctionRedefined(FunctionName),
+    FunctionUndefined(FunctionName),
     InvalidNumberOfArguments(usize, usize),
     ExpressionTypeMismatch(ResolvedType, ResolvedType),
     ExpressionNotConstant,
@@ -168,6 +169,7 @@ pub enum Error {
     WitnessReused(WitnessName),
     WitnessTypeMismatch(WitnessName, ResolvedType, ResolvedType),
     WitnessReassigned(WitnessName),
+    WitnessOutsideMain,
 }
 
 #[rustfmt::skip]
@@ -226,6 +228,10 @@ impl fmt::Display for Error {
                 f,
                 "Function `{name}` was defined multiple times"
             ),
+            Error::FunctionUndefined(name) => write!(
+                f,
+                "Function `{name}` was called but not defined"
+            ),
             Error::InvalidNumberOfArguments(expected, found) => write!(
                 f,
                 "Expected {expected} arguments, found {found} arguments"
@@ -265,7 +271,11 @@ impl fmt::Display for Error {
             Error::WitnessReassigned(name) => write!(
                 f,
                 "Witness `{name}` has already been assigned a value"
-            )
+            ),
+            Error::WitnessOutsideMain => write!(
+                f,
+                "Witness expressions are not allowed outside the `main` function"
+            ),
         }
     }
 }

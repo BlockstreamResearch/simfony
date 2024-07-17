@@ -8,7 +8,7 @@ use simplicity::{Cmr, FailEntropy};
 
 use crate::array::{BTreeSlice, Partition};
 use crate::ast::{
-    Call, CallName, Expression, ExpressionInner, Match, Program, SingleExpression,
+    Call, CallName, Expression, ExpressionInner, FunctionParam, Match, Program, SingleExpression,
     SingleExpressionInner, Statement,
 };
 use crate::error::{Error, RichError, WithSpan};
@@ -300,6 +300,19 @@ impl Call {
                 let fail_cmr = Cmr::fail(FailEntropy::ZERO);
                 let get_inner = ProgNode::assertr_take(fail_cmr, &ProgNode::iden());
                 ProgNode::comp(&right_and_unit, &get_inner).with_span(self)
+            }
+            CallName::Custom(function) => {
+                let params_pattern = Pattern::tuple(
+                    function
+                        .params()
+                        .iter()
+                        .map(FunctionParam::identifier)
+                        .cloned()
+                        .map(Pattern::Identifier),
+                );
+                let mut function_scope = Scope::new(params_pattern);
+                let body = function.body().compile(&mut function_scope)?;
+                ProgNode::comp(&args, &body).with_span(self)
             }
         }
     }

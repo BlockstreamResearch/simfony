@@ -278,6 +278,8 @@ pub enum CallName {
     UnwrapRight(AliasedType),
     /// Some unwrap function.
     Unwrap,
+    /// Name of a custom function.
+    Custom(FunctionName),
 }
 
 /// Name of a jet.
@@ -811,6 +813,7 @@ impl PestParse for CallName {
                 AliasedType::parse(inner).map(Self::UnwrapRight)
             }
             Rule::unwrap => Ok(Self::Unwrap),
+            Rule::function_name => FunctionName::parse(pair).map(Self::Custom),
             _ => panic!("Corrupt grammar"),
         }
     }
