@@ -18,7 +18,7 @@ impl<T, E: Into<Error>> WithSpan<T> for Result<T, E> {
     }
 }
 
-/// Helper trait to update `Result<A, RichError>` with the the affected source file.
+/// Helper trait to update `Result<A, RichError>` with the affected source file.
 pub trait WithFile<T> {
     /// Update the result with the affected source file.
     ///
@@ -71,41 +71,47 @@ impl RichError {
 
 impl fmt::Display for RichError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let start_line_index = self.span.start.line.get() - 1;
-        let end_line_index = self.span.end.line.get() - 1;
-        let line_num_width = self.span.end.line.get().to_string().len();
-        writeln!(f, "{:width$} |", " ", width = line_num_width)?;
+        match self.file {
+            Some(ref file) if !file.is_empty() => {
+                let start_line_index = self.span.start.line.get() - 1;
+                let n_spanned_lines = self.span.end.line.get() - start_line_index;
+                let line_num_width = self.span.end.line.get().to_string().len();
+                writeln!(f, "{:width$} |", " ", width = line_num_width)?;
 
-        if let Some(ref file) = self.file {
-            let mut lines = file.lines().skip(start_line_index).peekable();
-            let start_line_len = lines.peek().map(|l| l.len()).unwrap_or(0);
-            for (relative_line_index, line_str) in lines
-                .take(end_line_index - start_line_index + 1)
-                .enumerate()
-            {
-                let line_num = start_line_index + relative_line_index + 1;
-                writeln!(f, "{line_num:line_num_width$} | {line_str}")?;
+                let mut lines = file.lines().skip(start_line_index).peekable();
+                let start_line_len = lines.peek().map(|l| l.len()).unwrap_or(0);
+
+                for (relative_line_index, line_str) in lines.take(n_spanned_lines).enumerate() {
+                    let line_num = start_line_index + relative_line_index + 1;
+                    writeln!(f, "{line_num:line_num_width$} | {line_str}")?;
+                }
+
+                let (underline_start, underline_length) = match self.span.is_multiline() {
+                    true => (0, start_line_len),
+                    false => (
+                        self.span.start.col.get(),
+                        self.span.end.col.get() - self.span.start.col.get(),
+                    ),
+                };
+                write!(f, "{:width$} |", " ", width = line_num_width)?;
+                write!(f, "{:width$}", " ", width = underline_start)?;
+                write!(f, "{:^<width$} ", "", width = underline_length)?;
+                write!(f, "{}", self.error)
             }
-            let (underline_start, underline_length) = if self.span.is_multiline() {
-                (0, start_line_len)
-            } else {
-                (
-                    self.span.start.col.get(),
-                    self.span.end.col.get() - self.span.start.col.get(),
-                )
-            };
-            write!(f, "{:width$} |", " ", width = line_num_width)?;
-            write!(f, "{:width$}", " ", width = underline_start)?;
-            write!(f, "{:^<width$} ", "", width = underline_length)?;
-            write!(f, "{}", self.error)
-        } else {
-            let start_line_num = self.span.end.line.get();
-            write!(f, "{start_line_num} | {}", self.error)
+            _ => {
+                write!(f, "{}", self.error)
+            }
         }
     }
 }
 
 impl std::error::Error for RichError {}
+
+impl From<RichError> for Error {
+    fn from(error: RichError) -> Self {
+        error.error
+    }
+}
 
 impl From<RichError> for String {
     fn from(error: RichError) -> Self {
@@ -148,11 +154,14 @@ pub enum Error {
     TypeValueMismatch(ResolvedType),
     InvalidNumberOfArguments(usize, usize),
     ExpressionTypeMismatch(ResolvedType, ResolvedType),
+    ExpressionNotConstant,
     IntegerOutOfBounds(UIntType),
     UndefinedVariable(Identifier),
     UndefinedAlias(Identifier),
     VariableReuseInPattern(Identifier),
-    ReusedWitness(WitnessName),
+    WitnessReused(WitnessName),
+    WitnessTypeMismatch(WitnessName, ResolvedType, ResolvedType),
+    WitnessReassigned(WitnessName),
 }
 
 #[rustfmt::skip]
@@ -203,6 +212,10 @@ impl fmt::Display for Error {
                 f,
                 "Expected expression of type `{expected}`, found type `{found}`"
             ),
+            Error::ExpressionNotConstant => write!(
+                f,
+                "Expression cannot be evaluated at compile time"
+            ),
             Error::IntegerOutOfBounds(ty) => write!(
                 f,
                 "Value is out of bounds for type `{ty}`"
@@ -219,10 +232,18 @@ impl fmt::Display for Error {
                 f,
                 "Variable `{identifier}` is used twice in the pattern"
             ),
-            Error::ReusedWitness(name) => write!(
+            Error::WitnessReused(name) => write!(
                 f,
                 "Witness `{name}` has been used before somewhere in the program"
             ),
+            Error::WitnessTypeMismatch(name, declared, assigned) => write!(
+                f,
+                "Witness `{name}` was declared with type `{declared}` but its assigned value is of type `{assigned}`"
+            ),
+            Error::WitnessReassigned(name) => write!(
+                f,
+                "Witness `{name}` has already been assigned a value"
+            )
         }
     }
 }
@@ -231,8 +252,8 @@ impl std::error::Error for Error {}
 
 impl Error {
     /// Update the error with the affected span.
-    pub fn with_span<S: Into<Span>>(self, span: S) -> RichError {
-        RichError::new(self, span.into())
+    pub fn with_span(self, span: Span) -> RichError {
+        RichError::new(self, span)
     }
 }
 
@@ -267,8 +288,8 @@ mod tests {
     const FILE: &str = r#"let a1: List<u32, 5> = None;
 let x: u32 = Left(
     Right(0)
-);
-"#;
+);"#;
+    const EMPTY_FILE: &str = "";
 
     #[test]
     fn display_single_line() {
@@ -296,5 +317,46 @@ let x: u32 = Left(
 4 | );
   | ^^^^^^^^^^^^^^^^^^ Cannot parse: Expected value of type `u32`, got `Either<Either<_, u32>, _>`"#;
         assert_eq!(&expected[1..], &error.to_string());
+    }
+
+    #[test]
+    fn display_entire_file() {
+        let error = Error::CannotParse("This span covers the entire file".to_string())
+            .with_span(Span::from(FILE))
+            .with_file(Arc::from(FILE));
+        let expected = r#"
+  |
+1 | let a1: List<u32, 5> = None;
+2 | let x: u32 = Left(
+3 |     Right(0)
+4 | );
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Cannot parse: This span covers the entire file"#;
+        assert_eq!(&expected[1..], &error.to_string());
+    }
+
+    #[test]
+    fn display_no_file() {
+        let error = Error::CannotParse("This error has no file".to_string())
+            .with_span(Span::from(EMPTY_FILE));
+        let expected = "Cannot parse: This error has no file";
+        assert_eq!(&expected, &error.to_string());
+
+        let error = Error::CannotParse("This error has no file".to_string())
+            .with_span(Span::new(Position::new(1, 1), Position::new(2, 2)));
+        assert_eq!(&expected, &error.to_string());
+    }
+
+    #[test]
+    fn display_empty_file() {
+        let error = Error::CannotParse("This error has an empty file".to_string())
+            .with_span(Span::from(EMPTY_FILE))
+            .with_file(Arc::from(EMPTY_FILE));
+        let expected = "Cannot parse: This error has an empty file";
+        assert_eq!(&expected, &error.to_string());
+
+        let error = Error::CannotParse("This error has an empty file".to_string())
+            .with_span(Span::new(Position::new(1, 1), Position::new(2, 2)))
+            .with_file(Arc::from(EMPTY_FILE));
+        assert_eq!(&expected, &error.to_string());
     }
 }

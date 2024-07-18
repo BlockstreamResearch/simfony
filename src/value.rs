@@ -8,8 +8,8 @@ use simplicity::Value as SimValue;
 use crate::array::{BTreeSlice, Partition};
 use crate::error::Error;
 use crate::num::{NonZeroPow2Usize, U256};
-use crate::parse::{Bits, Bytes, UnsignedDecimal};
-use crate::types::{ResolvedType, StructuralType, TypeInner, UIntType};
+use crate::parse::{self, Bits, Bytes, UnsignedDecimal};
+use crate::types::{ResolvedType, StructuralType, TypeConstructible, TypeInner, UIntType};
 
 /// Unsigned integer value.
 #[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -478,14 +478,188 @@ impl TypedValue {
         }
     }
 
-    /// Access the Simfony value.
+    /// Access the value.
     pub const fn value(&self) -> &Value {
         &self.value
     }
 
-    /// Access the Simfony type.
+    /// Access the type.
     pub const fn ty(&self) -> &ResolvedType {
         &self.ty
+    }
+
+    /// Create the unit value.
+    pub fn unit() -> Self {
+        Self {
+            value: Value::unit(),
+            ty: ResolvedType::unit(),
+        }
+    }
+
+    /// Create a typed value from a constant expression.
+    ///
+    /// ## Errors
+    ///
+    /// The expression includes invalid components that cannot be (yet) evaluated at compile time:
+    ///
+    /// - Block expressions
+    /// - Variable expressions
+    /// - Witness expressions
+    /// - Match expressions
+    /// - Call expressions
+    pub fn from_const_expr(expr: &parse::Expression, ty: &ResolvedType) -> Result<Self, Error> {
+        #[derive(Debug)]
+        enum Task<'a> {
+            ConvertAs(&'a parse::Expression, &'a ResolvedType),
+            MakeLeft,
+            MakeRight,
+            MakeSome,
+            MakeTuple(usize),
+            MakeArray(usize),
+            MakeList(usize, NonZeroPow2Usize),
+        }
+
+        impl<'a> Task<'a> {
+            /// Variant of [`Task::ConvertAs`] that takes one paired input instead of two single inputs.
+            fn convert_as((expr, ty): (&'a parse::Expression, &'a ResolvedType)) -> Self {
+                Self::ConvertAs(expr, ty)
+            }
+        }
+
+        use parse::{ExpressionInner, SingleExpressionInner};
+
+        let mut stack = vec![Task::ConvertAs(expr, ty)];
+        let mut output = vec![];
+
+        while let Some(top) = stack.pop() {
+            match top {
+                Task::ConvertAs(expr, ty) => {
+                    let inner = match &expr.inner {
+                        ExpressionInner::Single(single) => &single.inner,
+                        ExpressionInner::Block(..) => return Err(Error::ExpressionNotConstant),
+                    };
+
+                    match (inner, ty.as_inner()) {
+                        (SingleExpressionInner::Boolean(bit), TypeInner::Boolean) => {
+                            output.push(Value::from(*bit))
+                        }
+                        (SingleExpressionInner::Decimal(decimal), TypeInner::UInt(ty)) => {
+                            let value = UIntValue::parse_decimal(decimal, *ty)?;
+                            output.push(Value::from(value));
+                        }
+                        (SingleExpressionInner::BitString(bits), TypeInner::UInt(ty)) => {
+                            let value = UIntValue::parse_bits(bits, *ty)?;
+                            output.push(Value::from(value));
+                        }
+                        (SingleExpressionInner::ByteString(bytes), TypeInner::UInt(ty)) => {
+                            let value = UIntValue::parse_bytes(bytes, *ty)?;
+                            output.push(Value::from(value));
+                        }
+                        (
+                            SingleExpressionInner::Either(Either::Left(expr_l)),
+                            TypeInner::Either(ty_l, _),
+                        ) => {
+                            stack.push(Task::MakeLeft);
+                            stack.push(Task::ConvertAs(expr_l, ty_l))
+                        }
+                        (
+                            SingleExpressionInner::Either(Either::Right(expr_r)),
+                            TypeInner::Either(_, ty_r),
+                        ) => {
+                            stack.push(Task::MakeRight);
+                            stack.push(Task::ConvertAs(expr_r, ty_r))
+                        }
+                        (SingleExpressionInner::Option(None), TypeInner::Option(_)) => {
+                            output.push(Value::from(None))
+                        }
+                        (SingleExpressionInner::Option(Some(expr_r)), TypeInner::Option(ty_r)) => {
+                            stack.push(Task::MakeSome);
+                            stack.push(Task::ConvertAs(expr_r, ty_r))
+                        }
+                        (SingleExpressionInner::Tuple(exprs), TypeInner::Tuple(tys))
+                            if exprs.len() == tys.len() =>
+                        {
+                            stack.push(Task::MakeTuple(exprs.len()));
+                            stack.extend(
+                                exprs
+                                    .iter()
+                                    .rev()
+                                    .zip(tys.iter().rev().map(Arc::as_ref))
+                                    .map(Task::convert_as),
+                            );
+                        }
+                        (SingleExpressionInner::Array(exprs), TypeInner::Array(ty, size))
+                            if exprs.len() == *size =>
+                        {
+                            stack.push(Task::MakeArray(exprs.len()));
+                            stack.extend(
+                                exprs
+                                    .iter()
+                                    .rev()
+                                    .zip(std::iter::repeat(ty.as_ref()))
+                                    .map(Task::convert_as),
+                            );
+                        }
+                        (SingleExpressionInner::List(exprs), TypeInner::List(ty, bound))
+                            if exprs.len() < bound.get() =>
+                        {
+                            stack.push(Task::MakeList(exprs.len(), *bound));
+                            stack.extend(
+                                exprs
+                                    .iter()
+                                    .rev()
+                                    .zip(std::iter::repeat(ty.as_ref()))
+                                    .map(Task::convert_as),
+                            );
+                        }
+                        (SingleExpressionInner::Expression(child), _) => {
+                            stack.push(Task::ConvertAs(child, ty));
+                        }
+                        (
+                            SingleExpressionInner::Variable(..)
+                            | SingleExpressionInner::Witness(..)
+                            | SingleExpressionInner::Call(..)
+                            | SingleExpressionInner::Match(..),
+                            _,
+                        ) => {
+                            return Err(Error::ExpressionNotConstant);
+                        }
+                        _ => return Err(Error::TypeValueMismatch(ty.clone())),
+                    }
+                }
+                Task::MakeLeft => {
+                    let inner = output.pop().unwrap();
+                    output.push(Value::from(Either::Left(inner)));
+                }
+                Task::MakeRight => {
+                    let inner = output.pop().unwrap();
+                    output.push(Value::from(Either::Right(inner)));
+                }
+                Task::MakeSome => {
+                    let inner = output.pop().unwrap();
+                    output.push(Value::from(Some(inner)));
+                }
+                Task::MakeTuple(size) => {
+                    let components = output.split_off(output.len() - size);
+                    debug_assert_eq!(components.len(), size);
+                    output.push(Value::tuple(components));
+                }
+                Task::MakeArray(size) => {
+                    let elements = output.split_off(output.len() - size);
+                    debug_assert_eq!(elements.len(), size);
+                    output.push(Value::array(elements));
+                }
+                Task::MakeList(size, bound) => {
+                    let elements = output.split_off(output.len() - size);
+                    debug_assert_eq!(elements.len(), size);
+                    output.push(Value::list(elements, bound).unwrap());
+                }
+            }
+        }
+
+        debug_assert_eq!(output.len(), 1);
+        let value = output.pop().unwrap();
+        Ok(Self::new(value, ty.clone()).expect("Value is type-checked during its construction"))
     }
 }
 
@@ -498,6 +672,24 @@ impl From<TypedValue> for Value {
 impl From<TypedValue> for ResolvedType {
     fn from(value: TypedValue) -> Self {
         value.ty
+    }
+}
+
+impl From<bool> for TypedValue {
+    fn from(value: bool) -> Self {
+        Self {
+            value: Value::from(value),
+            ty: ResolvedType::boolean(),
+        }
+    }
+}
+
+impl From<UIntValue> for TypedValue {
+    fn from(value: UIntValue) -> Self {
+        Self {
+            value: Value::from(value),
+            ty: value.get_type().into(),
+        }
     }
 }
 
@@ -665,6 +857,7 @@ impl StructuralValue {
 mod tests {
     use super::*;
     use crate::types::{StructuralType, TypeConstructible};
+    use parse::ParseFromStr;
 
     #[test]
     fn display_value() {
@@ -702,5 +895,70 @@ mod tests {
         );
         assert!(bit.is_of_type(&actual_boolean).is_ok());
         assert!(bit.is_of_type(&structural_boolean).is_err());
+    }
+
+    #[test]
+    fn parse_const_expression() {
+        let bound4 = NonZeroPow2Usize::new(4).unwrap();
+        let string_ty_value = [
+            ("false", ResolvedType::boolean(), Value::from(false)),
+            (
+                "42",
+                ResolvedType::from(UIntType::U8),
+                Value::from(UIntValue::U8(42)),
+            ),
+            (
+                "Left(false)",
+                ResolvedType::either(ResolvedType::boolean(), ResolvedType::unit()),
+                Value::from(Either::Left(false.into())),
+            ),
+            (
+                "Some(false)",
+                ResolvedType::option(ResolvedType::boolean()),
+                Value::from(Some(false.into())),
+            ),
+            (
+                "(1, 2, 3)",
+                ResolvedType::tuple([
+                    UIntType::U1.into(),
+                    UIntType::U2.into(),
+                    UIntType::U4.into(),
+                ]),
+                Value::tuple([
+                    UIntValue::U1(1).into(),
+                    UIntValue::U2(2).into(),
+                    UIntValue::U4(3).into(),
+                ]),
+            ),
+            (
+                "[1, 2, 3]",
+                ResolvedType::array(UIntType::U4.into(), 3),
+                Value::array([
+                    UIntValue::U4(1).into(),
+                    UIntValue::U4(2).into(),
+                    UIntValue::U4(3).into(),
+                ]),
+            ),
+            (
+                "list![1, 2, 3]",
+                ResolvedType::list(UIntType::U4.into(), bound4),
+                Value::list(
+                    [
+                        UIntValue::U4(1).into(),
+                        UIntValue::U4(2).into(),
+                        UIntValue::U4(3).into(),
+                    ],
+                    bound4,
+                )
+                .unwrap(),
+            ),
+        ];
+
+        for (string, ty, value) in string_ty_value {
+            let expr = parse::Expression::parse_from_str(string).unwrap();
+            let typed_value = TypedValue::from_const_expr(&expr, &ty).unwrap();
+            assert_eq!(typed_value.value(), &value);
+            assert_eq!(typed_value.ty(), &ty);
+        }
     }
 }
