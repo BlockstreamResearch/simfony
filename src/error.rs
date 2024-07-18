@@ -153,7 +153,7 @@ pub enum Error {
     UndefinedVariable(Identifier),
     UndefinedAlias(Identifier),
     VariableReuseInPattern(Identifier),
-    ReusedWitness(WitnessName),
+    WitnessReused(WitnessName),
     WitnessTypeMismatch(WitnessName, ResolvedType, ResolvedType),
     WitnessReassigned(WitnessName),
 }
@@ -226,7 +226,7 @@ impl fmt::Display for Error {
                 f,
                 "Variable `{identifier}` is used twice in the pattern"
             ),
-            Error::ReusedWitness(name) => write!(
+            Error::WitnessReused(name) => write!(
                 f,
                 "Witness `{name}` has been used before somewhere in the program"
             ),

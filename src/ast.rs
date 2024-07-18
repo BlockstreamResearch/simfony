@@ -349,7 +349,7 @@ impl Scope {
     /// Witness names may be used at most throughout the entire program.
     pub fn insert_witness(&mut self, name: WitnessName, ty: ResolvedType) -> Result<(), Error> {
         match self.witnesses.entry(name.clone()) {
-            Entry::Occupied(_) => Err(Error::ReusedWitness(name)),
+            Entry::Occupied(_) => Err(Error::WitnessReused(name)),
             Entry::Vacant(entry) => {
                 entry.insert(ty);
                 Ok(())
@@ -522,7 +522,7 @@ impl AbstractSyntaxTree for SingleExpression {
             parse::SingleExpressionInner::Witness(name) => {
                 scope
                     .insert_witness(name.clone(), ty.clone())
-                    .map_err(|_| Error::ReusedWitness(name.clone()))
+                    .map_err(|_| Error::WitnessReused(name.clone()))
                     .with_span(from)?;
                 SingleExpressionInner::Witness(name.clone())
             }
