@@ -1,12 +1,8 @@
 fn main() {
-    let a: u8 = 0x10;
-    let b: u8 = 0x01;
-    let ab: u16 = (a, b);
+    let ab: u16 = <(u8, u8)>::into((0x10, 0x01));
     let c: u16 = 0x1001;
     jet_verify(jet_eq_16(ab, c));
-    let a: u4 = 0b1011;
-    let b: u4 = 0b1101;
-    let ab: u8 = (a, b);
+    let ab: u8 = <(u4, u4)>::into((0b1011, 0b1101));
     let c: u8 = 0b10111101;
     jet_verify(jet_eq_8(ab, c));
 }
