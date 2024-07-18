@@ -522,7 +522,6 @@ impl AbstractSyntaxTree for SingleExpression {
             parse::SingleExpressionInner::Witness(name) => {
                 scope
                     .insert_witness(name.clone(), ty.clone())
-                    .map_err(|_| Error::WitnessReused(name.clone()))
                     .with_span(from)?;
                 SingleExpressionInner::Witness(name.clone())
             }
