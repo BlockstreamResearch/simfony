@@ -107,6 +107,12 @@ impl fmt::Display for RichError {
 
 impl std::error::Error for RichError {}
 
+impl From<RichError> for Error {
+    fn from(error: RichError) -> Self {
+        error.error
+    }
+}
+
 impl From<RichError> for String {
     fn from(error: RichError) -> Self {
         error.to_string()

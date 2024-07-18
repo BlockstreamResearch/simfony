@@ -195,3 +195,72 @@ impl<'de> Deserialize<'de> for WitnessName {
         deserializer.deserialize_str(ParserVisitor::<Self>(std::marker::PhantomData))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::value::UIntValue;
+
+    #[test]
+    fn witness_reuse() {
+        let s = r#"let a: u32 = witness("a");
+let also_a: u32 = witness("a");
+jet_verify(jet_eq_32(a, b));"#;
+        let program = parse::Program::parse_from_str(s).expect("parsing works");
+        match ast::Program::analyze(&program).map_err(Error::from) {
+            Ok(_) => panic!("Witness reuse was falsely accepted"),
+            Err(Error::WitnessReused(..)) => {}
+            Err(error) => panic!("Unexpected error: {error}"),
+        }
+    }
+
+    #[test]
+    fn witness_type_mismatch() {
+        let s = r#"let a: u32 = witness("a");
+jet_verify(jet_is_zero_32(a));"#;
+
+        let mut witness = WitnessValues::empty();
+        let a = WitnessName::parse_from_str("a").unwrap();
+        witness
+            .insert(a, TypedValue::from(UIntValue::U16(42)))
+            .unwrap();
+
+        match crate::satisfy(s, &witness) {
+            Ok(_) => panic!("Ill-typed witness assignment was falsely accepted"),
+            Err(error) => assert_eq!(
+                "Witness `a` was declared with type `u32` but its assigned value is of type `u16`",
+                error
+            ),
+        }
+    }
+
+    #[test]
+    fn witness_duplicate_assignment() {
+        let mut witness = WitnessValues::empty();
+        let a = WitnessName::parse_from_str("a").unwrap();
+        witness
+            .insert(a.clone(), TypedValue::from(UIntValue::U32(42)))
+            .unwrap();
+        match witness.insert(a, TypedValue::from(UIntValue::U32(43))) {
+            Ok(_) => panic!("Duplicate witness assignment was falsely accepted"),
+            Err(Error::WitnessReassigned(..)) => {}
+            Err(error) => panic!("Unexpected error: {error}"),
+        }
+    }
+
+    #[test]
+    fn witness_serde_duplicate_assignment() {
+        let s = r#"{
+  "a": { "value": "42", "type": "u32" },
+  "a": { "value": "43", "type": "u16" }
+}"#;
+
+        match serde_json::from_str::<WitnessValues>(s) {
+            Ok(_) => panic!("Duplicate witness assignment was falsely accepted"),
+            Err(error) => assert_eq!(
+                "Witness `a` has already been assigned a value at line 4 column 1",
+                &error.to_string()
+            ),
+        }
+    }
+}
