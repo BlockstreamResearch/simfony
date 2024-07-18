@@ -9,7 +9,7 @@ use crate::array::{BTreeSlice, Partition};
 use crate::error::Error;
 use crate::num::{NonZeroPow2Usize, U256};
 use crate::parse::{self, Bits, Bytes, UnsignedDecimal};
-use crate::types::{ResolvedType, StructuralType, TypeInner, UIntType};
+use crate::types::{ResolvedType, StructuralType, TypeConstructible, TypeInner, UIntType};
 
 /// Unsigned integer value.
 #[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -478,14 +478,22 @@ impl TypedValue {
         }
     }
 
-    /// Access the Simfony value.
+    /// Access the value.
     pub const fn value(&self) -> &Value {
         &self.value
     }
 
-    /// Access the Simfony type.
+    /// Access the type.
     pub const fn ty(&self) -> &ResolvedType {
         &self.ty
+    }
+
+    /// Create the unit value.
+    pub fn unit() -> Self {
+        Self {
+            value: Value::unit(),
+            ty: ResolvedType::unit(),
+        }
     }
 
     /// Create a typed value from a constant expression.
@@ -664,6 +672,24 @@ impl From<TypedValue> for Value {
 impl From<TypedValue> for ResolvedType {
     fn from(value: TypedValue) -> Self {
         value.ty
+    }
+}
+
+impl From<bool> for TypedValue {
+    fn from(value: bool) -> Self {
+        Self {
+            value: Value::from(value),
+            ty: ResolvedType::boolean(),
+        }
+    }
+}
+
+impl From<UIntValue> for TypedValue {
+    fn from(value: UIntValue) -> Self {
+        Self {
+            value: Value::from(value),
+            ty: value.get_type().into(),
+        }
     }
 }
 
