@@ -3,7 +3,9 @@ use std::sync::Arc;
 
 use simplicity::elements;
 
-use crate::parse::{Identifier, JetName, MatchPattern, Position, Rule, Span, WitnessName};
+use crate::parse::{
+    FunctionName, Identifier, JetName, MatchPattern, Position, Rule, Span, WitnessName,
+};
 use crate::types::{ResolvedType, UIntType};
 
 /// Helper trait to convert `Result<T, E>` into `Result<T, RichError>`.
@@ -152,6 +154,11 @@ pub enum Error {
     CannotCompile(String),
     JetDoesNotExist(JetName),
     TypeValueMismatch(ResolvedType),
+    MainNoInputs,
+    MainNoOutput,
+    MainRequired,
+    FunctionRedefined(FunctionName),
+    FunctionUndefined(FunctionName),
     InvalidNumberOfArguments(usize, usize),
     ExpressionTypeMismatch(ResolvedType, ResolvedType),
     ExpressionNotConstant,
@@ -162,6 +169,7 @@ pub enum Error {
     WitnessReused(WitnessName),
     WitnessTypeMismatch(WitnessName, ResolvedType, ResolvedType),
     WitnessReassigned(WitnessName),
+    WitnessOutsideMain,
 }
 
 #[rustfmt::skip]
@@ -204,6 +212,26 @@ impl fmt::Display for Error {
                 f,
                 "Value does not match the assigned type `{ty}`"
             ),
+            Error::MainNoInputs => write!(
+                f,
+                "Main function takes no input parameters"
+            ),
+            Error::MainNoOutput => write!(
+                f,
+                "Main function produces no output"
+            ),
+            Error::MainRequired => write!(
+                f,
+                "Main function is required"
+            ),
+            Error::FunctionRedefined(name) => write!(
+                f,
+                "Function `{name}` was defined multiple times"
+            ),
+            Error::FunctionUndefined(name) => write!(
+                f,
+                "Function `{name}` was called but not defined"
+            ),
             Error::InvalidNumberOfArguments(expected, found) => write!(
                 f,
                 "Expected {expected} arguments, found {found} arguments"
@@ -243,7 +271,11 @@ impl fmt::Display for Error {
             Error::WitnessReassigned(name) => write!(
                 f,
                 "Witness `{name}` has already been assigned a value"
-            )
+            ),
+            Error::WitnessOutsideMain => write!(
+                f,
+                "Witness expressions are not allowed outside the `main` function"
+            ),
         }
     }
 }

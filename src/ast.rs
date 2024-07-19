@@ -8,7 +8,7 @@ use simplicity::jet::Elements;
 
 use crate::error::{Error, RichError, WithSpan};
 use crate::parse;
-use crate::parse::{Identifier, MatchPattern, Span, WitnessName};
+use crate::parse::{FunctionName, Identifier, MatchPattern, Span, WitnessName};
 use crate::pattern::Pattern;
 use crate::types::{AliasedType, ResolvedType, TypeConstructible, TypeDeconstructible};
 use crate::value::{UIntValue, Value};
@@ -24,17 +24,22 @@ impl DeclaredWitnesses {
     }
 }
 
-/// A program is a sequence of statements.
+/// A program consists of the main function.
+///
+/// Other items such as custom functions or type aliases
+/// are resolved during the creation of the AST.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Program {
-    statements: Arc<[Statement]>,
+    main: Expression,
     witnesses: DeclaredWitnesses,
 }
 
 impl Program {
-    /// Access the statements of the program.
-    pub fn statements(&self) -> &[Statement] {
-        &self.statements
+    /// Access the main function.
+    ///
+    /// There is exactly one main function for each program.
+    pub fn main(&self) -> &Expression {
+        &self.main
     }
 
     /// Access the map of declared witnesses.
@@ -43,9 +48,41 @@ impl Program {
     }
 }
 
-/// A statement is a program component.
+/// An item is a component of a program.
 ///
-/// Statements can define variables or type aliases,
+/// All items except for the main function are resolved during the creation of the AST.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum Item {
+    /// A type alias.
+    ///
+    /// A stub because the alias was resolved during the creation of the AST.
+    TypeAlias,
+    /// A function.
+    Function(Function),
+}
+
+/// Definition of a function.
+///
+/// All functions except for the main function are resolved during the creation of the AST.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum Function {
+    /// A custom function.
+    ///
+    /// A stub because the definition of the function was moved to its calls in the main function.
+    Custom,
+    /// The main function.
+    ///
+    /// An expression that takes no inputs (unit) and that produces no output (unit).
+    /// The expression may panic midway through, signalling failure.
+    /// Otherwise, the expression signals success.
+    ///
+    /// This expression is evaluated when the program is run.
+    Main(Expression),
+}
+
+/// A statement is a component of a block expression.
+///
+/// Statements can define variables or run validating expressions,
 /// but they never return values.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Statement {
@@ -53,11 +90,6 @@ pub enum Statement {
     Assignment(Assignment),
     /// Expression that returns nothing (the unit value).
     Expression(Expression),
-    /// Type alias.
-    ///
-    /// The alias was resolved when the abstract syntax tree was created.
-    /// We keep the alias statement simply because it is annoying to remove parts of the tree during analysis.
-    TypeAlias,
 }
 
 /// Assignment of a value to a variable identifier.
@@ -103,11 +135,12 @@ impl Expression {
 /// Variant of an expression.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum ExpressionInner {
-    /// A single expression directly returns its value.
+    /// A single expression directly returns a value.
     Single(SingleExpression),
-    /// A block expression first executes a series of statements inside a local scope,
-    /// and then it returns the value of its final expression.
-    Block(Arc<[Statement]>, Arc<Expression>),
+    /// A block expression first executes a series of statements inside a local scope.
+    /// Then, the block returns the value of its final expression.
+    /// The block returns nothing (unit) if there is no final expression.
+    Block(Arc<[Statement]>, Option<Arc<Expression>>),
 }
 
 /// A single expression directly returns its value.
@@ -200,6 +233,49 @@ pub enum CallName {
     UnwrapRight(ResolvedType),
     /// [`Option::unwrap`].
     Unwrap,
+    /// A custom function that was defined previously.
+    ///
+    /// We effectively copy the function body into every call of the function.
+    /// We use [`Arc`] for cheap clones during this process.
+    Custom(CustomFunction),
+}
+
+/// Definition of a custom function.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct CustomFunction {
+    params: Arc<[FunctionParam]>,
+    body: Arc<Expression>,
+}
+
+impl CustomFunction {
+    /// Access the identifiers of the parameters of the function.
+    pub fn params(&self) -> &[FunctionParam] {
+        &self.params
+    }
+
+    /// Access the body of the function.
+    pub fn body(&self) -> &Expression {
+        &self.body
+    }
+}
+
+/// Parameter of a function.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct FunctionParam {
+    identifier: Identifier,
+    ty: ResolvedType,
+}
+
+impl FunctionParam {
+    /// Access the identifier of the parameter.
+    pub fn identifier(&self) -> &Identifier {
+        &self.identifier
+    }
+
+    /// Access the type of the parameter.
+    pub fn ty(&self) -> &ResolvedType {
+        &self.ty
+    }
 }
 
 /// Match expression.
@@ -253,28 +329,38 @@ impl MatchArm {
 /// 1. Assigning types to each variable
 /// 2. Resolving type aliases
 /// 3. Assigning types to each witness expression
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// 4. Resolving calls to custom functions
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 struct Scope {
     variables: Vec<HashMap<Identifier, ResolvedType>>,
-    aliases: Vec<HashMap<Identifier, ResolvedType>>,
+    aliases: HashMap<Identifier, ResolvedType>,
     witnesses: HashMap<WitnessName, ResolvedType>,
-}
-
-impl Default for Scope {
-    fn default() -> Self {
-        Self {
-            variables: vec![HashMap::new()],
-            aliases: vec![HashMap::new()],
-            witnesses: HashMap::new(),
-        }
-    }
+    functions: HashMap<FunctionName, CustomFunction>,
+    is_main: bool,
 }
 
 impl Scope {
+    /// Check if the current scope is topmost.
+    pub fn is_topmost(&self) -> bool {
+        self.variables.is_empty()
+    }
+
     /// Push a new scope onto the stack.
     pub fn push_scope(&mut self) {
         self.variables.push(HashMap::new());
-        self.aliases.push(HashMap::new());
+    }
+
+    /// Push the scope of the main function onto the stack.
+    ///
+    /// ## Panics
+    ///
+    /// - The current scope is already inside the main function.
+    /// - The current scope is not topmost.
+    pub fn push_main_scope(&mut self) {
+        assert!(!self.is_main, "Already inside main function");
+        assert!(self.is_topmost(), "Current scope is not topmost");
+        self.push_scope();
+        self.is_main = true;
     }
 
     /// Pop the current scope from the stack.
@@ -284,7 +370,22 @@ impl Scope {
     /// The stack is empty.
     pub fn pop_scope(&mut self) {
         self.variables.pop().expect("Stack is empty");
-        self.aliases.pop().expect("Stack is empty");
+    }
+
+    /// Pop the scope of the main function from the stack.
+    ///
+    /// ## Panics
+    ///
+    /// - The current scope is not inside the main function.
+    /// - The current scope is not nested in the topmost scope.
+    pub fn pop_main_scope(&mut self) {
+        assert!(self.is_main, "Current scope is not inside main function");
+        self.pop_scope();
+        self.is_main = false;
+        assert!(
+            self.is_topmost(),
+            "Current scope is not nested in topmost scope"
+        )
     }
 
     /// Push a variable onto the current stack.
@@ -311,33 +412,21 @@ impl Scope {
     ///
     /// ## Errors
     ///
-    /// There are any undefined aliases. The method returns the first such undefined alias.
-    pub fn resolve(&self, ty: &AliasedType) -> Result<ResolvedType, Identifier> {
-        let get_alias = |name: &Identifier| -> Option<ResolvedType> {
-            self.aliases
-                .iter()
-                .rev()
-                .find_map(|scope| scope.get(name))
-                .cloned()
-        };
-        ty.resolve(get_alias)
+    /// There are any undefined aliases.
+    pub fn resolve(&self, ty: &AliasedType) -> Result<ResolvedType, Error> {
+        let get_alias =
+            |name: &Identifier| -> Option<ResolvedType> { self.aliases.get(name).cloned() };
+        ty.resolve(get_alias).map_err(Error::UndefinedAlias)
     }
 
-    /// Push a type alias onto the current scope.
+    /// Push a type alias into the global map.
     ///
     /// ## Errors
     ///
-    /// There are any undefined aliases. The method returns the first such undefined alias.
-    ///
-    /// ## Panics
-    ///
-    /// The stack is empty.
-    pub fn insert_alias(&mut self, alias: Identifier, ty: AliasedType) -> Result<(), Identifier> {
+    /// There are any undefined aliases.
+    pub fn insert_alias(&mut self, alias: Identifier, ty: AliasedType) -> Result<(), Error> {
         let resolved_ty = self.resolve(&ty)?;
-        self.aliases
-            .last_mut()
-            .expect("Stack is empty")
-            .insert(alias, resolved_ty);
+        self.aliases.insert(alias, resolved_ty);
         Ok(())
     }
 
@@ -345,9 +434,13 @@ impl Scope {
     ///
     /// ## Errors
     ///
-    /// The witness name has already been defined somewhere else in the program.
-    /// Witness names may be used at most throughout the entire program.
+    /// - The current scope is not inside the main function.
+    /// - The witness name has already been defined somewhere else in the program.
     pub fn insert_witness(&mut self, name: WitnessName, ty: ResolvedType) -> Result<(), Error> {
+        if !self.is_main {
+            return Err(Error::WitnessOutsideMain);
+        }
+
         match self.witnesses.entry(name.clone()) {
             Entry::Occupied(_) => Err(Error::WitnessReused(name)),
             Entry::Vacant(entry) => {
@@ -362,6 +455,30 @@ impl Scope {
     /// Use this map to finalize the Simfony program with witness values of the same type.
     pub fn into_witnesses(self) -> HashMap<WitnessName, ResolvedType> {
         self.witnesses
+    }
+
+    /// Insert a custom function into the global map.
+    ///
+    /// ## Errors
+    ///
+    /// The function has already been defined.
+    pub fn insert_function(
+        &mut self,
+        name: FunctionName,
+        function: CustomFunction,
+    ) -> Result<(), Error> {
+        match self.functions.entry(name.clone()) {
+            Entry::Occupied(_) => Err(Error::FunctionRedefined(name)),
+            Entry::Vacant(entry) => {
+                entry.insert(function);
+                Ok(())
+            }
+        }
+    }
+
+    /// Get the definition of a custom function.
+    pub fn get_function(&self, name: &FunctionName) -> Option<&CustomFunction> {
+        self.functions.get(name)
     }
 }
 
@@ -382,17 +499,108 @@ impl Program {
     pub fn analyze(from: &parse::Program) -> Result<Self, RichError> {
         let unit = ResolvedType::unit();
         let mut scope = Scope::default();
-        let statements = from
-            .statements
+        let items = from
+            .items()
             .iter()
-            .map(|s| Statement::analyze(s, &unit, &mut scope))
-            .collect::<Result<Arc<[Statement]>, RichError>>()?;
+            .map(|s| Item::analyze(s, &unit, &mut scope))
+            .collect::<Result<Vec<Item>, RichError>>()?;
+        debug_assert!(scope.is_topmost());
         let witnesses = DeclaredWitnesses(scope.into_witnesses());
 
-        Ok(Self {
-            statements,
-            witnesses,
-        })
+        let mut mains = items
+            .into_iter()
+            .filter_map(|item| match item {
+                Item::Function(Function::Main(expr)) => Some(expr),
+                _ => None,
+            })
+            .collect::<Vec<Expression>>();
+        let main = match mains.len() {
+            0 => return Err(Error::MainRequired).with_span(from),
+            1 => mains.pop().unwrap(),
+            _ => {
+                return Err(Error::FunctionRedefined(FunctionName::main()))
+                    .with_span(mains.first().unwrap())
+            }
+        };
+
+        Ok(Self { main, witnesses })
+    }
+}
+
+impl AbstractSyntaxTree for Item {
+    type From = parse::Item;
+
+    fn analyze(from: &Self::From, ty: &ResolvedType, scope: &mut Scope) -> Result<Self, RichError> {
+        assert!(ty.is_unit(), "Items cannot return anything");
+        assert!(scope.is_topmost(), "Items live in the topmost scope only");
+
+        match from {
+            parse::Item::TypeAlias(alias) => {
+                scope
+                    .insert_alias(alias.name.clone(), alias.ty.clone())
+                    .with_span(alias)?;
+                Ok(Self::TypeAlias)
+            }
+            parse::Item::Function(function) => {
+                Function::analyze(function, ty, scope).map(Self::Function)
+            }
+        }
+    }
+}
+
+impl AbstractSyntaxTree for Function {
+    type From = parse::Function;
+
+    fn analyze(from: &Self::From, ty: &ResolvedType, scope: &mut Scope) -> Result<Self, RichError> {
+        assert!(ty.is_unit(), "Function definitions cannot return anything");
+        assert!(scope.is_topmost(), "Items live in the topmost scope only");
+
+        if from.name().as_inner() != "main" {
+            let params = from
+                .params()
+                .iter()
+                .map(|param| {
+                    let identifier = param.identifier().clone();
+                    let ty = scope.resolve(param.ty())?;
+                    Ok(FunctionParam { identifier, ty })
+                })
+                .collect::<Result<Arc<[FunctionParam]>, Error>>()
+                .with_span(from)?;
+            let ret = from
+                .ret()
+                .as_ref()
+                .map(|aliased| scope.resolve(aliased).with_span(from))
+                .transpose()?
+                .unwrap_or_else(ResolvedType::unit);
+            scope.push_scope();
+            for param in params.iter() {
+                scope.insert_variable(param.identifier().clone(), param.ty().clone());
+            }
+            let body = Expression::analyze(from.body(), &ret, scope).map(Arc::new)?;
+            scope.pop_scope();
+            debug_assert!(scope.is_topmost());
+            let function = CustomFunction { params, body };
+            scope
+                .insert_function(from.name().clone(), function)
+                .with_span(from)?;
+
+            return Ok(Self::Custom);
+        }
+
+        if !from.params().is_empty() {
+            return Err(Error::MainNoInputs).with_span(from);
+        }
+        if let Some(aliased) = from.ret() {
+            let resolved = scope.resolve(aliased).with_span(from)?;
+            if !resolved.is_unit() {
+                return Err(Error::MainNoOutput).with_span(from);
+            }
+        }
+
+        scope.push_main_scope();
+        let body = Expression::analyze(from.body(), ty, scope)?;
+        scope.pop_main_scope();
+        Ok(Self::Main(body))
     }
 }
 
@@ -408,13 +616,6 @@ impl AbstractSyntaxTree for Statement {
             parse::Statement::Expression(expression) => {
                 Expression::analyze(expression, ty, scope).map(Self::Expression)
             }
-            parse::Statement::TypeAlias(alias) => {
-                scope
-                    .insert_alias(alias.name.clone(), alias.ty.clone())
-                    .map_err(Error::UndefinedAlias)
-                    .with_span(alias)?;
-                Ok(Self::TypeAlias)
-            }
         }
     }
 }
@@ -428,10 +629,7 @@ impl AbstractSyntaxTree for Assignment {
         //
         // However, the expression evaluated in the assignment does have a type,
         // namely the type specified in the assignment.
-        let ty_expr = scope
-            .resolve(&from.ty)
-            .map_err(Error::UndefinedAlias)
-            .with_span(from)?;
+        let ty_expr = scope.resolve(&from.ty).with_span(from)?;
         let typed_variables = from.pattern.is_of_type(&ty_expr).with_span(from)?;
         for (identifier, ty) in typed_variables {
             scope.insert_variable(identifier, ty);
@@ -465,7 +663,10 @@ impl AbstractSyntaxTree for Expression {
                     .iter()
                     .map(|s| Statement::analyze(s, &ResolvedType::unit(), scope))
                     .collect::<Result<Arc<[Statement]>, RichError>>()?;
-                let ast_expression = Expression::analyze(expression, ty, scope).map(Arc::new)?;
+                let ast_expression = expression
+                    .as_ref()
+                    .map(|expr| Expression::analyze(expr, ty, scope).map(Arc::new))
+                    .transpose()?;
                 scope.pop_scope();
 
                 Ok(Self {
@@ -698,6 +899,25 @@ impl AbstractSyntaxTree for Call {
                     scope,
                 )?])
             }
+            CallName::Custom(function) => {
+                if from.args.len() != function.params().len() {
+                    return Err(Error::InvalidNumberOfArguments(
+                        function.params().len(),
+                        from.args.len(),
+                    ))
+                    .with_span(from);
+                }
+                let out_ty = function.body().ty();
+                if ty != out_ty {
+                    return Err(Error::ExpressionTypeMismatch(ty.clone(), out_ty.clone()))
+                        .with_span(from);
+                }
+                from.args
+                    .iter()
+                    .zip(function.params.iter().map(FunctionParam::ty))
+                    .map(|(arg_parse, arg_ty)| Expression::analyze(arg_parse, arg_ty, scope))
+                    .collect::<Result<Arc<[Expression]>, RichError>>()?
+            }
         };
 
         Ok(Self {
@@ -725,14 +945,18 @@ impl AbstractSyntaxTree for CallName {
             parse::CallName::UnwrapLeft(right_ty) => scope
                 .resolve(right_ty)
                 .map(Self::UnwrapLeft)
-                .map_err(Error::UndefinedAlias)
                 .with_span(from),
             parse::CallName::UnwrapRight(left_ty) => scope
                 .resolve(left_ty)
                 .map(Self::UnwrapRight)
-                .map_err(Error::UndefinedAlias)
                 .with_span(from),
             parse::CallName::Unwrap => Ok(Self::Unwrap),
+            parse::CallName::Custom(name) => scope
+                .get_function(name)
+                .cloned()
+                .map(Self::Custom)
+                .ok_or(Error::FunctionUndefined(name.clone()))
+                .with_span(from),
         }
     }
 }
@@ -742,29 +966,20 @@ impl AbstractSyntaxTree for Match {
 
     fn analyze(from: &Self::From, ty: &ResolvedType, scope: &mut Scope) -> Result<Self, RichError> {
         let scrutinee_ty = from.scrutinee_type();
-        let scrutinee_ty = scope
-            .resolve(&scrutinee_ty)
-            .map_err(Error::UndefinedAlias)
-            .with_span(from)?;
+        let scrutinee_ty = scope.resolve(&scrutinee_ty).with_span(from)?;
         let scrutinee =
             Expression::analyze(from.scrutinee(), &scrutinee_ty, scope).map(Arc::new)?;
 
         scope.push_scope();
         if let Some((id_l, ty_l)) = from.left().pattern.as_typed_variable() {
-            let ty_l = scope
-                .resolve(ty_l)
-                .map_err(Error::UndefinedAlias)
-                .with_span(from)?;
+            let ty_l = scope.resolve(ty_l).with_span(from)?;
             scope.insert_variable(id_l.clone(), ty_l);
         }
         let ast_l = Expression::analyze(&from.left().expression, ty, scope).map(Arc::new)?;
         scope.pop_scope();
         scope.push_scope();
         if let Some((id_r, ty_r)) = from.right().pattern.as_typed_variable() {
-            let ty_r = scope
-                .resolve(ty_r)
-                .map_err(Error::UndefinedAlias)
-                .with_span(from)?;
+            let ty_r = scope.resolve(ty_r).with_span(from)?;
             scope.insert_variable(id_r.clone(), ty_r);
         }
         let ast_r = Expression::analyze(&from.right().expression, ty, scope).map(Arc::new)?;

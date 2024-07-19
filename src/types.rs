@@ -619,29 +619,31 @@ impl From<BuiltinAlias> for AliasedType {
 
 impl BuiltinAlias {
     pub fn resolve(self) -> ResolvedType {
-        use BuiltinAlias::*;
+        use BuiltinAlias as B;
         use UIntType::*;
 
         match self {
-            Ctx8 => ResolvedType::tuple([
+            B::Ctx8 => ResolvedType::tuple([
                 ResolvedType::list(U8.into(), NonZeroPow2Usize::new(64).unwrap()),
                 ResolvedType::tuple([U64.into(), U256.into()]),
             ]),
-            Pubkey | Message | Scalar | Fe | ExplicitAsset | ExplicitNonce => U256.into(),
-            Message64 | Signature => ResolvedType::array(U8.into(), 64),
-            Ge => ResolvedType::tuple([U256.into(), U256.into()]),
-            Gej => {
+            B::Pubkey | B::Message | B::Scalar | B::Fe | B::ExplicitAsset | B::ExplicitNonce => {
+                U256.into()
+            }
+            B::Message64 | B::Signature => ResolvedType::array(U8.into(), 64),
+            B::Ge => ResolvedType::tuple([U256.into(), U256.into()]),
+            B::Gej => {
                 ResolvedType::tuple([ResolvedType::tuple([U256.into(), U256.into()]), U256.into()])
             }
-            Point | Confidential1 => ResolvedType::tuple([U1.into(), U256.into()]),
-            Height | Time | Lock => U32.into(),
-            Distance | Duration => U16.into(),
-            Outpoint => ResolvedType::tuple([U256.into(), U32.into()]),
-            Asset1 | Nonce => {
+            B::Point | B::Confidential1 => ResolvedType::tuple([U1.into(), U256.into()]),
+            B::Height | B::Time | B::Lock => U32.into(),
+            B::Distance | B::Duration => U16.into(),
+            B::Outpoint => ResolvedType::tuple([U256.into(), U32.into()]),
+            B::Asset1 | B::Nonce => {
                 ResolvedType::either(ResolvedType::tuple([U1.into(), U256.into()]), U256.into())
             }
-            ExplicitAmount => U64.into(),
-            Amount1 | TokenAmount1 => {
+            B::ExplicitAmount => U64.into(),
+            B::Amount1 | B::TokenAmount1 => {
                 ResolvedType::either(ResolvedType::tuple([U1.into(), U256.into()]), U64.into())
             }
         }

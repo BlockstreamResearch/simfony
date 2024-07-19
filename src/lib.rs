@@ -85,6 +85,7 @@ mod tests {
             ("sighash_none.simf", "sighash_none.wit"),
             ("tuple.simf", "empty.wit"),
             ("unwrap.simf", "empty.wit"),
+            ("function.simf", "empty.wit"),
         ] {
             _test_progs(prog_file, wit_file)
         }

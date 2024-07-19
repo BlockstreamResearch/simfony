@@ -1,12 +1,14 @@
 //! Compile the parsed ast into a simplicity program
 
+use std::sync::Arc;
+
 use either::Either;
 use simplicity::node::{CoreConstructible as _, JetConstructible as _, WitnessConstructible as _};
 use simplicity::{Cmr, FailEntropy};
 
 use crate::array::{BTreeSlice, Partition};
 use crate::ast::{
-    Call, CallName, Expression, ExpressionInner, Match, Program, SingleExpression,
+    Call, CallName, Expression, ExpressionInner, FunctionParam, Match, Program, SingleExpression,
     SingleExpressionInner, Statement,
 };
 use crate::error::{Error, RichError, WithSpan};
@@ -169,7 +171,6 @@ fn compile_blk(
             let right = compile_blk(stmts, scope, index + 1, last_expr)?;
             combine_seq(&left, &right).with_span(expression)
         }
-        Statement::TypeAlias => compile_blk(stmts, scope, index + 1, last_expr),
     }
 }
 
@@ -182,7 +183,7 @@ fn combine_seq(a: &ProgNode, b: &ProgNode) -> Result<ProgNode, simplicity::types
 impl Program {
     pub fn compile(&self) -> Result<ProgNode, RichError> {
         let mut scope = Scope::new(Pattern::Ignore);
-        compile_blk(self.statements(), &mut scope, 0, None)
+        self.main().compile(&mut scope)
     }
 }
 
@@ -191,7 +192,7 @@ impl Expression {
         match self.inner() {
             ExpressionInner::Block(stmts, expr) => {
                 scope.push_scope();
-                let res = compile_blk(stmts, scope, 0, Some(expr.as_ref()));
+                let res = compile_blk(stmts, scope, 0, expr.as_ref().map(Arc::as_ref));
                 scope.pop_scope();
                 res
             }
@@ -299,6 +300,19 @@ impl Call {
                 let fail_cmr = Cmr::fail(FailEntropy::ZERO);
                 let get_inner = ProgNode::assertr_take(fail_cmr, &ProgNode::iden());
                 ProgNode::comp(&right_and_unit, &get_inner).with_span(self)
+            }
+            CallName::Custom(function) => {
+                let params_pattern = Pattern::tuple(
+                    function
+                        .params()
+                        .iter()
+                        .map(FunctionParam::identifier)
+                        .cloned()
+                        .map(Pattern::Identifier),
+                );
+                let mut function_scope = Scope::new(params_pattern);
+                let body = function.body().compile(&mut function_scope)?;
+                ProgNode::comp(&args, &body).with_span(self)
             }
         }
     }
