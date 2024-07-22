@@ -1,4 +1,5 @@
 use std::fmt;
+use std::num::NonZeroU32;
 use std::str::FromStr;
 
 /// Implementation for newtypes that wrap a number `u8`, `u16`, ...
@@ -76,9 +77,12 @@ impl NonZeroPow2Usize {
 
     /// Return the binary logarithm of the value.
     ///
-    /// The integer is equal to 2^n. Return n.
-    pub const fn log2(self) -> u32 {
-        self.0.trailing_zeros()
+    /// The integer is equal to 2^n for some n > 0. Return n.
+    pub const fn log2(self) -> NonZeroU32 {
+        let n = self.0.trailing_zeros();
+        debug_assert!(0 < n);
+        // Safety: 0 < n by definition of NonZeroPow2Usize
+        unsafe { NonZeroU32::new_unchecked(n) }
     }
 }
 
@@ -329,5 +333,15 @@ mod tests {
             "115792089237316195423570985008687907853269984665640564039457584007913129639935",
             &U256::MAX.to_string()
         )
+    }
+
+    #[test]
+    fn pow2_log2() {
+        let mut pow = NonZeroPow2Usize::TWO;
+
+        for exp in 1..10 {
+            assert_eq!(pow.log2().get(), exp);
+            pow = NonZeroPow2Usize::next(pow.0 + 1);
+        }
     }
 }
