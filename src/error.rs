@@ -154,6 +154,7 @@ pub enum Error {
     CannotCompile(String),
     JetDoesNotExist(JetName),
     TypeValueMismatch(ResolvedType),
+    InvalidCast(ResolvedType, ResolvedType),
     MainNoInputs,
     MainNoOutput,
     MainRequired,
@@ -211,6 +212,10 @@ impl fmt::Display for Error {
             Error::TypeValueMismatch(ty) => write!(
                 f,
                 "Value does not match the assigned type `{ty}`"
+            ),
+            Error::InvalidCast(source, target) => write!(
+                f,
+                "Cannot cast values of type `{source}` as values of type `{target}`"
             ),
             Error::MainNoInputs => write!(
                 f,

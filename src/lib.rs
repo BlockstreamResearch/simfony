@@ -66,7 +66,7 @@ mod tests {
             ("add.simf", "empty.wit"),
             ("add.simf", "empty.wit"),
             ("array.simf", "empty.wit"),
-            // ("cat.simf", "empty.wit"),
+            ("cat.simf", "empty.wit"),
             (
                 "checksigfromstackverify.simf",
                 "checksigfromstackverify.wit",

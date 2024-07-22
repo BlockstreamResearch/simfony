@@ -301,6 +301,13 @@ impl Call {
                 let get_inner = ProgNode::assertr_take(fail_cmr, &ProgNode::iden());
                 ProgNode::comp(&right_and_unit, &get_inner).with_span(self)
             }
+            CallName::TypeCast(..) => {
+                // A cast converts between two structurally equal types.
+                // Structural equality of Simfony types A and B means
+                // exact equality of the underlying Simplicity types of A and of B.
+                // Therefore, a Simfony cast is a NOP in Simplicity.
+                Ok(args)
+            }
             CallName::Custom(function) => {
                 let params_pattern = Pattern::tuple(
                     function

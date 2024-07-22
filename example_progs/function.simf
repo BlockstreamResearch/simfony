@@ -1,7 +1,6 @@
 fn checked_add_32(a: u32, b: u32) -> u32 {
     let (carry, sum): (bool, u32) = jet_add_32(a, b);
-    // FIXME: Need to cast `bool` to `u1`
-    // jet_verify(jet_complement_1(carry));
+    jet_verify(<u1>::into(jet_complement_1(<bool>::into(carry))));
     sum
 }
 

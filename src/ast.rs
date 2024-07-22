@@ -10,7 +10,9 @@ use crate::error::{Error, RichError, WithSpan};
 use crate::parse;
 use crate::parse::{FunctionName, Identifier, MatchPattern, Span, WitnessName};
 use crate::pattern::Pattern;
-use crate::types::{AliasedType, ResolvedType, TypeConstructible, TypeDeconstructible};
+use crate::types::{
+    AliasedType, ResolvedType, StructuralType, TypeConstructible, TypeDeconstructible,
+};
 use crate::value::{UIntValue, Value};
 
 /// Map of witness names to their expected type, as declared in the program.
@@ -233,6 +235,8 @@ pub enum CallName {
     UnwrapRight(ResolvedType),
     /// [`Option::unwrap`].
     Unwrap,
+    /// Cast from the given source type.
+    TypeCast(ResolvedType),
     /// A custom function that was defined previously.
     ///
     /// We effectively copy the function body into every call of the function.
@@ -899,6 +903,20 @@ impl AbstractSyntaxTree for Call {
                     scope,
                 )?])
             }
+            CallName::TypeCast(source) => {
+                if from.args.len() != 1 {
+                    return Err(Error::InvalidNumberOfArguments(1, from.args.len()))
+                        .with_span(from);
+                }
+                if StructuralType::from(&source) != StructuralType::from(ty) {
+                    return Err(Error::InvalidCast(source, ty.clone())).with_span(from);
+                }
+                Arc::from([Expression::analyze(
+                    from.args.first().unwrap(),
+                    &source,
+                    scope,
+                )?])
+            }
             CallName::Custom(function) => {
                 if from.args.len() != function.params().len() {
                     return Err(Error::InvalidNumberOfArguments(
@@ -951,6 +969,9 @@ impl AbstractSyntaxTree for CallName {
                 .map(Self::UnwrapRight)
                 .with_span(from),
             parse::CallName::Unwrap => Ok(Self::Unwrap),
+            parse::CallName::TypeCast(target) => {
+                scope.resolve(target).map(Self::TypeCast).with_span(from)
+            }
             parse::CallName::Custom(name) => scope
                 .get_function(name)
                 .cloned()
