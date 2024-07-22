@@ -288,6 +288,8 @@ pub enum CallName {
     TypeCast(AliasedType),
     /// Name of a custom function.
     Custom(FunctionName),
+    /// Fold of a bounded list with the given function.
+    Fold(FunctionName, NonZeroPow2Usize),
 }
 
 /// Name of a jet.
@@ -831,6 +833,12 @@ impl PestParse for CallName {
                 let inner = pair.into_inner().next().unwrap();
                 AliasedType::parse(inner).map(Self::TypeCast)
             }
+            Rule::fold => {
+                let mut it = pair.into_inner();
+                let name = FunctionName::parse(it.next().unwrap())?;
+                let bound = NonZeroPow2Usize::parse(it.next().unwrap())?;
+                Ok(Self::Fold(name, bound))
+            }
             Rule::function_name => FunctionName::parse(pair).map(Self::Custom),
             _ => panic!("Corrupt grammar"),
         }
@@ -1226,11 +1234,7 @@ impl PestParse for AliasedType {
                     output.push(Item::Type(AliasedType::list(el, bound)));
                 }
                 Rule::list_bound => {
-                    let bound_str = data.node.0.as_str();
-                    let bound = bound_str.parse::<usize>().with_span(&data.node.0)?;
-                    let bound = NonZeroPow2Usize::new(bound)
-                        .ok_or(Error::ListBoundPow2(bound))
-                        .with_span(&data.node.0)?;
+                    let bound = NonZeroPow2Usize::parse(data.node.0)?;
                     output.push(Item::Bound(bound));
                 }
                 Rule::ty => {}
@@ -1271,6 +1275,19 @@ impl PestParse for BuiltinAlias {
         assert!(matches!(pair.as_rule(), Self::RULE));
         Self::from_str(pair.as_str())
             .map_err(Error::CannotParse)
+            .with_span(&pair)
+    }
+}
+
+impl PestParse for NonZeroPow2Usize {
+    // FIXME: This equates NonZeroPow2Usize with list bounds. Create wrapper for list bounds?
+    const RULE: Rule = Rule::list_bound;
+
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
+        assert!(matches!(pair.as_rule(), Self::RULE));
+        let bound = pair.as_str().parse::<usize>().with_span(&pair)?;
+        NonZeroPow2Usize::new(bound)
+            .ok_or(Error::ListBoundPow2(bound))
             .with_span(&pair)
     }
 }

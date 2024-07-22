@@ -335,6 +335,7 @@ impl Call {
                 let body = function.body().compile(&mut function_scope)?;
                 ProgNode::comp(&args, &body).with_span(self)
             }
+            CallName::Fold(..) => todo!(),
         }
     }
 }

@@ -7,6 +7,7 @@ use either::Either;
 use simplicity::jet::Elements;
 
 use crate::error::{Error, RichError, WithSpan};
+use crate::num::NonZeroPow2Usize;
 use crate::parse;
 use crate::parse::{FunctionName, Identifier, MatchPattern, Span, WitnessName};
 use crate::pattern::Pattern;
@@ -248,6 +249,8 @@ pub enum CallName {
     /// We effectively copy the function body into every call of the function.
     /// We use [`Arc`] for cheap clones during this process.
     Custom(CustomFunction),
+    /// Fold of a bounded list with the given function.
+    Fold(CustomFunction, NonZeroPow2Usize),
 }
 
 /// Definition of a custom function.
@@ -992,6 +995,29 @@ impl AbstractSyntaxTree for Call {
                     .map(|(arg_parse, arg_ty)| Expression::analyze(arg_parse, arg_ty, scope))
                     .collect::<Result<Arc<[Expression]>, RichError>>()?
             }
+            CallName::Fold(function, bound) => {
+                if from.args.len() != 2 {
+                    return Err(Error::InvalidNumberOfArguments(2, from.args.len()))
+                        .with_span(from);
+                }
+                let out_ty = function.body().ty();
+                if ty != out_ty {
+                    return Err(Error::ExpressionTypeMismatch(ty.clone(), out_ty.clone()))
+                        .with_span(from);
+                }
+                // A list fold has the signature:
+                //   fold::<f, N>(list: List<E, N>, initial_accumulator: A) -> A
+                // where
+                //   fn f(element: E, accumulator: A) -> A
+                let element_ty = function.params().first().expect("foldable function").ty();
+                let list_ty = ResolvedType::list(element_ty.clone(), bound);
+                let accumulator_ty = function.params().get(1).expect("foldable function").ty();
+                from.args
+                    .iter()
+                    .zip([&list_ty, accumulator_ty])
+                    .map(|(arg_parse, arg_ty)| Expression::analyze(arg_parse, arg_ty, scope))
+                    .collect::<Result<Arc<[Expression]>, RichError>>()?
+            }
         };
 
         Ok(Self {
@@ -1041,6 +1067,21 @@ impl AbstractSyntaxTree for CallName {
                 .map(Self::Custom)
                 .ok_or(Error::FunctionUndefined(name.clone()))
                 .with_span(from),
+            parse::CallName::Fold(name, bound) => {
+                let function = scope
+                    .get_function(name)
+                    .cloned()
+                    .ok_or(Error::FunctionUndefined(name.clone()))
+                    .with_span(from)?;
+                // A function that is used in a list fold has the signature:
+                //   fn f(element: E, accumulator: A) -> A
+                if function.params().len() != 2 || function.params()[1].ty() != function.body().ty()
+                {
+                    Err(Error::FunctionNotFoldable(name.clone())).with_span(from)
+                } else {
+                    Ok(Self::Fold(function, *bound))
+                }
+            }
         }
     }
 }
