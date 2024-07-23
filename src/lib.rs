@@ -64,7 +64,6 @@ mod tests {
     fn test_progs() {
         for (prog_file, wit_file) in [
             ("add.simf", "empty.wit"),
-            ("add.simf", "empty.wit"),
             ("array.simf", "empty.wit"),
             ("cat.simf", "empty.wit"),
             (
@@ -72,9 +71,11 @@ mod tests {
                 "checksigfromstackverify.wit",
             ),
             ("ctv.simf", "empty.wit"),
+            ("function.simf", "empty.wit"),
             ("list.simf", "empty.wit"),
             ("match.simf", "empty.wit"),
             ("nesting.simf", "empty.wit"),
+            ("option.simf", "empty.wit"),
             ("recursive-covenant.simf", "empty.wit"),
             ("scopes.simf", "empty.wit"),
             ("sighash_all.simf", "empty.wit"),
@@ -85,7 +86,6 @@ mod tests {
             ("sighash_none.simf", "sighash_none.wit"),
             ("tuple.simf", "empty.wit"),
             ("unwrap.simf", "empty.wit"),
-            ("function.simf", "empty.wit"),
         ] {
             _test_progs(prog_file, wit_file)
         }
