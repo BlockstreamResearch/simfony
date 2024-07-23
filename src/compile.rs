@@ -255,7 +255,7 @@ impl SingleExpression {
                     res_a.and_then(|a| res_b.and_then(|b| ProgNode::pair(&a, &b).with_span(self)))
                 })?
             }
-            SingleExpressionInner::Option(None) => ProgNode::injr(&ProgNode::unit()),
+            SingleExpressionInner::Option(None) => ProgNode::injl(&ProgNode::unit()),
             SingleExpressionInner::Either(Either::Left(inner)) => {
                 let compiled = inner.compile(scope)?;
                 ProgNode::injl(&compiled)
