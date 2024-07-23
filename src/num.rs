@@ -84,6 +84,28 @@ impl NonZeroPow2Usize {
         // Safety: 0 < n by definition of NonZeroPow2Usize
         unsafe { NonZeroU32::new_unchecked(n) }
     }
+
+    /// Multiply the value by two.
+    pub const fn mul2(self) -> Self {
+        let n = self.0 * 2;
+        debug_assert!(n.is_power_of_two() && 1 < n);
+        Self(n)
+    }
+
+    /// Divide the value by two.
+    ///
+    /// - Return `Some(x)` if the quotient `x` is greater than 1.
+    /// - Return `None` if the quotient is equal to 1.
+    pub const fn checked_div2(self) -> Option<Self> {
+        match self.0 / 2 {
+            0 => unreachable!(),
+            1 => None,
+            n => {
+                debug_assert!(n.is_power_of_two());
+                Some(Self(n))
+            }
+        }
+    }
 }
 
 checked_num!(NonZeroPow2Usize, usize, "a power of two greater than 1");
@@ -343,5 +365,17 @@ mod tests {
             assert_eq!(pow.log2().get(), exp);
             pow = NonZeroPow2Usize::next(pow.0 + 1);
         }
+    }
+
+    #[test]
+    fn pow2_div2() {
+        let mut pow = NonZeroPow2Usize::new(2usize.pow(10)).unwrap();
+
+        for exp in (2..=10).rev() {
+            assert_eq!(pow.get(), 2usize.pow(exp));
+            pow = pow.checked_div2().unwrap();
+        }
+        assert_eq!(pow, NonZeroPow2Usize::TWO);
+        assert!(pow.checked_div2().is_none());
     }
 }
