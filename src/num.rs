@@ -64,7 +64,7 @@ impl NonZeroPow2Usize {
         }
     }
 
-    /// Create the smallest power of two with nonzero exponent greater equal `n`.
+    /// Create the smallest power of two with nonzero exponent greater than or equal to `n`.
     pub const fn next(n: usize) -> Self {
         if n < 2 {
             Self::TWO
