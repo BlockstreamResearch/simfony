@@ -634,11 +634,11 @@ impl AbstractSyntaxTree for Assignment {
         // However, the expression evaluated in the assignment does have a type,
         // namely the type specified in the assignment.
         let ty_expr = scope.resolve(&from.ty).with_span(from)?;
+        let expression = Expression::analyze(&from.expression, &ty_expr, scope)?;
         let typed_variables = from.pattern.is_of_type(&ty_expr).with_span(from)?;
         for (identifier, ty) in typed_variables {
             scope.insert_variable(identifier, ty);
         }
-        let expression = Expression::analyze(&from.expression, &ty_expr, scope)?;
 
         Ok(Self {
             pattern: from.pattern.clone(),
