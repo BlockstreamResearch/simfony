@@ -1,10 +1,10 @@
 # Translation
 
-We write ⟦`e`⟧Ξ to denote the translation of Simphony expression `e` using environment Ξ from A.
+We write ⟦`e`⟧Ξ to denote the translation of Simfony expression `e` using environment Ξ from A.
 
 The translation produces a Simplicity expression with source type A.
 
-The target type depends on the Simphony expression `e`.
+The target type depends on the Simfony expression `e`.
 
 ## Unit literal
 
