@@ -667,10 +667,17 @@ impl AbstractSyntaxTree for Expression {
                     .iter()
                     .map(|s| Statement::analyze(s, &ResolvedType::unit(), scope))
                     .collect::<Result<Arc<[Statement]>, RichError>>()?;
-                let ast_expression = expression
-                    .as_ref()
-                    .map(|expr| Expression::analyze(expr, ty, scope).map(Arc::new))
-                    .transpose()?;
+                let ast_expression = match expression {
+                    Some(expression) => Expression::analyze(expression, ty, scope)
+                        .map(Arc::new)
+                        .map(Some),
+                    None if ty.is_unit() => Ok(None),
+                    None => Err(Error::ExpressionTypeMismatch(
+                        ty.clone(),
+                        ResolvedType::unit(),
+                    ))
+                    .with_span(from),
+                }?;
                 scope.pop_scope();
 
                 Ok(Self {

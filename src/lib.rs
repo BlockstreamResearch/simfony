@@ -136,6 +136,18 @@ mod tests {
         assert_success(prog_text, &witness)
     }
 
+    fn assert_satisfy_error_empty_witness(prog_text: &str, expected_error: &str) {
+        let witness = WitnessValues::empty();
+        match satisfy(prog_text, &witness) {
+            Ok(_) => panic!("Accepted faulty program"),
+            Err(error) => {
+                if !error.contains(expected_error) {
+                    panic!("Unexpected error: {error}")
+                }
+            }
+        }
+    }
+
     #[test]
     fn redefined_variable() {
         let prog_text = r#"fn main() {
@@ -144,5 +156,21 @@ mod tests {
 }
 "#;
         assert_success_empty_witness(prog_text);
+    }
+
+    #[test]
+    fn empty_function_body_nonempty_return() {
+        let prog_text = r#"fn my_true() -> bool {
+    // function body is empty, although function must return `bool`
+}
+
+fn main() {
+    jet_verify(my_true());
+}
+"#;
+        assert_satisfy_error_empty_witness(
+            prog_text,
+            "Expected expression of type `bool`, found type `()`",
+        );
     }
 }
