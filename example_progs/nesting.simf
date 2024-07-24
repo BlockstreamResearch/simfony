@@ -7,5 +7,5 @@ fn main() {
         v4
     };
     let res: u32 = 1;
-    jet_verify(jet_eq_32(res, v1));
+    assert!(jet_eq_32(res, v1));
 }

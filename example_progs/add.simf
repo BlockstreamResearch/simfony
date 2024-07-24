@@ -4,5 +4,5 @@ fn main() {
     let (carry, res): (bool, u32) = jet_add_32(a, b);
     let add_res: (bool, u32) = jet_add_32(10, 20);
     let (carry2, res3): (bool, u32) = add_res;
-    jet_verify(jet_eq_32(res3, 30));
+    assert!(jet_eq_32(res3, 30));
 }

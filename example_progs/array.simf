@@ -12,7 +12,7 @@ fn main() {
     let []: [u1; 0] = a;
 
     let [d0, d1, d2]: [u8; 3] = d;
-    jet_verify(jet_eq_8(d0, 1));
-    jet_verify(jet_eq_8(d1, 2));
-    jet_verify(jet_eq_8(d2, 3));
+    assert!(jet_eq_8(d0, 1));
+    assert!(jet_eq_8(d1, 2));
+    assert!(jet_eq_8(d2, 3));
 }

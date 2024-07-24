@@ -272,12 +272,14 @@ pub struct Call {
 pub enum CallName {
     /// Name of a jet.
     Jet(JetName),
-    /// Left unwrap function.
+    /// [`Either::unwrap_left`].
     UnwrapLeft(AliasedType),
-    /// Right unwrap function.
+    /// [`Either::unwrap_right`].
     UnwrapRight(AliasedType),
-    /// Some unwrap function.
+    /// [`Option::unwrap`].
     Unwrap,
+    /// [`assert`].
+    Assert,
     /// Cast from the given source type.
     TypeCast(AliasedType),
     /// Name of a custom function.
@@ -815,6 +817,7 @@ impl PestParse for CallName {
                 AliasedType::parse(inner).map(Self::UnwrapRight)
             }
             Rule::unwrap => Ok(Self::Unwrap),
+            Rule::assert => Ok(Self::Assert),
             Rule::type_cast => {
                 let inner = pair.into_inner().next().unwrap();
                 AliasedType::parse(inner).map(Self::TypeCast)

@@ -3,15 +3,15 @@ fn main() {
         Left(x: u32) => jet_le_32(10, x),
         Right(y: u32) => jet_le_32(y, 10),
     };
-    jet_verify(bit);
+    assert!(bit);
     let bit: bool = match Some(11) {
         Some(x: u32) => jet_le_32(10, x),
         None => false,
     };
-    jet_verify(bit);
+    assert!(bit);
     let bit: bool = match false {
         true => false,
         false => true,
     };
-    jet_verify(bit);
+    assert!(bit);
 }

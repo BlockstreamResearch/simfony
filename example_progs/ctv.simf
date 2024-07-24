@@ -18,5 +18,5 @@ fn main() {
     let ctv_hash: u256 = jet_sha_256_ctx_8_finalize(ctx);
 
     let expected_hash: u256 = 0xae3d019b30529c6044d2b3d7ee2e0ee5db51a7f05ed5db8f089cd5d455f1fc5d;
-    jet_verify(jet_eq_256(ctv_hash, expected_hash));
+    assert!(jet_eq_256(ctv_hash, expected_hash));
 }

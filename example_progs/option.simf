@@ -7,5 +7,5 @@ fn checked_div_32(x: u32, y: u32) -> Option<u32> {
 
 fn main() {
     let res: Option<u32> = checked_div_32(10, 3);
-    jet_verify(jet_eq_32(3, unwrap(res)));
+    assert!(jet_eq_32(3, unwrap(res)));
 }

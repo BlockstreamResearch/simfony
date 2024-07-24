@@ -1,8 +1,8 @@
 fn main() {
     let l_or_r: Either<Height, Time> = jet_parse_lock(10);
     let l: u32 = unwrap_left::<Time>(l_or_r);
-    jet_verify(jet_eq_32(l, 10));
+    assert!(jet_eq_32(l, 10));
     let l_or_r: Either<Height, Time> = jet_parse_lock(1000000000);
     let r: u32 = unwrap_right::<Height>(l_or_r);
-    jet_verify(jet_eq_32(r, 1000000000));
+    assert!(jet_eq_32(r, 1000000000));
 }

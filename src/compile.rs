@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use either::Either;
+use simplicity::jet::Elements;
 use simplicity::node::{CoreConstructible as _, JetConstructible as _, WitnessConstructible as _};
 use simplicity::{Cmr, FailEntropy};
 
@@ -300,6 +301,10 @@ impl Call {
                 let fail_cmr = Cmr::fail(FailEntropy::ZERO);
                 let get_inner = ProgNode::assertr_take(fail_cmr, &ProgNode::iden());
                 ProgNode::comp(&right_and_unit, &get_inner).with_span(self)
+            }
+            CallName::Assert => {
+                let jet = ProgNode::jet(Elements::Verify);
+                ProgNode::comp(&args, &jet).with_span(self)
             }
             CallName::TypeCast(..) => {
                 // A cast converts between two structurally equal types.

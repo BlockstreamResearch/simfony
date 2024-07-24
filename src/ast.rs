@@ -235,6 +235,8 @@ pub enum CallName {
     UnwrapRight(ResolvedType),
     /// [`Option::unwrap`].
     Unwrap,
+    /// [`assert`].
+    Assert,
     /// Cast from the given source type.
     TypeCast(ResolvedType),
     /// A custom function that was defined previously.
@@ -910,6 +912,25 @@ impl AbstractSyntaxTree for Call {
                     scope,
                 )?])
             }
+            CallName::Assert => {
+                if from.args.len() != 1 {
+                    return Err(Error::InvalidNumberOfArguments(1, from.args.len()))
+                        .with_span(from);
+                }
+                if !ty.is_unit() {
+                    return Err(Error::ExpressionTypeMismatch(
+                        ty.clone(),
+                        ResolvedType::unit(),
+                    ))
+                    .with_span(from);
+                }
+                let arg_type = ResolvedType::boolean();
+                Arc::from([Expression::analyze(
+                    from.args.first().unwrap(),
+                    &arg_type,
+                    scope,
+                )?])
+            }
             CallName::TypeCast(source) => {
                 if from.args.len() != 1 {
                     return Err(Error::InvalidNumberOfArguments(1, from.args.len()))
@@ -964,7 +985,7 @@ impl AbstractSyntaxTree for CallName {
     ) -> Result<Self, RichError> {
         match &from.name {
             parse::CallName::Jet(name) => match Elements::from_str(name.as_inner()) {
-                Ok(Elements::CheckSigVerify) | Err(_) => {
+                Ok(Elements::CheckSigVerify | Elements::Verify) | Err(_) => {
                     Err(Error::JetDoesNotExist(name.clone())).with_span(from)
                 }
                 Ok(jet) => Ok(Self::Jet(jet)),
@@ -978,6 +999,7 @@ impl AbstractSyntaxTree for CallName {
                 .map(Self::UnwrapRight)
                 .with_span(from),
             parse::CallName::Unwrap => Ok(Self::Unwrap),
+            parse::CallName::Assert => Ok(Self::Assert),
             parse::CallName::TypeCast(target) => {
                 scope.resolve(target).map(Self::TypeCast).with_span(from)
             }
