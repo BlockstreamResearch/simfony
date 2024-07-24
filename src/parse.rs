@@ -278,6 +278,8 @@ pub enum CallName {
     UnwrapRight(AliasedType),
     /// [`Option::unwrap`].
     Unwrap,
+    /// [`Option::is_none`].
+    IsNone(AliasedType),
     /// [`assert`].
     Assert,
     /// Cast from the given source type.
@@ -815,6 +817,10 @@ impl PestParse for CallName {
             Rule::unwrap_right => {
                 let inner = pair.into_inner().next().unwrap();
                 AliasedType::parse(inner).map(Self::UnwrapRight)
+            }
+            Rule::is_none => {
+                let inner = pair.into_inner().next().unwrap();
+                AliasedType::parse(inner).map(Self::IsNone)
             }
             Rule::unwrap => Ok(Self::Unwrap),
             Rule::assert => Ok(Self::Assert),

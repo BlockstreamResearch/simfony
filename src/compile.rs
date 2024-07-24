@@ -302,6 +302,11 @@ impl Call {
                 let get_inner = ProgNode::assertr_take(fail_cmr, &ProgNode::iden());
                 ProgNode::comp(&right_and_unit, &get_inner).with_span(self)
             }
+            CallName::IsNone(..) => {
+                let sum_and_unit = ProgNode::pair_unit(&args);
+                let is_right = ProgNode::case_true_false();
+                ProgNode::comp(&sum_and_unit, &is_right).with_span(self)
+            }
             CallName::Assert => {
                 let jet = ProgNode::jet(Elements::Verify);
                 ProgNode::comp(&args, &jet).with_span(self)

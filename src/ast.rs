@@ -233,6 +233,8 @@ pub enum CallName {
     UnwrapLeft(ResolvedType),
     /// [`Either::unwrap_right`].
     UnwrapRight(ResolvedType),
+    /// [`Option::is_none`].
+    IsNone(ResolvedType),
     /// [`Option::unwrap`].
     Unwrap,
     /// [`assert`].
@@ -900,6 +902,22 @@ impl AbstractSyntaxTree for Call {
                     scope,
                 )?])
             }
+            CallName::IsNone(some_ty) => {
+                if from.args.len() != 1 {
+                    return Err(Error::InvalidNumberOfArguments(1, from.args.len()))
+                        .with_span(from);
+                }
+                let out_ty = ResolvedType::boolean();
+                if ty != &out_ty {
+                    return Err(Error::ExpressionTypeMismatch(ty.clone(), out_ty)).with_span(from);
+                }
+                let arg_ty = ResolvedType::option(some_ty);
+                Arc::from([Expression::analyze(
+                    from.args.first().unwrap(),
+                    &arg_ty,
+                    scope,
+                )?])
+            }
             CallName::Unwrap => {
                 let args_ty = ResolvedType::option(ty.clone());
                 if from.args.len() != 1 {
@@ -998,6 +1016,9 @@ impl AbstractSyntaxTree for CallName {
                 .resolve(left_ty)
                 .map(Self::UnwrapRight)
                 .with_span(from),
+            parse::CallName::IsNone(some_ty) => {
+                scope.resolve(some_ty).map(Self::IsNone).with_span(from)
+            }
             parse::CallName::Unwrap => Ok(Self::Unwrap),
             parse::CallName::Assert => Ok(Self::Assert),
             parse::CallName::TypeCast(target) => {
