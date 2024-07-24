@@ -76,6 +76,7 @@ mod tests {
             ("match.simf", "empty.wit"),
             ("nesting.simf", "empty.wit"),
             ("option.simf", "empty.wit"),
+            ("panic.simf", "empty.wit"),
             ("recursive-covenant.simf", "empty.wit"),
             ("scopes.simf", "empty.wit"),
             ("sighash_all.simf", "empty.wit"),

@@ -1,0 +1,6 @@
+fn main() {
+    match true {
+        true => (),        // this branch is fine
+        false => panic!(), // this branch will fail at runtime
+    }
+}

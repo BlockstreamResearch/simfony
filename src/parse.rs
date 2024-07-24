@@ -282,6 +282,8 @@ pub enum CallName {
     IsNone(AliasedType),
     /// [`assert`].
     Assert,
+    /// [`panic`] without error message.
+    Panic,
     /// Cast from the given source type.
     TypeCast(AliasedType),
     /// Name of a custom function.
@@ -824,6 +826,7 @@ impl PestParse for CallName {
             }
             Rule::unwrap => Ok(Self::Unwrap),
             Rule::assert => Ok(Self::Assert),
+            Rule::panic => Ok(Self::Panic),
             Rule::type_cast => {
                 let inner = pair.into_inner().next().unwrap();
                 AliasedType::parse(inner).map(Self::TypeCast)

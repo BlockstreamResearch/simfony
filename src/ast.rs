@@ -239,6 +239,8 @@ pub enum CallName {
     Unwrap,
     /// [`assert`].
     Assert,
+    /// [`panic`] without error message.
+    Panic,
     /// Cast from the given source type.
     TypeCast(ResolvedType),
     /// A custom function that was defined previously.
@@ -949,6 +951,14 @@ impl AbstractSyntaxTree for Call {
                     scope,
                 )?])
             }
+            CallName::Panic => {
+                if from.args.len() != 0 {
+                    return Err(Error::InvalidNumberOfArguments(0, from.args.len()))
+                        .with_span(from);
+                }
+                // panic! allows every output type because it will never return anything
+                Arc::from([])
+            }
             CallName::TypeCast(source) => {
                 if from.args.len() != 1 {
                     return Err(Error::InvalidNumberOfArguments(1, from.args.len()))
@@ -1021,6 +1031,7 @@ impl AbstractSyntaxTree for CallName {
             }
             parse::CallName::Unwrap => Ok(Self::Unwrap),
             parse::CallName::Assert => Ok(Self::Assert),
+            parse::CallName::Panic => Ok(Self::Panic),
             parse::CallName::TypeCast(target) => {
                 scope.resolve(target).map(Self::TypeCast).with_span(from)
             }

@@ -311,6 +311,10 @@ impl Call {
                 let jet = ProgNode::jet(Elements::Verify);
                 ProgNode::comp(&args, &jet).with_span(self)
             }
+            CallName::Panic => {
+                // panic! ignores its arguments
+                Ok(ProgNode::fail(FailEntropy::ZERO))
+            }
             CallName::TypeCast(..) => {
                 // A cast converts between two structurally equal types.
                 // Structural equality of Simfony types A and B means
