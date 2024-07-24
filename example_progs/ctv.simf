@@ -6,17 +6,17 @@
  * that they want to commit.
  */
 fn main() {
-    let ctx: Ctx8 = jet_sha_256_ctx_8_init();
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_4(ctx, jet_version());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_4(ctx, jet_lock_time());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_input_script_sigs_hash());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_4(ctx, jet_num_inputs());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_input_sequences_hash());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_4(ctx, jet_num_outputs());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_outputs_hash());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_4(ctx, jet_current_index());
-    let ctv_hash: u256 = jet_sha_256_ctx_8_finalize(ctx);
+    let ctx: Ctx8 = jet::sha_256_ctx_8_init();
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_4(ctx, jet::version());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_4(ctx, jet::lock_time());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::input_script_sigs_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_4(ctx, jet::num_inputs());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::input_sequences_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_4(ctx, jet::num_outputs());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::outputs_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_4(ctx, jet::current_index());
+    let ctv_hash: u256 = jet::sha_256_ctx_8_finalize(ctx);
 
     let expected_hash: u256 = 0xae3d019b30529c6044d2b3d7ee2e0ee5db51a7f05ed5db8f089cd5d455f1fc5d;
-    assert!(jet_eq_256(ctv_hash, expected_hash));
+    assert!(jet::eq_256(ctv_hash, expected_hash));
 }

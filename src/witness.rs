@@ -206,7 +206,7 @@ mod tests {
         let s = r#"fn main() {
     let a: u32 = witness("a");
     let also_a: u32 = witness("a");
-    assert!(jet_eq_32(a, b));
+    assert!(jet::eq_32(a, b));
 }"#;
         let program = parse::Program::parse_from_str(s).expect("parsing works");
         match ast::Program::analyze(&program).map_err(Error::from) {
@@ -220,7 +220,7 @@ mod tests {
     fn witness_type_mismatch() {
         let s = r#"fn main() {
     let a: u32 = witness("a");
-    assert!(jet_is_zero_32(a));
+    assert!(jet::is_zero_32(a));
 }"#;
 
         let mut witness = WitnessValues::empty();
@@ -275,7 +275,7 @@ mod tests {
 }
 
 fn main() {
-    assert!(jet_is_zero_32(f()));
+    assert!(jet::is_zero_32(f()));
 }"#;
 
         match crate::compile(s) {

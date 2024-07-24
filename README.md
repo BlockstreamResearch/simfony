@@ -9,11 +9,11 @@ let a: u32 = 10;
 let b = {
     let c: u32 = 2;
     let d: u32 = 3;
-    assert!(jet_eq_32(a, 10)); // Use variables from outer copes
+    assert!(jet::eq_32(a, 10)); // Use variables from outer copes
     let a: u32 = 7; // Shadow variables from outer scopes
-    jet_max_32(jet_max_32(c, d), a) // Missing ; because the block returns a value
+    jet::max_32(jet::max_32(c, d), a) // Missing ; because the block returns a value
 };
-assert!(jet_eq_32(b, 7));
+assert!(jet::eq_32(b, 7));
 ```
 
 Take a look at the [example programs](https://github.com/BlockstreamResearch/simfony/tree/master/example_progs).

@@ -4,7 +4,7 @@
  * in the first output of the spending transaction.
  */
 fn main () {
-    let this_hash:  u256 = jet_current_script_hash();
-    let spend_hash: u256 = unwrap(jet_output_script_hash(0));
-    assert!(jet_eq_256(this_hash, spend_hash));
+    let this_hash:  u256 = jet::current_script_hash();
+    let spend_hash: u256 = unwrap(jet::output_script_hash(0));
+    assert!(jet::eq_256(this_hash, spend_hash));
 }

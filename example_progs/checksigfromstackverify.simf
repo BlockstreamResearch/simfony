@@ -8,5 +8,5 @@ fn main() {
     let pk: u256 = 0xf9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9;
     let msg: u256 = witness("msg");
     let sig: [u8; 64] = witness("sig");
-    jet_bip_0340_verify((pk, msg), sig);
+    jet::bip_0340_verify((pk, msg), sig);
 }

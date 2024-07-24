@@ -1,6 +1,6 @@
 fn checked_add_32(a: u32, b: u32) -> u32 {
-    let (carry, sum): (bool, u32) = jet_add_32(a, b);
-    assert!(<u1>::into(jet_complement_1(<bool>::into(carry))));
+    let (carry, sum): (bool, u32) = jet::add_32(a, b);
+    assert!(<u1>::into(jet::complement_1(<bool>::into(carry))));
     sum
 }
 
@@ -19,9 +19,9 @@ fn third() -> u32 {
 fn main() {
     let sum: u32 = checked_add_32(42, 1);
     let expected: u32 = 43;
-    assert!(jet_eq_32(expected, sum));
+    assert!(jet::eq_32(expected, sum));
 
     let third: u32 = third();
     let expected: u32 = 3;
-    assert!(jet_eq_32(expected, third));
+    assert!(jet::eq_32(expected, third));
 }

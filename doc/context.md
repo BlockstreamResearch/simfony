@@ -78,7 +78,7 @@ If `j` is the name of a jet of type B → C
 
 If Γ ⊩ `b`: B
 
-Then Γ ⊩ `jet_j b`: C
+Then Γ ⊩ `jet::j b`: C
 
 ## Chaining
 

@@ -833,7 +833,7 @@ impl PestParse for JetName {
 
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Self::RULE));
-        let jet_name = pair.as_str().strip_prefix("jet_").unwrap();
+        let jet_name = pair.as_str().strip_prefix("jet::").unwrap();
         Ok(Self(Arc::from(jet_name)))
     }
 }
