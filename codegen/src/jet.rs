@@ -847,8 +847,8 @@ const ELLIPTIC_CURVE_FUNCTIONS: [Elements; 40] = [
     Elements::Decompress, Elements::FeAdd, Elements::FeInvert, Elements::FeIsOdd, Elements::FeIsZero, Elements::FeMultiply, Elements::FeMultiplyBeta, Elements::FeNegate, Elements::FeNormalize, Elements::FeSquare, Elements::FeSquareRoot, Elements::GeIsOnCurve, Elements::GeNegate, Elements::GejAdd, Elements::GejDouble, Elements::GejEquiv, Elements::GejGeAdd, Elements::GejGeAddEx, Elements::GejGeEquiv, Elements::GejInfinity, Elements::GejIsInfinity, Elements::GejIsOnCurve, Elements::GejNegate, Elements::GejNormalize, Elements::GejRescale, Elements::GejXEquiv, Elements::GejYIsOdd, Elements::Generate, Elements::LinearCombination1, Elements::LinearVerify1, Elements::PointVerify1, Elements::ScalarAdd, Elements::ScalarInvert, Elements::ScalarIsZero, Elements::ScalarMultiply, Elements::ScalarMultiplyLambda, Elements::ScalarNegate, Elements::ScalarNormalize, Elements::ScalarSquare, Elements::Scale
 ];
 #[rustfmt::skip]
-const DIGITAL_SIGNATURES: [Elements; 2] = [
-    Elements::Bip0340Verify, Elements::CheckSigVerify
+const DIGITAL_SIGNATURES: [Elements; 1] = [
+    Elements::Bip0340Verify
 ];
 #[rustfmt::skip]
 const BITCOIN: [Elements; 2] = [
@@ -870,6 +870,10 @@ const ISSUANCE: [Elements; 8] = [
 #[rustfmt::skip]
 const TRANSACTION: [Elements; 49] = [
     Elements::CurrentAmount, Elements::CurrentAnnexHash, Elements::CurrentAsset, Elements::CurrentIndex, Elements::CurrentIssuanceAssetAmount, Elements::CurrentIssuanceAssetProof, Elements::CurrentIssuanceTokenAmount, Elements::CurrentIssuanceTokenProof, Elements::CurrentNewIssuanceContract, Elements::CurrentPegin, Elements::CurrentPrevOutpoint, Elements::CurrentReissuanceBlinding, Elements::CurrentReissuanceEntropy, Elements::CurrentScriptHash, Elements::CurrentScriptSigHash, Elements::CurrentSequence, Elements::GenesisBlockHash, Elements::InputAmount, Elements::InputAnnexHash, Elements::InputAsset, Elements::InputPegin, Elements::InputPrevOutpoint, Elements::InputScriptHash, Elements::InputScriptSigHash, Elements::InputSequence, Elements::InternalKey, Elements::IssuanceAssetAmount, Elements::IssuanceAssetProof, Elements::IssuanceTokenAmount, Elements::IssuanceTokenProof, Elements::LockTime, Elements::NewIssuanceContract, Elements::NumInputs, Elements::NumOutputs, Elements::OutputAmount, Elements::OutputAsset, Elements::OutputIsFee, Elements::OutputNonce, Elements::OutputNullDatum, Elements::OutputRangeProof, Elements::OutputScriptHash, Elements::OutputSurjectionProof, Elements::ReissuanceBlinding, Elements::ReissuanceEntropy, Elements::ScriptCMR, Elements::TapleafVersion, Elements::Tappath, Elements::TotalFee, Elements::Version
+];
+#[rustfmt::skip]
+const DISABLED: [Elements; 1] = [
+    Elements::CheckSigVerify
 ];
 
 #[cfg(test)]
@@ -897,7 +901,9 @@ mod tests {
                         None => {}
                     }
                 }
-                None => panic!("{jet} is not categorized"),
+                None => {
+                    assert!(DISABLED.contains(&jet), "{jet} is not categorized")
+                }
             }
         }
     }

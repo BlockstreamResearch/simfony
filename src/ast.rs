@@ -963,10 +963,12 @@ impl AbstractSyntaxTree for CallName {
         scope: &mut Scope,
     ) -> Result<Self, RichError> {
         match &from.name {
-            parse::CallName::Jet(name) => Elements::from_str(name.as_inner())
-                .map_err(|_| Error::JetDoesNotExist(name.clone()))
-                .map(Self::Jet)
-                .with_span(from),
+            parse::CallName::Jet(name) => match Elements::from_str(name.as_inner()) {
+                Ok(Elements::CheckSigVerify) | Err(_) => {
+                    Err(Error::JetDoesNotExist(name.clone())).with_span(from)
+                }
+                Ok(jet) => Ok(Self::Jet(jet)),
+            },
             parse::CallName::UnwrapLeft(right_ty) => scope
                 .resolve(right_ty)
                 .map(Self::UnwrapLeft)
