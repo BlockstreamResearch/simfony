@@ -1,8 +1,22 @@
+fn checked_add_32(a: u32, b: u32) -> u32 {
+    let (carry, sum): (bool, u32) = jet::add_32(a, b);
+    assert!(<u1>::into(jet::complement_1(<bool>::into(carry))));
+    sum
+}
+
 fn main() {
-    let a: List<u32, 2> = list![];
-    let b: List<u32, 2> = list![1];
-    let c: List<u32, 4> = list![];
-    let d: List<u32, 4> = list![1];
-    let e: List<u32, 4> = list![1, 2];
-    let f: List<u32, 4> = list![1, 2, 3];
+    // Sum all list elements
+    let sum: u32 = fold::<checked_add_32, 2>(list![1], 0);
+    assert!(jet::eq_32(1, sum));
+
+    let sum: u32 = fold::<checked_add_32, 4>(list![1, 2, 3], 0);
+    assert!(jet::eq_32(6, sum));
+
+    let sum: u32 = fold::<checked_add_32, 8>(list![1, 2, 3, 4, 5, 6, 7], 0);
+    assert!(jet::eq_32(28, sum));
+
+    // List values may be shorter than their maximum length
+    // The iteration stops at the last element
+    let sum: u32 = fold::<checked_add_32, 8>(list![1], 0);
+    assert!(jet::eq_32(1, sum));
 }
