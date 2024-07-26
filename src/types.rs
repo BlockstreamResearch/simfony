@@ -114,7 +114,7 @@ pub enum UIntType {
 
 impl UIntType {
     /// Take `n` and return the `2^n`-bit unsigned integer type.
-    pub fn two_n(n: u32) -> Option<Self> {
+    pub const fn two_n(n: u32) -> Option<Self> {
         match n {
             0 => Some(UIntType::U1),
             1 => Some(UIntType::U2),
