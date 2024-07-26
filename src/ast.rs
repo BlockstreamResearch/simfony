@@ -270,6 +270,17 @@ impl CustomFunction {
     pub fn body(&self) -> &Expression {
         &self.body
     }
+
+    /// Return a pattern for the parameters of the function.
+    pub fn params_pattern(&self) -> Pattern {
+        Pattern::tuple(
+            self.params()
+                .iter()
+                .map(FunctionParam::identifier)
+                .cloned()
+                .map(Pattern::Identifier),
+        )
+    }
 }
 
 /// Parameter of a function.
