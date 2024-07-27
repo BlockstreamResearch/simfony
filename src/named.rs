@@ -287,6 +287,16 @@ pub trait CoreExt: CoreConstructible + Sized {
     fn assertr_drop(cmr: Cmr, right: &Self) -> Self {
         Self::assertr(cmr, &Self::drop_(right)).unwrap()
     }
+
+    /// `case false true` always type-checks.
+    fn case_false_true() -> Self {
+        Self::case(&Self::bit_false(), &Self::bit_true()).unwrap()
+    }
+
+    /// `case true false` always type-checks.
+    fn case_true_false() -> Self {
+        Self::case(&Self::bit_true(), &Self::bit_false()).unwrap()
+    }
 }
 
 impl<N: CoreConstructible> CoreExt for N {}

@@ -272,12 +272,18 @@ pub struct Call {
 pub enum CallName {
     /// Name of a jet.
     Jet(JetName),
-    /// Left unwrap function.
+    /// [`Either::unwrap_left`].
     UnwrapLeft(AliasedType),
-    /// Right unwrap function.
+    /// [`Either::unwrap_right`].
     UnwrapRight(AliasedType),
-    /// Some unwrap function.
+    /// [`Option::unwrap`].
     Unwrap,
+    /// [`Option::is_none`].
+    IsNone(AliasedType),
+    /// [`assert`].
+    Assert,
+    /// [`panic`] without error message.
+    Panic,
     /// Cast from the given source type.
     TypeCast(AliasedType),
     /// Name of a custom function.
@@ -814,7 +820,13 @@ impl PestParse for CallName {
                 let inner = pair.into_inner().next().unwrap();
                 AliasedType::parse(inner).map(Self::UnwrapRight)
             }
+            Rule::is_none => {
+                let inner = pair.into_inner().next().unwrap();
+                AliasedType::parse(inner).map(Self::IsNone)
+            }
             Rule::unwrap => Ok(Self::Unwrap),
+            Rule::assert => Ok(Self::Assert),
+            Rule::panic => Ok(Self::Panic),
             Rule::type_cast => {
                 let inner = pair.into_inner().next().unwrap();
                 AliasedType::parse(inner).map(Self::TypeCast)
@@ -830,7 +842,7 @@ impl PestParse for JetName {
 
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Self::RULE));
-        let jet_name = pair.as_str().strip_prefix("jet_").unwrap();
+        let jet_name = pair.as_str().strip_prefix("jet::").unwrap();
         Ok(Self(Arc::from(jet_name)))
     }
 }

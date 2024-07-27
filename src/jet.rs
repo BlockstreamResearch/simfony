@@ -171,9 +171,8 @@ pub fn source_type(jet: Elements) -> Vec<AliasedType> {
             vec![U64.into(), U64.into()]
         }
         Elements::Eq256 => vec![U256.into(), U256.into()],
-        // XXX: nonstandard tuples
-        Elements::Maj1 | Elements::XorXor1 | Elements::Ch1 => vec![U1.into(), tuple([U1, U1])],
-        Elements::Maj8 | Elements::XorXor8 | Elements::Ch8 => vec![U8.into(), tuple([U8, U8])],
+        Elements::Maj1 | Elements::XorXor1 | Elements::Ch1 => vec![U1.into(), U1.into(), U1.into()],
+        Elements::Maj8 | Elements::XorXor8 | Elements::Ch8 => vec![U8.into(), U8.into(), U8.into()],
         Elements::Maj16 | Elements::XorXor16 | Elements::Ch16 => {
             vec![U16.into(), tuple([U16, U16])]
         }
@@ -219,11 +218,18 @@ pub fn source_type(jet: Elements) -> Vec<AliasedType> {
         Elements::FullRightShift64_8 => vec![U8.into(), U64.into()],
         Elements::FullRightShift64_16 => vec![U16.into(), U64.into()],
         Elements::FullRightShift64_32 => vec![U32.into(), U64.into()],
-        // XXX: nonstandard tuples
-        Elements::LeftShiftWith8 | Elements::RightShiftWith8 => vec![U1.into(), tuple([U4, U8])],
-        Elements::LeftShiftWith16 | Elements::RightShiftWith16 => vec![U1.into(), tuple([U4, U16])],
-        Elements::LeftShiftWith32 | Elements::RightShiftWith32 => vec![U1.into(), tuple([U8, U32])],
-        Elements::LeftShiftWith64 | Elements::RightShiftWith64 => vec![U1.into(), tuple([U8, U64])],
+        Elements::LeftShiftWith8 | Elements::RightShiftWith8 => {
+            vec![U1.into(), U4.into(), U8.into()]
+        }
+        Elements::LeftShiftWith16 | Elements::RightShiftWith16 => {
+            vec![U1.into(), U4.into(), U16.into()]
+        }
+        Elements::LeftShiftWith32 | Elements::RightShiftWith32 => {
+            vec![U1.into(), U8.into(), U32.into()]
+        }
+        Elements::LeftShiftWith64 | Elements::RightShiftWith64 => {
+            vec![U1.into(), U8.into(), U64.into()]
+        }
         Elements::LeftShift8
         | Elements::RightShift8
         | Elements::LeftRotate8
@@ -308,10 +314,10 @@ pub fn source_type(jet: Elements) -> Vec<AliasedType> {
         | Elements::Divide64
         | Elements::Modulo64
         | Elements::Divides64 => vec![U64.into(), U64.into()],
-        Elements::FullAdd8 | Elements::FullSubtract8 => vec![bool(), tuple([U8, U8])],
-        Elements::FullAdd16 | Elements::FullSubtract16 => vec![bool(), tuple([U16, U16])],
-        Elements::FullAdd32 | Elements::FullSubtract32 => vec![bool(), tuple([U32, U32])],
-        Elements::FullAdd64 | Elements::FullSubtract64 => vec![bool(), tuple([U64, U64])],
+        Elements::FullAdd8 | Elements::FullSubtract8 => vec![bool(), U8.into(), U8.into()],
+        Elements::FullAdd16 | Elements::FullSubtract16 => vec![bool(), U16.into(), U16.into()],
+        Elements::FullAdd32 | Elements::FullSubtract32 => vec![bool(), U32.into(), U32.into()],
+        Elements::FullAdd64 | Elements::FullSubtract64 => vec![bool(), U64.into(), U64.into()],
         Elements::FullIncrement8 | Elements::FullDecrement8 => vec![bool(), U8.into()],
         Elements::FullIncrement16 | Elements::FullDecrement16 => vec![bool(), U16.into()],
         Elements::FullIncrement32 | Elements::FullDecrement32 => vec![bool(), U32.into()],
@@ -320,15 +326,15 @@ pub fn source_type(jet: Elements) -> Vec<AliasedType> {
         Elements::FullMultiply16 => vec![tuple([U16, U16]), tuple([U16, U16])],
         Elements::FullMultiply32 => vec![tuple([U32, U32]), tuple([U32, U32])],
         Elements::FullMultiply64 => vec![tuple([U64, U64]), tuple([U64, U64])],
-        Elements::Median8 => vec![U8.into(), tuple([U8, U8])],
-        Elements::Median16 => vec![U16.into(), tuple([U16, U16])],
-        Elements::Median32 => vec![U32.into(), tuple([U32, U32])],
-        Elements::Median64 => vec![U64.into(), tuple([U64, U64])],
+        Elements::Median8 => vec![U8.into(), U8.into(), U8.into()],
+        Elements::Median16 => vec![U16.into(), U16.into(), U16.into()],
+        Elements::Median32 => vec![U32.into(), U32.into(), U32.into()],
+        Elements::Median64 => vec![U64.into(), U64.into(), U64.into()],
         /*
          * Hash functions
          */
         Elements::Sha256Iv | Elements::Sha256Ctx8Init => vec![],
-        Elements::Sha256Block => vec![U256.into(), tuple([U256, U256])],
+        Elements::Sha256Block => vec![U256.into(), U256.into(), U256.into()],
         Elements::Sha256Ctx8Add1 => vec![Ctx8.into(), U8.into()],
         Elements::Sha256Ctx8Add2 => vec![Ctx8.into(), U16.into()],
         Elements::Sha256Ctx8Add4 => vec![Ctx8.into(), U32.into()],
@@ -345,11 +351,14 @@ pub fn source_type(jet: Elements) -> Vec<AliasedType> {
          * Elliptic curve functions
          */
         // XXX: Nonstandard tuple
-        Elements::PointVerify1 => vec![tuple([Scalar, Point, Scalar]), Point.into()],
+        Elements::PointVerify1 => {
+            vec![tuple([tuple([Scalar, Point]), Scalar.into()]), Point.into()]
+        }
         Elements::Decompress => vec![Point.into()],
         // XXX: Nonstandard tuple
-        Elements::LinearVerify1 => vec![tuple([Scalar, Ge, Scalar]), Ge.into()],
-        Elements::LinearCombination1 => vec![Scalar.into(), Gej.into(), Scalar.into()],
+        Elements::LinearVerify1 => vec![tuple([tuple([Scalar, Ge]), Scalar.into()]), Ge.into()],
+        // XXX: Nonstandard tuple
+        Elements::LinearCombination1 => vec![tuple([Scalar, Gej]), Scalar.into()],
         Elements::Scale => vec![Scalar.into(), Gej.into()],
         Elements::Generate => vec![Scalar.into()],
         Elements::GejInfinity => vec![],
@@ -385,8 +394,10 @@ pub fn source_type(jet: Elements) -> Vec<AliasedType> {
         /*
          * Digital signatures
          */
-        Elements::CheckSigVerify => vec![Pubkey.into(), Message64.into(), Signature.into()],
-        Elements::Bip0340Verify => vec![Pubkey.into(), Message.into(), Signature.into()],
+        // XXX: Nonstandard tuple
+        Elements::CheckSigVerify => vec![tuple([Pubkey, Message64]), Signature.into()],
+        // XXX: Nonstandard tuple
+        Elements::Bip0340Verify => vec![tuple([Pubkey, Message]), Signature.into()],
         /*
          * Bitcoin (without primitives)
          */
@@ -422,10 +433,9 @@ pub fn source_type(jet: Elements) -> Vec<AliasedType> {
         | Elements::InputScriptsHash
         | Elements::TapleafHash
         | Elements::TappathHash => vec![],
-        // XXX: Nonstandard tuples
-        Elements::OutpointHash => vec![Ctx8.into(), tuple([option(U256), Outpoint.into()])],
+        Elements::OutpointHash => vec![Ctx8.into(), option(U256), Outpoint.into()],
         Elements::AssetAmountHash => {
-            vec![Ctx8.into(), tuple([Asset1, Amount1])]
+            vec![Ctx8.into(), Asset1.into(), Amount1.into()]
         }
         Elements::NonceHash => vec![Ctx8.into(), option(Nonce)],
         Elements::AnnexHash => vec![Ctx8.into(), option(U256)],

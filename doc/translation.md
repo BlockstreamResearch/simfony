@@ -64,7 +64,7 @@ If `j` is the name of a jet of type B → C
 
 If Ctx(Ξ) ⊩ `b`: B
 
-Then ⟦`jet_j b`⟧Ξ = comp ⟦`b`⟧Ξ jet_j: A → C
+Then ⟦`jet::j b`⟧Ξ = comp ⟦`b`⟧Ξ j: A → C
 
 ## Chaining
 

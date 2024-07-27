@@ -7,11 +7,10 @@ statement         =  { assignment | expression }
 expression        =  { block_expression | single_expression }
 block_expression  =  { "{" ~ (statement ~ ";")* ~ expression? ~ "}" }
 
-identifier        = @{ !(reserved ~ !ASCII_ALPHANUMERIC) ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
-jet               = @{ "jet_" ~ (ASCII_ALPHANUMERIC | "_")+ }
+identifier        = @{ !builtin_type ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+jet               = @{ "jet::" ~ (ASCII_ALPHANUMERIC | "_")+ }
 witness_name      = @{ (ASCII_ALPHANUMERIC | "_")+ }
 builtin_type      = @{ "Either" | "Option" | "bool" | unsigned_type | "List" }
-reserved          = @{ jet | builtin_type }
 
 builtin_function  = @{ jet | "unwrap_left" | "unwrap_right" | "unwrap" }
 function_name     =  { !builtin_function ~ identifier }
@@ -57,9 +56,12 @@ false_expr        = @{ "false" }
 true_expr         = @{ "true" }
 unwrap_left       =  { "unwrap_left::<" ~ ty ~ ">" }
 unwrap_right      =  { "unwrap_right::<" ~ ty ~ ">" }
+is_none           =  { "is_none::<" ~ ty ~ ">" }
 unwrap            = @{ "unwrap" }
+assert            = @{ "assert!" }
+panic             = @{ "panic!" }
 type_cast         =  { "<" ~ ty ~ ">::into" }
-call_name         =  { jet | unwrap_left | unwrap_right | unwrap | type_cast | function_name }
+call_name         =  { jet | unwrap_left | unwrap_right | is_none | unwrap | assert | panic | type_cast | function_name }
 call_args         =  { "(" ~ (expression ~ ("," ~ expression)*)? ~ ")" }
 call_expr         =  { call_name ~ call_args }
 unsigned_decimal  = @{ (ASCII_DIGIT | "_")+ }

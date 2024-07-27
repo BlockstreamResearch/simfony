@@ -233,8 +233,14 @@ pub enum CallName {
     UnwrapLeft(ResolvedType),
     /// [`Either::unwrap_right`].
     UnwrapRight(ResolvedType),
+    /// [`Option::is_none`].
+    IsNone(ResolvedType),
     /// [`Option::unwrap`].
     Unwrap,
+    /// [`assert`].
+    Assert,
+    /// [`panic`] without error message.
+    Panic,
     /// Cast from the given source type.
     TypeCast(ResolvedType),
     /// A custom function that was defined previously.
@@ -898,6 +904,22 @@ impl AbstractSyntaxTree for Call {
                     scope,
                 )?])
             }
+            CallName::IsNone(some_ty) => {
+                if from.args.len() != 1 {
+                    return Err(Error::InvalidNumberOfArguments(1, from.args.len()))
+                        .with_span(from);
+                }
+                let out_ty = ResolvedType::boolean();
+                if ty != &out_ty {
+                    return Err(Error::ExpressionTypeMismatch(ty.clone(), out_ty)).with_span(from);
+                }
+                let arg_ty = ResolvedType::option(some_ty);
+                Arc::from([Expression::analyze(
+                    from.args.first().unwrap(),
+                    &arg_ty,
+                    scope,
+                )?])
+            }
             CallName::Unwrap => {
                 let args_ty = ResolvedType::option(ty.clone());
                 if from.args.len() != 1 {
@@ -909,6 +931,33 @@ impl AbstractSyntaxTree for Call {
                     &args_ty,
                     scope,
                 )?])
+            }
+            CallName::Assert => {
+                if from.args.len() != 1 {
+                    return Err(Error::InvalidNumberOfArguments(1, from.args.len()))
+                        .with_span(from);
+                }
+                if !ty.is_unit() {
+                    return Err(Error::ExpressionTypeMismatch(
+                        ty.clone(),
+                        ResolvedType::unit(),
+                    ))
+                    .with_span(from);
+                }
+                let arg_type = ResolvedType::boolean();
+                Arc::from([Expression::analyze(
+                    from.args.first().unwrap(),
+                    &arg_type,
+                    scope,
+                )?])
+            }
+            CallName::Panic => {
+                if from.args.len() != 0 {
+                    return Err(Error::InvalidNumberOfArguments(0, from.args.len()))
+                        .with_span(from);
+                }
+                // panic! allows every output type because it will never return anything
+                Arc::from([])
             }
             CallName::TypeCast(source) => {
                 if from.args.len() != 1 {
@@ -963,10 +1012,12 @@ impl AbstractSyntaxTree for CallName {
         scope: &mut Scope,
     ) -> Result<Self, RichError> {
         match &from.name {
-            parse::CallName::Jet(name) => Elements::from_str(name.as_inner())
-                .map_err(|_| Error::JetDoesNotExist(name.clone()))
-                .map(Self::Jet)
-                .with_span(from),
+            parse::CallName::Jet(name) => match Elements::from_str(name.as_inner()) {
+                Ok(Elements::CheckSigVerify | Elements::Verify) | Err(_) => {
+                    Err(Error::JetDoesNotExist(name.clone())).with_span(from)
+                }
+                Ok(jet) => Ok(Self::Jet(jet)),
+            },
             parse::CallName::UnwrapLeft(right_ty) => scope
                 .resolve(right_ty)
                 .map(Self::UnwrapLeft)
@@ -975,7 +1026,12 @@ impl AbstractSyntaxTree for CallName {
                 .resolve(left_ty)
                 .map(Self::UnwrapRight)
                 .with_span(from),
+            parse::CallName::IsNone(some_ty) => {
+                scope.resolve(some_ty).map(Self::IsNone).with_span(from)
+            }
             parse::CallName::Unwrap => Ok(Self::Unwrap),
+            parse::CallName::Assert => Ok(Self::Assert),
+            parse::CallName::Panic => Ok(Self::Panic),
             parse::CallName::TypeCast(target) => {
                 scope.resolve(target).map(Self::TypeCast).with_span(from)
             }

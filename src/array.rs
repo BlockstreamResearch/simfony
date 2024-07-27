@@ -5,6 +5,9 @@ use miniscript::iter::{Tree, TreeLike};
 /// Each node is labelled with a slice.
 /// Leaves contain single elements.
 ///
+/// The tree is right-associative:
+/// `&[a b c]` becomes `&[a] (&[b] &[c])`.
+///
 /// The tree is empty if the slice is empty.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct BTreeSlice<'a, A>(&'a [A]);
@@ -57,7 +60,7 @@ impl<'a, A: Clone> TreeLike for BTreeSlice<'a, A> {
                 let next_pow2 = n.next_power_of_two();
                 debug_assert!(0 < next_pow2 / 2);
                 debug_assert!(0 < n - next_pow2 / 2);
-                let half = next_pow2 / 2;
+                let half = n - next_pow2 / 2;
                 let left = BTreeSlice::from_slice(&self.0[..half]);
                 let right = BTreeSlice::from_slice(&self.0[half..]);
                 Tree::Binary(left, right)
@@ -195,11 +198,11 @@ mod tests {
             (&[], ""),
             (&["a"], "a"),
             (&["a", "b"], "(ab)"),
-            (&["a", "b", "c"], "((ab)c)"),
+            (&["a", "b", "c"], "(a(bc))"),
             (&["a", "b", "c", "d"], "((ab)(cd))"),
-            (&["a", "b", "c", "d", "e"], "(((ab)(cd))e)"),
-            (&["a", "b", "c", "d", "e", "f"], "(((ab)(cd))(ef))"),
-            (&["a", "b", "c", "d", "e", "f", "g"], "(((ab)(cd))((ef)g))"),
+            (&["a", "b", "c", "d", "e"], "(a((bc)(de)))"),
+            (&["a", "b", "c", "d", "e", "f"], "((ab)((cd)(ef)))"),
+            (&["a", "b", "c", "d", "e", "f", "g"], "((a(bc))((de)(fg)))"),
             (&["a", "b", "c", "d", "e", "f", "g", "h"], "(((ab)(cd))((ef)(gh)))"),
         ];
         let concat = |a: String, b: String| format!("({a}{b})");
@@ -270,10 +273,10 @@ mod tests {
                 Pattern::array([a.clone(), b.clone()]),
                 BasePattern::product(a_.clone(), b_.clone()),
             ),
-            // [a b c] = ((a, b), c)
+            // [a b c] = (a, (b, c))
             (
                 Pattern::array([a.clone(), b.clone(), c.clone()]),
-                BasePattern::product(BasePattern::product(a_.clone(), b_.clone()), c_.clone()),
+                BasePattern::product(a_.clone(), BasePattern::product(b_.clone(), c_.clone())),
             ),
             // [[a, b], [c, d]] = ((a, b), (c, d))
             (

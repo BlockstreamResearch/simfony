@@ -5,14 +5,14 @@ fn main() {
             let v3: u32 = {
                 let v4: u32 = 2;
                 let v5: u32 = 3;
-                jet_verify(jet_eq_32(v7, 10)); /* Can use upper scope variables here.*/
+                assert!(jet::eq_32(v7, 10)); /* Can use upper scope variables here.*/
                 let v7: u32 = 7; /* Can also shadow the upper scope here.*/
-                jet_max_32(jet_max_32(v4, v5),v7) /* Rust like, missing ; here is the return type of expression.*/
+                jet::max_32(jet::max_32(v4, v5),v7) /* Rust like, missing ; here is the return type of expression.*/
             };
-            jet_verify(jet_eq_32(v7, 10)); /* Upper scope is same just like regular Programming languages*/
-            jet_min_32(v7, v3) /*Return value of v2 block*/
+            assert!(jet::eq_32(v7, 10)); /* Upper scope is same just like regular Programming languages*/
+            jet::min_32(v7, v3) /*Return value of v2 block*/
         };
         v2
     };
-    jet_verify(jet_eq_32(7, v1));
+    assert!(jet::eq_32(7, v1));
 }

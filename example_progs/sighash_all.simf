@@ -9,73 +9,73 @@
  * the value that was returned from the dedicated jet.
  */
 fn main () {
-    // jet_sig_all_hash
-    let ctx: Ctx8 = jet_sha_256_ctx_8_init();
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_genesis_block_hash());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_genesis_block_hash());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_tx_hash());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_tap_env_hash());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_4(ctx, jet_current_index());
-    let sig_all_hash: u256 = jet_sha_256_ctx_8_finalize(ctx);
-    let expected: u256= jet_sig_all_hash();
-    jet_verify(jet_eq_256(sig_all_hash, expected));
+    // jet::sig_all_hash
+    let ctx: Ctx8 = jet::sha_256_ctx_8_init();
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::genesis_block_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::genesis_block_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::tx_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::tap_env_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_4(ctx, jet::current_index());
+    let sig_all_hash: u256 = jet::sha_256_ctx_8_finalize(ctx);
+    let expected: u256= jet::sig_all_hash();
+    assert!(jet::eq_256(sig_all_hash, expected));
 
-    // jet_tx_hash
-    let ctx: Ctx8 = jet_sha_256_ctx_8_init();
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_4(ctx, jet_version());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_4(ctx, jet_lock_time());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_inputs_hash());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_outputs_hash());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_issuances_hash());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_output_surjection_proofs_hash());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_input_utxos_hash());
-    let tx_hash: u256 = jet_sha_256_ctx_8_finalize(ctx);
-    let expected: u256 = jet_tx_hash();
-    jet_verify(jet_eq_256(tx_hash, expected));
+    // jet::tx_hash
+    let ctx: Ctx8 = jet::sha_256_ctx_8_init();
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_4(ctx, jet::version());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_4(ctx, jet::lock_time());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::inputs_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::outputs_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::issuances_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::output_surjection_proofs_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::input_utxos_hash());
+    let tx_hash: u256 = jet::sha_256_ctx_8_finalize(ctx);
+    let expected: u256 = jet::tx_hash();
+    assert!(jet::eq_256(tx_hash, expected));
 
-    // jet_inputs_hash
-    let ctx: Ctx8 = jet_sha_256_ctx_8_init();
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_input_outpoints_hash());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_input_sequences_hash());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_input_annexes_hash());
-    let inputs_hash: u256 = jet_sha_256_ctx_8_finalize(ctx);
-    let expected: u256 = jet_inputs_hash();
-    jet_verify(jet_eq_256(inputs_hash, expected));
+    // jet::inputs_hash
+    let ctx: Ctx8 = jet::sha_256_ctx_8_init();
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::input_outpoints_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::input_sequences_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::input_annexes_hash());
+    let inputs_hash: u256 = jet::sha_256_ctx_8_finalize(ctx);
+    let expected: u256 = jet::inputs_hash();
+    assert!(jet::eq_256(inputs_hash, expected));
 
-    // jet_outputs_hash
-    let ctx: Ctx8 = jet_sha_256_ctx_8_init();
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_output_amounts_hash());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_output_nonces_hash());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_output_scripts_hash());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_output_range_proofs_hash());
-    let outputs_hash: u256 = jet_sha_256_ctx_8_finalize(ctx);
-    let expected: u256 = jet_outputs_hash();
-    jet_verify(jet_eq_256(outputs_hash, expected));
+    // jet::outputs_hash
+    let ctx: Ctx8 = jet::sha_256_ctx_8_init();
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::output_amounts_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::output_nonces_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::output_scripts_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::output_range_proofs_hash());
+    let outputs_hash: u256 = jet::sha_256_ctx_8_finalize(ctx);
+    let expected: u256 = jet::outputs_hash();
+    assert!(jet::eq_256(outputs_hash, expected));
 
-    // jet_issuances_hash
-    let ctx: Ctx8 = jet_sha_256_ctx_8_init();
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_issuance_asset_amounts_hash());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_issuance_token_amounts_hash());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_issuance_range_proofs_hash());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_issuance_blinding_entropy_hash());
-    let issuances_hash: u256 = jet_sha_256_ctx_8_finalize(ctx);
-    let expected: u256 = jet_issuances_hash();
-    jet_verify(jet_eq_256(issuances_hash, expected));
+    // jet::issuances_hash
+    let ctx: Ctx8 = jet::sha_256_ctx_8_init();
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::issuance_asset_amounts_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::issuance_token_amounts_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::issuance_range_proofs_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::issuance_blinding_entropy_hash());
+    let issuances_hash: u256 = jet::sha_256_ctx_8_finalize(ctx);
+    let expected: u256 = jet::issuances_hash();
+    assert!(jet::eq_256(issuances_hash, expected));
 
-    // jet_input_utxos_hash
-    let ctx: Ctx8 = jet_sha_256_ctx_8_init();
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_input_amounts_hash());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_input_scripts_hash());
-    let input_utxos_hash: u256 = jet_sha_256_ctx_8_finalize(ctx);
-    let expected: u256 = jet_input_utxos_hash();
-    jet_verify(jet_eq_256(input_utxos_hash, expected));
+    // jet::input_utxos_hash
+    let ctx: Ctx8 = jet::sha_256_ctx_8_init();
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::input_amounts_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::input_scripts_hash());
+    let input_utxos_hash: u256 = jet::sha_256_ctx_8_finalize(ctx);
+    let expected: u256 = jet::input_utxos_hash();
+    assert!(jet::eq_256(input_utxos_hash, expected));
 
-    // jet_tap_env_hash
-    let ctx: Ctx8 = jet_sha_256_ctx_8_init();
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_tapleaf_hash());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_tappath_hash());
-    let ctx: Ctx8 = jet_sha_256_ctx_8_add_32(ctx, jet_internal_key());
-    let tap_env_hash: u256 = jet_sha_256_ctx_8_finalize(ctx);
-    let expected: u256 = jet_tap_env_hash();
-    jet_verify(jet_eq_256(tap_env_hash, expected));
+    // jet::tap_env_hash
+    let ctx: Ctx8 = jet::sha_256_ctx_8_init();
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::tapleaf_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::tappath_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::internal_key());
+    let tap_env_hash: u256 = jet::sha_256_ctx_8_finalize(ctx);
+    let expected: u256 = jet::tap_env_hash();
+    assert!(jet::eq_256(tap_env_hash, expected));
 }
