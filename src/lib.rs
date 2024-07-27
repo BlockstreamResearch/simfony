@@ -64,7 +64,6 @@ mod tests {
     fn test_progs() {
         for (prog_file, wit_file) in [
             ("add.simf", "empty.wit"),
-            ("add.simf", "empty.wit"),
             ("array.simf", "empty.wit"),
             ("cat.simf", "empty.wit"),
             (
@@ -72,9 +71,11 @@ mod tests {
                 "checksigfromstackverify.wit",
             ),
             ("ctv.simf", "empty.wit"),
+            ("function.simf", "empty.wit"),
             ("list.simf", "empty.wit"),
             ("match.simf", "empty.wit"),
             ("nesting.simf", "empty.wit"),
+            ("option.simf", "empty.wit"),
             ("recursive-covenant.simf", "empty.wit"),
             ("scopes.simf", "empty.wit"),
             ("sighash_all.simf", "empty.wit"),
@@ -85,7 +86,6 @@ mod tests {
             ("sighash_none.simf", "sighash_none.wit"),
             ("tuple.simf", "empty.wit"),
             ("unwrap.simf", "empty.wit"),
-            ("function.simf", "empty.wit"),
         ] {
             _test_progs(prog_file, wit_file)
         }
@@ -107,7 +107,12 @@ mod tests {
                 panic!("{error}")
             }
         };
-        let redeem_prog = match satisfy(&prog_text, &witness) {
+
+        assert_success(&prog_text, &witness);
+    }
+
+    fn assert_success(prog_text: &str, witness: &WitnessValues) {
+        let redeem_prog = match satisfy(prog_text, witness) {
             Ok(x) => x,
             Err(error) => {
                 panic!("{error}");
@@ -120,10 +125,52 @@ mod tests {
         dbg!(&redeem_prog);
         println!("{}", Base64Display::new(&vec, &STANDARD));
 
-        let mut bit_mac = BitMachine::for_program(&redeem_prog);
+        let mut mac = BitMachine::for_program(&redeem_prog);
         let env = dummy_env::dummy();
-        bit_mac
-            .exec(&redeem_prog, &env)
+        mac.exec(&redeem_prog, &env)
             .expect("Machine execution failure");
+    }
+
+    fn assert_success_empty_witness(prog_text: &str) {
+        let witness = WitnessValues::empty();
+        assert_success(prog_text, &witness)
+    }
+
+    fn assert_satisfy_error_empty_witness(prog_text: &str, expected_error: &str) {
+        let witness = WitnessValues::empty();
+        match satisfy(prog_text, &witness) {
+            Ok(_) => panic!("Accepted faulty program"),
+            Err(error) => {
+                if !error.contains(expected_error) {
+                    panic!("Unexpected error: {error}")
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn redefined_variable() {
+        let prog_text = r#"fn main() {
+    let beefbabe: (u16, u16) = (0xbeef, 0xbabe);
+    let beefbabe: u32 = <(u16, u16)>::into(beefbabe);
+}
+"#;
+        assert_success_empty_witness(prog_text);
+    }
+
+    #[test]
+    fn empty_function_body_nonempty_return() {
+        let prog_text = r#"fn my_true() -> bool {
+    // function body is empty, although function must return `bool`
+}
+
+fn main() {
+    jet_verify(my_true());
+}
+"#;
+        assert_satisfy_error_empty_witness(
+            prog_text,
+            "Expected expression of type `bool`, found type `()`",
+        );
     }
 }

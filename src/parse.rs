@@ -589,7 +589,7 @@ trait PestParse: Sized {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError>;
 }
 
-/// Copy of [`std::std::FromStr`] that internally uses the PEST parser.
+/// Copy of [`FromStr`] that internally uses the PEST parser.
 pub trait ParseFromStr: Sized {
     /// Parse a value from the string `s`.
     fn parse_from_str(s: &str) -> Result<Self, RichError>;
