@@ -9,11 +9,12 @@ use simplicity::{Cmr, FailEntropy};
 
 use crate::array::{BTreeSlice, Partition};
 use crate::ast::{
-    Call, CallName, Expression, ExpressionInner, FunctionParam, Match, Program, SingleExpression,
+    Call, CallName, Expression, ExpressionInner, Match, Program, SingleExpression,
     SingleExpressionInner, Statement,
 };
 use crate::error::{Error, RichError, WithSpan};
 use crate::named::CoreExt;
+use crate::num::NonZeroPow2Usize;
 use crate::pattern::{BasePattern, Pattern};
 use crate::types::{StructuralType, TypeDeconstructible};
 use crate::value::StructuralValue;
@@ -323,20 +324,82 @@ impl Call {
                 Ok(args)
             }
             CallName::Custom(function) => {
-                let params_pattern = Pattern::tuple(
-                    function
-                        .params()
-                        .iter()
-                        .map(FunctionParam::identifier)
-                        .cloned()
-                        .map(Pattern::Identifier),
-                );
-                let mut function_scope = Scope::new(params_pattern);
+                let mut function_scope = Scope::new(function.params_pattern());
                 let body = function.body().compile(&mut function_scope)?;
                 ProgNode::comp(&args, &body).with_span(self)
             }
+            CallName::Fold(function, bound) => {
+                let mut function_scope = Scope::new(function.params_pattern());
+                let body = function.body().compile(&mut function_scope)?;
+                let fold_body = list_fold(*bound, &body).with_span(self)?;
+                ProgNode::comp(&args, &fold_body).with_span(self)
+            }
         }
     }
+}
+
+/// Fold a list of less than `2^n` elements using function `f`.
+///
+/// Function `f: E × A → A`
+/// takes a list element of type `E` and an accumulator of type `A`,
+/// and it produces an updated accumulator of type `A`.
+///
+/// The fold `(fold f)_n : E^(<2^n) × A → A`
+/// takes the list of type `E^(<2^n)` and an initial accumulator of type `A`,
+/// and it produces the final accumulator of type `A`.
+fn list_fold(bound: NonZeroPow2Usize, f: &ProgNode) -> Result<ProgNode, simplicity::types::Error> {
+    /* f_0 :  E × A → A
+     * f_0 := f
+     */
+    let mut f_array = f.clone();
+
+    /* (fold f)_1 :  E^<2 × A → A
+     * (fold f)_1 := case IH f_0
+     */
+    let ioh = ProgNode::i().h().get();
+    let mut f_fold = ProgNode::case(&ioh, &f_array)?;
+    let mut i = NonZeroPow2Usize::TWO;
+
+    fn next_f_array(f_array: &ProgNode) -> Result<ProgNode, simplicity::types::Error> {
+        /* f_(n + 1) :  E^(2^(n + 1)) × A → A
+         * f_(n + 1) := OIH ▵ (OOH ▵ IH; f_n); f_n
+         */
+        let half1_acc = ProgNode::o().o().h().pair(ProgNode::i().h()).get();
+        let updated_acc = ProgNode::comp(&half1_acc, f_array)?;
+        let half2_acc = ProgNode::pair(&ProgNode::o().i().h().get(), &updated_acc)?;
+        ProgNode::comp(&half2_acc, f_array)
+    }
+    fn next_f_fold(
+        f_array: &ProgNode,
+        f_fold: &ProgNode,
+    ) -> Result<ProgNode, simplicity::types::Error> {
+        /* (fold f)_(n + 1) :  E<2^(n + 1) × A → A
+         * (fold f)_(n + 1) := OOH ▵ (OIH ▵ IH);
+         *                     case (drop (fold f)_n)
+         *                          ((IOH ▵ (OH ▵ IIH; f_n)); (fold f)_n)
+         */
+        let case_input = ProgNode::o()
+            .o()
+            .h()
+            .pair(ProgNode::o().i().h().pair(ProgNode::i().h()))
+            .get();
+        let case_left = ProgNode::drop_(f_fold);
+
+        let f_n_input = ProgNode::o().h().pair(ProgNode::i().i().h()).get();
+        let f_n_output = ProgNode::comp(&f_n_input, f_array)?;
+        let fold_n_input = ProgNode::pair(&ProgNode::i().o().h().get(), &f_n_output)?;
+        let case_right = ProgNode::comp(&fold_n_input, f_fold)?;
+
+        ProgNode::comp(&case_input, &ProgNode::case(&case_left, &case_right)?)
+    }
+
+    while i < bound {
+        f_array = next_f_array(&f_array)?;
+        f_fold = next_f_fold(&f_array, &f_fold)?;
+        i = i.mul2();
+    }
+
+    Ok(f_fold)
 }
 
 impl Match {

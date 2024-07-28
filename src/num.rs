@@ -1,4 +1,5 @@
 use std::fmt;
+use std::num::NonZeroU32;
 use std::str::FromStr;
 
 /// Implementation for newtypes that wrap a number `u8`, `u16`, ...
@@ -63,7 +64,7 @@ impl NonZeroPow2Usize {
         }
     }
 
-    /// Create the smallest power of two with nonzero exponent greater equal `n`.
+    /// Create the smallest power of two with nonzero exponent greater than or equal to `n`.
     pub const fn next(n: usize) -> Self {
         if n < 2 {
             Self::TWO
@@ -76,9 +77,34 @@ impl NonZeroPow2Usize {
 
     /// Return the binary logarithm of the value.
     ///
-    /// The integer is equal to 2^n. Return n.
-    pub const fn log2(self) -> u32 {
-        self.0.trailing_zeros()
+    /// The integer is equal to 2^n for some n > 0. Return n.
+    pub const fn log2(self) -> NonZeroU32 {
+        let n = self.0.trailing_zeros();
+        debug_assert!(0 < n);
+        // Safety: 0 < n by definition of NonZeroPow2Usize
+        unsafe { NonZeroU32::new_unchecked(n) }
+    }
+
+    /// Multiply the value by two.
+    pub const fn mul2(self) -> Self {
+        let n = self.0 * 2;
+        debug_assert!(n.is_power_of_two() && 1 < n);
+        Self(n)
+    }
+
+    /// Divide the value by two.
+    ///
+    /// - Return `Some(x)` if the quotient `x` is greater than 1.
+    /// - Return `None` if the quotient is equal to 1.
+    pub const fn checked_div2(self) -> Option<Self> {
+        match self.0 / 2 {
+            0 => unreachable!(),
+            1 => None,
+            n => {
+                debug_assert!(n.is_power_of_two());
+                Some(Self(n))
+            }
+        }
     }
 }
 
@@ -329,5 +355,27 @@ mod tests {
             "115792089237316195423570985008687907853269984665640564039457584007913129639935",
             &U256::MAX.to_string()
         )
+    }
+
+    #[test]
+    fn pow2_log2() {
+        let mut pow = NonZeroPow2Usize::TWO;
+
+        for exp in 1..10 {
+            assert_eq!(pow.log2().get(), exp);
+            pow = NonZeroPow2Usize::next(pow.0 + 1);
+        }
+    }
+
+    #[test]
+    fn pow2_div2() {
+        let mut pow = NonZeroPow2Usize::new(2usize.pow(10)).unwrap();
+
+        for exp in (2..=10).rev() {
+            assert_eq!(pow.get(), 2usize.pow(exp));
+            pow = pow.checked_div2().unwrap();
+        }
+        assert_eq!(pow, NonZeroPow2Usize::TWO);
+        assert!(pow.checked_div2().is_none());
     }
 }

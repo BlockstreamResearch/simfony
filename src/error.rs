@@ -161,6 +161,7 @@ pub enum Error {
     FunctionRedefined(FunctionName),
     FunctionUndefined(FunctionName),
     InvalidNumberOfArguments(usize, usize),
+    FunctionNotFoldable(FunctionName),
     ExpressionTypeMismatch(ResolvedType, ResolvedType),
     ExpressionNotConstant,
     IntegerOutOfBounds(UIntType),
@@ -240,6 +241,10 @@ impl fmt::Display for Error {
             Error::InvalidNumberOfArguments(expected, found) => write!(
                 f,
                 "Expected {expected} arguments, found {found} arguments"
+            ),
+            Error::FunctionNotFoldable(name) => write!(
+                f,
+                "Expected a signature like `fn {name}(element: E, accumulator: A) -> A` for a fold"
             ),
             Error::ExpressionTypeMismatch(expected, found) => write!(
                 f,
