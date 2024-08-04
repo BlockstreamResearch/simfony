@@ -13,7 +13,7 @@ use crate::ast::{
     SingleExpressionInner, Statement,
 };
 use crate::error::{Error, RichError, WithSpan};
-use crate::named::CoreExt;
+use crate::named::{CoreExt, PairBuilder};
 use crate::num::NonZeroPow2Usize;
 use crate::pattern::{BasePattern, Pattern};
 use crate::types::{StructuralType, TypeDeconstructible};
@@ -364,10 +364,10 @@ fn list_fold(bound: NonZeroPow2Usize, f: &ProgNode) -> Result<ProgNode, simplici
         /* f_(n + 1) :  E^(2^(n + 1)) × A → A
          * f_(n + 1) := OIH ▵ (OOH ▵ IH; f_n); f_n
          */
-        let half1_acc = ProgNode::o().o().h().pair(ProgNode::i().h()).get();
-        let updated_acc = ProgNode::comp(&half1_acc, f_array)?;
-        let half2_acc = ProgNode::pair(&ProgNode::o().i().h().get(), &updated_acc)?;
-        ProgNode::comp(&half2_acc, f_array)
+        let half1_acc = ProgNode::o().o().h().pair(ProgNode::i().h());
+        let updated_acc = half1_acc.comp(f_array)?;
+        let half2_acc = ProgNode::o().i().h().pair(updated_acc);
+        half2_acc.comp(f_array).map(PairBuilder::get)
     }
     fn next_f_fold(
         f_array: &ProgNode,
@@ -381,16 +381,18 @@ fn list_fold(bound: NonZeroPow2Usize, f: &ProgNode) -> Result<ProgNode, simplici
         let case_input = ProgNode::o()
             .o()
             .h()
-            .pair(ProgNode::o().i().h().pair(ProgNode::i().h()))
-            .get();
+            .pair(ProgNode::o().i().h().pair(ProgNode::i().h()));
         let case_left = ProgNode::drop_(f_fold);
 
-        let f_n_input = ProgNode::o().h().pair(ProgNode::i().i().h()).get();
-        let f_n_output = ProgNode::comp(&f_n_input, f_array)?;
-        let fold_n_input = ProgNode::pair(&ProgNode::i().o().h().get(), &f_n_output)?;
-        let case_right = ProgNode::comp(&fold_n_input, f_fold)?;
+        let f_n_input = ProgNode::o().h().pair(ProgNode::i().i().h());
+        let f_n_output = f_n_input.comp(f_array)?;
+        let fold_n_input = ProgNode::i().o().h().pair(f_n_output);
+        let case_right = fold_n_input.comp(f_fold)?;
 
-        ProgNode::comp(&case_input, &ProgNode::case(&case_left, &case_right)?)
+        ProgNode::comp(
+            &case_input.get(),
+            &ProgNode::case(&case_left, &case_right.get())?,
+        )
     }
 
     while i < bound {
