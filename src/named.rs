@@ -272,14 +272,6 @@ pub trait CoreExt: CoreConstructible + Sized {
         Self::comp(&Self::unit(), &Self::const_word(value)).unwrap()
     }
 
-    fn pair_iden(&self) -> Self {
-        Self::pair(self, &Self::iden()).unwrap() // pairing with iden always typechecks
-    }
-
-    fn pair_unit(&self) -> Self {
-        Self::pair(self, &Self::unit()).unwrap() // pairing with unit always typechecks
-    }
-
     /// `assertl (take s) cmr` always type checks.
     fn assertl_take(&self, cmr: Cmr) -> Self {
         Self::assertl(&Self::take(self), cmr).unwrap()
