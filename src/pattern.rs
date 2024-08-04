@@ -274,7 +274,7 @@ impl BasePattern {
     /// This means there are infinitely many translating expressions from `self` to `to`.
     /// For instance, `iden`, `iden & iden`, `(iden & iden) & iden`, and so on.
     /// We enforce a unique translation by banning ignore from the `to` pattern.
-    pub fn translate(&self, to: &Self) -> Option<ProgNode> {
+    pub fn translate(&self, to: &Self) -> Option<PairBuilder<ProgNode>> {
         #[derive(Debug, Clone)]
         enum Task<'a> {
             Translate(&'a BasePattern, &'a BasePattern),
@@ -377,7 +377,7 @@ impl BasePattern {
         }
 
         debug_assert_eq!(output.len(), 1);
-        output.pop().map(PairBuilder::get)
+        output.pop()
     }
 }
 
@@ -429,7 +429,7 @@ mod tests {
         ];
 
         for (target, expected_expr) in target_expr {
-            let expr = env.translate(&target).unwrap();
+            let expr = env.translate(&target).unwrap().get();
             assert_eq!(expected_expr, &expr.display_expr().to_string());
         }
     }
