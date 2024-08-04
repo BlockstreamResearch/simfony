@@ -209,7 +209,7 @@ impl SingleExpression {
             SingleExpressionInner::Constant(value) => {
                 // FIXME: Handle values that are not powers of two (requires updated rust-simplicity API)
                 let value = StructuralValue::from(value);
-                ProgNode::unit_comp(&ProgNode::const_word(value.into()))
+                ProgNode::unit_const_value(value.into())
             }
             SingleExpressionInner::Witness(name) => ProgNode::witness(name.clone()),
             SingleExpressionInner::Variable(identifier) => scope
