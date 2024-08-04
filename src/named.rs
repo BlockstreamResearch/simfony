@@ -256,8 +256,20 @@ pub trait CoreExt: CoreConstructible + Sized {
         SelectorBuilder::default().i()
     }
 
-    fn unit_comp(&self) -> Self {
-        Self::comp(&Self::unit(), self).unwrap() // composing with unit always typechecks
+    /// Compose a unit with a constant value.
+    ///
+    /// ## Infallibility
+    ///
+    /// `unit` produces the unit value, which is the input of the word jet `const v`.
+    ///
+    /// ```text
+    /// unit    : A → 1
+    /// const v : 1 → B
+    /// -------------------
+    /// comp unit (const v) : A → B
+    /// ```
+    fn unit_const_value(value: Arc<simplicity::Value>) -> Self {
+        Self::comp(&Self::unit(), &Self::const_word(value)).unwrap()
     }
 
     fn pair_iden(&self) -> Self {
