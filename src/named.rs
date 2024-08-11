@@ -499,8 +499,8 @@ impl<P: CoreExt> PairBuilder<P> {
     /// ----------------
     /// comp s t : A → C
     /// ```
-    pub fn comp(self, other: &P) -> Result<Self, types::Error> {
-        P::comp(&self.0, other).map(Self)
+    pub fn comp<Q: std::borrow::Borrow<P>>(self, other: &Q) -> Result<Self, types::Error> {
+        P::comp(&self.0, other.borrow()).map(Self)
     }
 
     /// Pair two expressions.
@@ -573,13 +573,19 @@ impl<P: WitnessConstructible<WitnessName>> PairBuilder<P> {
 
 impl<P> PairBuilder<P> {
     /// Build the expression.
-    pub fn get(self) -> P {
+    pub fn build(self) -> P {
         self.0
     }
 }
 
 impl<P> AsRef<P> for PairBuilder<P> {
     fn as_ref(&self) -> &P {
+        &self.0
+    }
+}
+
+impl<P> std::borrow::Borrow<P> for PairBuilder<P> {
+    fn borrow(&self) -> &P {
         &self.0
     }
 }

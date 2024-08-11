@@ -429,8 +429,8 @@ mod tests {
         ];
 
         for (target, expected_expr) in target_expr {
-            let expr = env.translate(&target).unwrap().get();
-            assert_eq!(expected_expr, &expr.display_expr().to_string());
+            let expr = env.translate(&target).unwrap();
+            assert_eq!(expected_expr, expr.as_ref().display_expr().to_string());
         }
     }
 }

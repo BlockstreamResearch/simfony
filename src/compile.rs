@@ -166,7 +166,7 @@ fn compile_blk(
             scope.insert(assignment.pattern().clone());
             let left = expr.pair(PairBuilder::iden());
             let right = compile_blk(stmts, scope, index + 1, last_expr)?;
-            left.comp(&right.get()).with_span(assignment)
+            left.comp(&right).with_span(assignment)
         }
         Statement::Expression(expression) => {
             let left = expression.compile(scope)?;
@@ -188,7 +188,7 @@ fn combine_seq(
 impl Program {
     pub fn compile(&self) -> Result<ProgNode, RichError> {
         let mut scope = Scope::new(Pattern::Ignore);
-        self.main().compile(&mut scope).map(PairBuilder::get)
+        self.main().compile(&mut scope).map(PairBuilder::build)
     }
 }
 
@@ -315,7 +315,7 @@ impl Call {
             CallName::Custom(function) => {
                 let mut function_scope = Scope::new(function.params_pattern());
                 let body = function.body().compile(&mut function_scope)?;
-                args.comp(body.as_ref()).with_span(self)
+                args.comp(&body).with_span(self)
             }
             CallName::Fold(function, bound) => {
                 let mut function_scope = Scope::new(function.params_pattern());
@@ -345,8 +345,8 @@ fn list_fold(bound: NonZeroPow2Usize, f: &ProgNode) -> Result<ProgNode, simplici
     /* (fold f)_1 :  E^<2 × A → A
      * (fold f)_1 := case IH f_0
      */
-    let ioh = ProgNode::i().h().get();
-    let mut f_fold = ProgNode::case(&ioh, &f_array)?;
+    let ioh = ProgNode::i().h();
+    let mut f_fold = ProgNode::case(ioh.as_ref(), &f_array)?;
     let mut i = NonZeroPow2Usize::TWO;
 
     fn next_f_array(f_array: &ProgNode) -> Result<ProgNode, simplicity::types::Error> {
@@ -356,7 +356,7 @@ fn list_fold(bound: NonZeroPow2Usize, f: &ProgNode) -> Result<ProgNode, simplici
         let half1_acc = ProgNode::o().o().h().pair(ProgNode::i().h());
         let updated_acc = half1_acc.comp(f_array)?;
         let half2_acc = ProgNode::o().i().h().pair(updated_acc);
-        half2_acc.comp(f_array).map(PairBuilder::get)
+        half2_acc.comp(f_array).map(PairBuilder::build)
     }
     fn next_f_fold(
         f_array: &ProgNode,
@@ -378,10 +378,9 @@ fn list_fold(bound: NonZeroPow2Usize, f: &ProgNode) -> Result<ProgNode, simplici
         let fold_n_input = ProgNode::i().o().h().pair(f_n_output);
         let case_right = fold_n_input.comp(f_fold)?;
 
-        ProgNode::comp(
-            &case_input.get(),
-            &ProgNode::case(&case_left, &case_right.get())?,
-        )
+        case_input
+            .comp(&ProgNode::case(&case_left, case_right.as_ref())?)
+            .map(PairBuilder::build)
     }
 
     while i < bound {
