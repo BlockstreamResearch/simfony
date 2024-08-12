@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use either::Either;
 use simplicity::jet::Elements;
-use simplicity::node::{CoreConstructible as _, JetConstructible as _, WitnessConstructible as _};
+use simplicity::node::{CoreConstructible as _, JetConstructible as _};
 use simplicity::{Cmr, FailEntropy};
 
 use crate::array::{BTreeSlice, Partition};
@@ -13,7 +13,7 @@ use crate::ast::{
     SingleExpressionInner, Statement,
 };
 use crate::error::{Error, RichError, WithSpan};
-use crate::named::CoreExt;
+use crate::named::{CoreExt, PairBuilder};
 use crate::num::NonZeroPow2Usize;
 use crate::pattern::{BasePattern, Pattern};
 use crate::types::{StructuralType, TypeDeconstructible};
@@ -143,7 +143,7 @@ impl Scope {
     /// ```
     ///
     /// The expression `drop (IOH & OH)` returns the seeked value.
-    pub fn get(&self, target: &BasePattern) -> Option<ProgNode> {
+    pub fn get(&self, target: &BasePattern) -> Option<PairBuilder<ProgNode>> {
         BasePattern::from(&self.get_input_pattern()).translate(target)
     }
 }
@@ -153,44 +153,47 @@ fn compile_blk(
     scope: &mut Scope,
     index: usize,
     last_expr: Option<&Expression>,
-) -> Result<ProgNode, RichError> {
+) -> Result<PairBuilder<ProgNode>, RichError> {
     if index >= stmts.len() {
         return match last_expr {
             Some(expr) => expr.compile(scope),
-            None => Ok(ProgNode::unit()),
+            None => Ok(PairBuilder::unit()),
         };
     }
     match &stmts[index] {
         Statement::Assignment(assignment) => {
             let expr = assignment.expression().compile(scope)?;
             scope.insert(assignment.pattern().clone());
-            let left = ProgNode::pair_iden(&expr);
+            let left = expr.pair(PairBuilder::iden());
             let right = compile_blk(stmts, scope, index + 1, last_expr)?;
-            ProgNode::comp(&left, &right).with_span(assignment)
+            left.comp(&right).with_span(assignment)
         }
         Statement::Expression(expression) => {
             let left = expression.compile(scope)?;
             let right = compile_blk(stmts, scope, index + 1, last_expr)?;
-            combine_seq(&left, &right).with_span(expression)
+            combine_seq(left, right).with_span(expression)
         }
     }
 }
 
-fn combine_seq(a: &ProgNode, b: &ProgNode) -> Result<ProgNode, simplicity::types::Error> {
-    let pair = ProgNode::pair(a, b)?;
+fn combine_seq(
+    a: PairBuilder<ProgNode>,
+    b: PairBuilder<ProgNode>,
+) -> Result<PairBuilder<ProgNode>, simplicity::types::Error> {
+    let pair = a.pair(b);
     let drop_iden = ProgNode::drop_(&ProgNode::iden());
-    ProgNode::comp(&pair, &drop_iden)
+    pair.comp(&drop_iden)
 }
 
 impl Program {
     pub fn compile(&self) -> Result<ProgNode, RichError> {
         let mut scope = Scope::new(Pattern::Ignore);
-        self.main().compile(&mut scope)
+        self.main().compile(&mut scope).map(PairBuilder::build)
     }
 }
 
 impl Expression {
-    fn compile(&self, scope: &mut Scope) -> Result<ProgNode, RichError> {
+    fn compile(&self, scope: &mut Scope) -> Result<PairBuilder<ProgNode>, RichError> {
         match self.inner() {
             ExpressionInner::Block(stmts, expr) => {
                 scope.push_scope();
@@ -204,14 +207,14 @@ impl Expression {
 }
 
 impl SingleExpression {
-    fn compile(&self, scope: &mut Scope) -> Result<ProgNode, RichError> {
+    fn compile(&self, scope: &mut Scope) -> Result<PairBuilder<ProgNode>, RichError> {
         let expr = match self.inner() {
             SingleExpressionInner::Constant(value) => {
                 // FIXME: Handle values that are not powers of two (requires updated rust-simplicity API)
                 let value = StructuralValue::from(value);
-                ProgNode::unit_comp(&ProgNode::const_word(value.into()))
+                PairBuilder::unit_const_value(value.into())
             }
-            SingleExpressionInner::Witness(name) => ProgNode::witness(name.clone()),
+            SingleExpressionInner::Witness(name) => PairBuilder::witness(name.clone()),
             SingleExpressionInner::Variable(identifier) => scope
                 .get(&BasePattern::Identifier(identifier.clone()))
                 .ok_or(Error::UndefinedVariable(identifier.clone()))
@@ -221,57 +224,43 @@ impl SingleExpression {
                 let compiled = elements
                     .iter()
                     .map(|e| e.compile(scope))
-                    .collect::<Vec<Result<ProgNode, RichError>>>();
+                    .collect::<Result<Vec<PairBuilder<ProgNode>>, RichError>>()?;
                 let tree = BTreeSlice::from_slice(&compiled);
-                // FIXME: Constructing pairs should never fail because when Simfony is translated to
-                // Simplicity the input type is variable. However, the fact that pairs always unify
-                // is hard to prove at the moment, while Simfony lacks a type system.
-                tree.fold(|res_a, res_b| {
-                    res_a.and_then(|a| res_b.and_then(|b| ProgNode::pair(&a, &b).with_span(self)))
-                })
-                .unwrap_or_else(|| Ok(ProgNode::unit()))?
+                tree.fold(PairBuilder::pair)
+                    .unwrap_or_else(PairBuilder::unit)
             }
             SingleExpressionInner::List(elements) => {
                 let compiled = elements
                     .iter()
                     .map(|e| e.compile(scope))
-                    .collect::<Vec<Result<ProgNode, RichError>>>();
+                    .collect::<Result<Vec<PairBuilder<ProgNode>>, RichError>>()?;
                 let bound = self.ty().as_list().unwrap().1;
-                // FIXME: Constructing pairs should never fail because when Simfony is translated to
-                // Simplicity the input type is variable. However, the fact that pairs always unify
-                // is hard to prove at the moment, while Simfony lacks a type system.
                 let partition = Partition::from_slice(&compiled, bound.get() / 2);
-                let process =
-                    |block: &[Result<ProgNode, RichError>]| -> Result<ProgNode, RichError> {
+                partition.fold(
+                    |block| {
                         let tree = BTreeSlice::from_slice(block);
-                        tree.fold(|res_a, res_b| {
-                            res_a.and_then(|a| {
-                                res_b.and_then(|b| ProgNode::pair(&a, &b).with_span(self))
-                            })
-                        })
-                        .map(|res| res.map(|array| ProgNode::injr(&array)))
-                        .unwrap_or_else(|| Ok(ProgNode::bit_false()))
-                    };
-
-                partition.fold(process, |res_a, res_b| {
-                    res_a.and_then(|a| res_b.and_then(|b| ProgNode::pair(&a, &b).with_span(self)))
-                })?
+                        match tree.fold(PairBuilder::pair) {
+                            None => PairBuilder::unit().injl(),
+                            Some(pair) => pair.injr(),
+                        }
+                    },
+                    PairBuilder::pair,
+                )
             }
-            SingleExpressionInner::Option(None) => ProgNode::injl(&ProgNode::unit()),
+            SingleExpressionInner::Option(None) => PairBuilder::unit().injl(),
             SingleExpressionInner::Either(Either::Left(inner)) => {
-                let compiled = inner.compile(scope)?;
-                ProgNode::injl(&compiled)
+                inner.compile(scope).map(PairBuilder::injl)?
             }
             SingleExpressionInner::Either(Either::Right(inner))
             | SingleExpressionInner::Option(Some(inner)) => {
-                let compiled = inner.compile(scope)?;
-                ProgNode::injr(&compiled)
+                inner.compile(scope).map(PairBuilder::injr)?
             }
             SingleExpressionInner::Call(call) => call.compile(scope)?,
             SingleExpressionInner::Match(match_) => match_.compile(scope)?,
         };
 
-        expr.cached_data()
+        expr.as_ref()
+            .cached_data()
             .arrow()
             .target
             .unify(&StructuralType::from(self.ty()).to_unfinalized(), "")
@@ -282,39 +271,39 @@ impl SingleExpression {
 }
 
 impl Call {
-    fn compile(&self, scope: &mut Scope) -> Result<ProgNode, RichError> {
+    fn compile(&self, scope: &mut Scope) -> Result<PairBuilder<ProgNode>, RichError> {
         let args_ast = SingleExpression::tuple(self.args().clone(), *self.as_ref());
         let args = args_ast.compile(scope)?;
 
         match self.name() {
             CallName::Jet(name) => {
                 let jet = ProgNode::jet(*name);
-                ProgNode::comp(&args, &jet).with_span(self)
+                args.comp(&jet).with_span(self)
             }
             CallName::UnwrapLeft(..) => {
-                let left_and_unit = ProgNode::pair_unit(&args);
+                let left_and_unit = args.pair(PairBuilder::unit());
                 let fail_cmr = Cmr::fail(FailEntropy::ZERO);
                 let get_inner = ProgNode::assertl_take(&ProgNode::iden(), fail_cmr);
-                ProgNode::comp(&left_and_unit, &get_inner).with_span(self)
+                left_and_unit.comp(&get_inner).with_span(self)
             }
             CallName::UnwrapRight(..) | CallName::Unwrap => {
-                let right_and_unit = ProgNode::pair_unit(&args);
+                let right_and_unit = args.pair(PairBuilder::unit());
                 let fail_cmr = Cmr::fail(FailEntropy::ZERO);
                 let get_inner = ProgNode::assertr_take(fail_cmr, &ProgNode::iden());
-                ProgNode::comp(&right_and_unit, &get_inner).with_span(self)
+                right_and_unit.comp(&get_inner).with_span(self)
             }
             CallName::IsNone(..) => {
-                let sum_and_unit = ProgNode::pair_unit(&args);
+                let sum_and_unit = args.pair(PairBuilder::unit());
                 let is_right = ProgNode::case_true_false();
-                ProgNode::comp(&sum_and_unit, &is_right).with_span(self)
+                sum_and_unit.comp(&is_right).with_span(self)
             }
             CallName::Assert => {
                 let jet = ProgNode::jet(Elements::Verify);
-                ProgNode::comp(&args, &jet).with_span(self)
+                args.comp(&jet).with_span(self)
             }
             CallName::Panic => {
                 // panic! ignores its arguments
-                Ok(ProgNode::fail(FailEntropy::ZERO))
+                Ok(PairBuilder::fail(FailEntropy::ZERO))
             }
             CallName::TypeCast(..) => {
                 // A cast converts between two structurally equal types.
@@ -326,13 +315,13 @@ impl Call {
             CallName::Custom(function) => {
                 let mut function_scope = Scope::new(function.params_pattern());
                 let body = function.body().compile(&mut function_scope)?;
-                ProgNode::comp(&args, &body).with_span(self)
+                args.comp(&body).with_span(self)
             }
             CallName::Fold(function, bound) => {
                 let mut function_scope = Scope::new(function.params_pattern());
                 let body = function.body().compile(&mut function_scope)?;
-                let fold_body = list_fold(*bound, &body).with_span(self)?;
-                ProgNode::comp(&args, &fold_body).with_span(self)
+                let fold_body = list_fold(*bound, body.as_ref()).with_span(self)?;
+                args.comp(&fold_body).with_span(self)
             }
         }
     }
@@ -356,18 +345,18 @@ fn list_fold(bound: NonZeroPow2Usize, f: &ProgNode) -> Result<ProgNode, simplici
     /* (fold f)_1 :  E^<2 × A → A
      * (fold f)_1 := case IH f_0
      */
-    let ioh = ProgNode::i().h().get();
-    let mut f_fold = ProgNode::case(&ioh, &f_array)?;
+    let ioh = ProgNode::i().h();
+    let mut f_fold = ProgNode::case(ioh.as_ref(), &f_array)?;
     let mut i = NonZeroPow2Usize::TWO;
 
     fn next_f_array(f_array: &ProgNode) -> Result<ProgNode, simplicity::types::Error> {
         /* f_(n + 1) :  E^(2^(n + 1)) × A → A
          * f_(n + 1) := OIH ▵ (OOH ▵ IH; f_n); f_n
          */
-        let half1_acc = ProgNode::o().o().h().pair(ProgNode::i().h()).get();
-        let updated_acc = ProgNode::comp(&half1_acc, f_array)?;
-        let half2_acc = ProgNode::pair(&ProgNode::o().i().h().get(), &updated_acc)?;
-        ProgNode::comp(&half2_acc, f_array)
+        let half1_acc = ProgNode::o().o().h().pair(ProgNode::i().h());
+        let updated_acc = half1_acc.comp(f_array)?;
+        let half2_acc = ProgNode::o().i().h().pair(updated_acc);
+        half2_acc.comp(f_array).map(PairBuilder::build)
     }
     fn next_f_fold(
         f_array: &ProgNode,
@@ -381,16 +370,17 @@ fn list_fold(bound: NonZeroPow2Usize, f: &ProgNode) -> Result<ProgNode, simplici
         let case_input = ProgNode::o()
             .o()
             .h()
-            .pair(ProgNode::o().i().h().pair(ProgNode::i().h()))
-            .get();
+            .pair(ProgNode::o().i().h().pair(ProgNode::i().h()));
         let case_left = ProgNode::drop_(f_fold);
 
-        let f_n_input = ProgNode::o().h().pair(ProgNode::i().i().h()).get();
-        let f_n_output = ProgNode::comp(&f_n_input, f_array)?;
-        let fold_n_input = ProgNode::pair(&ProgNode::i().o().h().get(), &f_n_output)?;
-        let case_right = ProgNode::comp(&fold_n_input, f_fold)?;
+        let f_n_input = ProgNode::o().h().pair(ProgNode::i().i().h());
+        let f_n_output = f_n_input.comp(f_array)?;
+        let fold_n_input = ProgNode::i().o().h().pair(f_n_output);
+        let case_right = fold_n_input.comp(f_fold)?;
 
-        ProgNode::comp(&case_input, &ProgNode::case(&case_left, &case_right)?)
+        case_input
+            .comp(&ProgNode::case(&case_left, case_right.as_ref())?)
+            .map(PairBuilder::build)
     }
 
     while i < bound {
@@ -403,7 +393,7 @@ fn list_fold(bound: NonZeroPow2Usize, f: &ProgNode) -> Result<ProgNode, simplici
 }
 
 impl Match {
-    fn compile(&self, scope: &mut Scope) -> Result<ProgNode, RichError> {
+    fn compile(&self, scope: &mut Scope) -> Result<PairBuilder<ProgNode>, RichError> {
         scope.push_scope();
         scope.insert(
             self.left()
@@ -429,8 +419,8 @@ impl Match {
         scope.pop_scope();
 
         let scrutinee = self.scrutinee().compile(scope)?;
-        let input = ProgNode::pair_iden(&scrutinee);
-        let output = ProgNode::case(&left, &right).with_span(self)?;
-        ProgNode::comp(&input, &output).with_span(self)
+        let input = scrutinee.pair(PairBuilder::iden());
+        let output = ProgNode::case(left.as_ref(), right.as_ref()).with_span(self)?;
+        input.comp(&output).with_span(self)
     }
 }
