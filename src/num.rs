@@ -64,17 +64,6 @@ impl NonZeroPow2Usize {
         }
     }
 
-    /// Create the smallest power of two with nonzero exponent greater than or equal to `n`.
-    pub const fn next(n: usize) -> Self {
-        if n < 2 {
-            Self::TWO
-        } else {
-            // FIXME `std::option::Option::<T>::unwrap` is not yet stable as a const fn
-            // Self::new(n.next_power_of_two()).unwrap()
-            Self(n.next_power_of_two())
-        }
-    }
-
     /// Return the binary logarithm of the value.
     ///
     /// The integer is equal to 2^n for some n > 0. Return n.
@@ -367,7 +356,7 @@ mod tests {
 
         for exp in 1..10 {
             assert_eq!(pow.log2().get(), exp);
-            pow = NonZeroPow2Usize::next(pow.0 + 1);
+            pow = pow.mul2();
         }
     }
 
