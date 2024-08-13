@@ -652,6 +652,7 @@ impl PestParse for Function {
         assert!(matches!(pair.as_rule(), Self::RULE));
         let span = Span::from(&pair);
         let mut it = pair.into_inner();
+        let _fn_keyword = it.next().unwrap();
         let name = FunctionName::parse(it.next().unwrap())?;
         let params = {
             let pair = it.next().unwrap();
@@ -773,10 +774,11 @@ impl PestParse for Assignment {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Self::RULE));
         let span = Span::from(&pair);
-        let mut inner_pair = pair.into_inner();
-        let pattern = Pattern::parse(inner_pair.next().unwrap())?;
-        let ty = AliasedType::parse(inner_pair.next().unwrap())?;
-        let expression = Expression::parse(inner_pair.next().unwrap())?;
+        let mut it = pair.into_inner();
+        let _let_keyword = it.next().unwrap();
+        let pattern = Pattern::parse(it.next().unwrap())?;
+        let ty = AliasedType::parse(it.next().unwrap())?;
+        let expression = Expression::parse(it.next().unwrap())?;
         Ok(Assignment {
             pattern,
             ty,
@@ -862,6 +864,7 @@ impl PestParse for TypeAlias {
         assert!(matches!(pair.as_rule(), Self::RULE));
         let span = Span::from(&pair);
         let mut it = pair.into_inner();
+        let _type_keyword = it.next().unwrap();
         let name = Identifier::parse(it.next().unwrap().into_inner().next().unwrap())?;
         let ty = AliasedType::parse(it.next().unwrap())?;
         Ok(Self { name, ty, span })
@@ -1075,6 +1078,7 @@ impl PestParse for Match {
         assert!(matches!(pair.as_rule(), Self::RULE));
         let span = Span::from(&pair);
         let mut it = pair.into_inner();
+        let _match_keyword = it.next().unwrap();
         let scrutinee_pair = it.next().unwrap();
         let scrutinee = Expression::parse(scrutinee_pair.clone()).map(Arc::new)?;
         let first = MatchArm::parse(it.next().unwrap())?;
