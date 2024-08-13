@@ -862,7 +862,7 @@ impl PestParse for TypeAlias {
         assert!(matches!(pair.as_rule(), Self::RULE));
         let span = Span::from(&pair);
         let mut it = pair.into_inner();
-        let name = Identifier::parse(it.next().unwrap())?;
+        let name = Identifier::parse(it.next().unwrap().into_inner().next().unwrap())?;
         let ty = AliasedType::parse(it.next().unwrap())?;
         Ok(Self { name, ty, span })
     }
