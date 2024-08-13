@@ -86,6 +86,9 @@ impl NonZeroPow2Usize {
     }
 
     /// Multiply the value by two.
+    /// Return the next power of two.
+    ///
+    /// The integer is equal to 2^n for some n > 0. Return 2^(n + 1).
     pub const fn mul2(self) -> Self {
         let n = self.0 * 2;
         debug_assert!(n.is_power_of_two() && 1 < n);
@@ -93,15 +96,16 @@ impl NonZeroPow2Usize {
     }
 
     /// Divide the value by two.
+    /// Return the previous power of two with nonzero exponent, if it exists.
     ///
-    /// - Return `Some(x)` if the quotient `x` is greater than 1.
-    /// - Return `None` if the quotient is equal to 1.
+    /// - If the integer is equal to 2^(n + 1) for some n > 0, then return `Some(2^n)`.
+    /// - If the integer is equal to 2^1, then return `None`.
     pub const fn checked_div2(self) -> Option<Self> {
         match self.0 / 2 {
             0 => unreachable!(),
             1 => None,
             n => {
-                debug_assert!(n.is_power_of_two());
+                debug_assert!(n.is_power_of_two() && 1 < n);
                 Some(Self(n))
             }
         }
