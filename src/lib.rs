@@ -174,4 +174,15 @@ fn main() {
             "Expected expression of type `bool`, found type `()`",
         );
     }
+
+    #[test]
+    fn fuzz_regression_1() {
+        compile("type f=f").unwrap_err();
+    }
+
+    #[test]
+    #[ignore]
+    fn fuzz_slow_unit_1() {
+        compile("fn fnnfn(MMet:(((sssss,((((((sssss,ssssss,ss,((((((sssss,ss,((((((sssss,ssssss,ss,((((((sssss,ssssss,((((((sssss,sssssssss,(((((((sssss,sssssssss,(((((ssss,((((((sssss,sssssssss,(((((((sssss,ssss,((((((sssss,ss,((((((sssss,ssssss,ss,((((((sssss,ssssss,((((((sssss,sssssssss,(((((((sssss,sssssssss,(((((ssss,((((((sssss,sssssssss,(((((((sssss,sssssssssssss,(((((((((((u|(").unwrap_err();
+    }
 }
