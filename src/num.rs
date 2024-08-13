@@ -64,6 +64,20 @@ impl NonZeroPow2Usize {
         }
     }
 
+    /// Create a power of two with nonzero exponent.
+    ///
+    /// ## Precondition
+    ///
+    /// The value must be a power of two with nonzero exponent.
+    ///
+    /// ## Panics
+    ///
+    /// Panics may occur down the line if the precondition is not satisfied.
+    pub const fn new_unchecked(n: usize) -> Self {
+        debug_assert!(n.is_power_of_two() && 1 < n);
+        Self(n)
+    }
+
     /// Return the binary logarithm of the value.
     ///
     /// The integer is equal to 2^n for some n > 0. Return n.
@@ -146,6 +160,20 @@ impl Pow2Usize {
         } else {
             None
         }
+    }
+
+    /// Create a power of two.
+    ///
+    /// ## Precondition
+    ///
+    /// The value must be a power of two.
+    ///
+    /// ## Panics
+    ///
+    /// Panics may occur down the line if the precondition is not satisfied.
+    pub const fn new_unchecked(n: usize) -> Self {
+        debug_assert!(n.is_power_of_two());
+        Self(n)
     }
 
     /// Return the binary logarithm of the value.
