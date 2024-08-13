@@ -290,6 +290,8 @@ pub enum CallName {
     Custom(FunctionName),
     /// Fold of a bounded list with the given function.
     Fold(FunctionName, NonZeroPow2Usize),
+    /// Loop over the given function a bounded number of times until it returns success.
+    ForWhile(FunctionName),
 }
 
 /// Name of a jet.
@@ -840,6 +842,11 @@ impl PestParse for CallName {
                 let name = FunctionName::parse(it.next().unwrap())?;
                 let bound = NonZeroPow2Usize::parse(it.next().unwrap())?;
                 Ok(Self::Fold(name, bound))
+            }
+            Rule::for_while => {
+                let mut it = pair.into_inner();
+                let name = FunctionName::parse(it.next().unwrap())?;
+                Ok(Self::ForWhile(name))
             }
             Rule::function_name => FunctionName::parse(pair).map(Self::Custom),
             _ => panic!("Corrupt grammar"),

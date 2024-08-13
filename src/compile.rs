@@ -323,6 +323,7 @@ impl Call {
                 let fold_body = list_fold(*bound, body.as_ref()).with_span(self)?;
                 args.comp(&fold_body).with_span(self)
             }
+            CallName::ForWhile(..) => todo!(),
         }
     }
 }

@@ -145,6 +145,7 @@ pub enum Error {
     ListBoundPow2(usize),
     BitStringPow2(usize),
     HexStringPow2(usize),
+    ForWhileWidthPow2(usize),
     CannotParse(String),
     Grammar(String),
     IncompatibleMatchArms(MatchPattern, MatchPattern),
@@ -162,6 +163,7 @@ pub enum Error {
     FunctionUndefined(FunctionName),
     InvalidNumberOfArguments(usize, usize),
     FunctionNotFoldable(FunctionName),
+    FunctionNotLoopable(FunctionName),
     ExpressionTypeMismatch(ResolvedType, ResolvedType),
     ExpressionNotConstant,
     IntegerOutOfBounds(UIntType),
@@ -189,6 +191,10 @@ impl fmt::Display for Error {
             Error::HexStringPow2(len) => write!(
                 f,
                 "Expected a valid hex string length (2, 4, 8, 16, 32, 64), found {len}"
+            ),
+            Error::ForWhileWidthPow2(bit_width) => write!(
+                f,
+                "Expected a power of two (1, 2, 4, 8, 16, ...) as for-while bit width, found {bit_width}"
             ),
             Error::CannotParse(description) => write!(
                 f,
@@ -245,6 +251,10 @@ impl fmt::Display for Error {
             Error::FunctionNotFoldable(name) => write!(
                 f,
                 "Expected a signature like `fn {name}(element: E, accumulator: A) -> A` for a fold"
+            ),
+            Error::FunctionNotLoopable(name) => write!(
+                f,
+                "Expected a signature like `fn {name}(accumulator: A, context: C, counter u{{1,2,4,8,16}}) -> Either<B, A>` for a for-while loop"
             ),
             Error::ExpressionTypeMismatch(expected, found) => write!(
                 f,
