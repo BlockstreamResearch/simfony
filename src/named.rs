@@ -256,6 +256,13 @@ pub trait CoreExt: CoreConstructible + Sized {
         SelectorBuilder::default().i()
     }
 
+    fn bit(bit: bool) -> PairBuilder<Self> {
+        match bit {
+            false => PairBuilder::unit().injl(),
+            true => PairBuilder::unit().injr(),
+        }
+    }
+
     /// Compose a unit with a constant value.
     ///
     /// ## Infallibility
