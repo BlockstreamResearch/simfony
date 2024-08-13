@@ -129,6 +129,66 @@ impl DoublePow2Usize {
     }
 }
 
+/// An integer that is known to be a power of two.
+///
+/// The integer is equal to 2^n for some n ≥ 0.
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct Pow2Usize(usize);
+
+impl Pow2Usize {
+    /// Smallest power of two.
+    pub const ONE: Self = Self(1);
+
+    /// Create a power of two.
+    pub const fn new(n: usize) -> Option<Self> {
+        if n.is_power_of_two() {
+            Some(Self(n))
+        } else {
+            None
+        }
+    }
+
+    /// Return the binary logarithm of the value.
+    ///
+    /// The integer is equal to 2^n for some n ≥ 0. Return n.
+    pub const fn log2(self) -> u32 {
+        self.0.trailing_zeros()
+    }
+
+    /// Multiply the value by two.
+    /// Return the next power of two.
+    ///
+    /// The integer is equal to 2^n for some n ≥ 0. Return 2^(n + 1).
+    pub const fn mul2(self) -> Self {
+        let n = self.0 * 2;
+        debug_assert!(n.is_power_of_two());
+        Self(n)
+    }
+
+    /// Divide the value by two.
+    /// Return the previous power of two, if it exists.
+    ///
+    /// - If the integer is equal to 2^(n + 1) for some n ≥ 0, then return `Some(2^n)`.
+    /// - If the integer is equal to 2^0, then return `None`.
+    pub const fn checked_div2(self) -> Option<Self> {
+        match self.0 / 2 {
+            0 => None,
+            n => {
+                debug_assert!(n.is_power_of_two());
+                Some(Self(n))
+            }
+        }
+    }
+}
+
+checked_num!(Pow2Usize, usize, "a power of two greater than 1");
+
+impl From<NonZeroPow2Usize> for Pow2Usize {
+    fn from(value: NonZeroPow2Usize) -> Self {
+        Self(value.0)
+    }
+}
+
 /// A 256-bit unsigned integer.
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct U256([u8; 32]);
