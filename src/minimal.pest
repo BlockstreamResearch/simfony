@@ -10,7 +10,7 @@ block_expression  =  { "{" ~ (statement ~ ";")* ~ expression? ~ "}" }
 identifier        = @{ !builtin_type ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
 jet               = @{ "jet::" ~ (ASCII_ALPHANUMERIC | "_")+ }
 witness_name      = @{ (ASCII_ALPHANUMERIC | "_")+ }
-builtin_type      = @{ "Either" | "Option" | "bool" | unsigned_type | "List" }
+builtin_type      = @{ "Either" | "Option" | "bool" | "List" | unsigned_type }
 
 builtin_function  = @{ jet | "unwrap_left" | "unwrap_right" | "unwrap" | "fold" }
 function_name     =  { !builtin_function ~ identifier }
