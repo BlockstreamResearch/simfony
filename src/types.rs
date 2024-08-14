@@ -6,7 +6,7 @@ use miniscript::iter::{Tree, TreeLike};
 use simplicity::types::{CompleteBound, Final};
 
 use crate::array::{BTreeSlice, Partition};
-use crate::num::NonZeroPow2Usize;
+use crate::num::{NonZeroPow2Usize, Pow2Usize};
 use crate::parse::Identifier;
 
 /// Primitives of the Simfony type system, excluding type aliases.
@@ -127,6 +127,23 @@ impl UIntType {
             8 => Some(UIntType::U256),
             _ => None,
         }
+    }
+
+    /// Return the bit width of values of this type.
+    pub const fn bit_width(self) -> Pow2Usize {
+        let bit_width: usize = match self {
+            UIntType::U1 => 1,
+            UIntType::U2 => 2,
+            UIntType::U4 => 4,
+            UIntType::U8 => 8,
+            UIntType::U16 => 16,
+            UIntType::U32 => 32,
+            UIntType::U64 => 64,
+            UIntType::U128 => 128,
+            UIntType::U256 => 256,
+        };
+        debug_assert!(bit_width.is_power_of_two());
+        Pow2Usize::new_unchecked(bit_width)
     }
 }
 
