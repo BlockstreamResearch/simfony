@@ -10,21 +10,23 @@ block_expression  =  { "{" ~ (statement ~ ";")* ~ expression? ~ "}" }
 identifier        = @{ !builtin_type ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
 jet               = @{ "jet::" ~ (ASCII_ALPHANUMERIC | "_")+ }
 witness_name      = @{ (ASCII_ALPHANUMERIC | "_")+ }
-builtin_type      = @{ "Either" | "Option" | "bool" | unsigned_type | "List" }
+builtin_type      = @{ "Either" | "Option" | "bool" | "List" | unsigned_type }
 
 builtin_function  = @{ jet | "unwrap_left" | "unwrap_right" | "unwrap" | "fold" }
 function_name     =  { !builtin_function ~ identifier }
 typed_identifier  =  { identifier ~ ":" ~ ty }
 function_params   =  { "(" ~ (typed_identifier ~ ("," ~ typed_identifier)*)? ~ ")" }
 function_return   =  { "->" ~ ty }
-function          =  { "fn" ~ function_name ~ function_params ~ function_return? ~ block_expression }
+fn_keyword        = @{ "fn" ~ !ASCII_ALPHANUMERIC }
+function          =  { fn_keyword ~ function_name ~ function_params ~ function_return? ~ block_expression }
 
 variable_pattern  =  { identifier }
 ignore_pattern    = @{ "_" }
 tuple_pattern     =  { "(" ~ ((pattern ~ ",")+ ~ pattern?)? ~ ")" }
 array_pattern     =  { "[" ~ (pattern ~ ("," ~ pattern)* ~ ","?)? ~ "]" }
 pattern           =  { ignore_pattern | tuple_pattern | array_pattern | variable_pattern }
-assignment        =  { "let" ~ pattern ~ ":" ~ ty ~ "=" ~ expression }
+let_keyword       = @{ "let" ~ !ASCII_ALPHANUMERIC }
+assignment        =  { let_keyword ~ pattern ~ ":" ~ ty ~ "=" ~ expression }
 
 left_pattern      =  { "Left(" ~ identifier ~ ":" ~ ty ~ ")" }
 right_pattern     =  { "Right(" ~ identifier ~ ":" ~ ty ~ ")" }
@@ -46,7 +48,8 @@ list_type         =  { "List<" ~ ty ~ "," ~ list_bound ~ ">" }
 ty                =  { alias_name | builtin_alias | sum_type | option_type | boolean_type | unsigned_type | tuple_type | array_type | list_type }
 builtin_alias     = @{ "Ctx8" | "Pubkey" | "Message64" | "Signature" | "Scalar" | "Fe" | "Gej" | "Ge" | "Point" | "Height" | "Time" | "Distance" | "Duration" | "Lock" | "Outpoint" | "Confidential1" | "ExplicitAsset" | "Asset1" | "ExplicitAmount" | "Amount1" | "ExplicitNonce" | "Nonce" | "TokenAmount1" }
 alias_name        =  { !builtin_alias ~ identifier }
-type_alias        =  { "type" ~ alias_name ~ "=" ~ ty }
+type_keyword      = @{ "type" ~ !ASCII_ALPHANUMERIC }
+type_alias        =  { type_keyword ~ alias_name ~ "=" ~ ty }
 
 left_expr         =  { "Left(" ~ expression ~ ")" }
 right_expr        =  { "Right(" ~ expression ~ ")" }
@@ -71,7 +74,8 @@ byte_string       = @{ "0x" ~ (ASCII_HEX_DIGIT | "_")+ }
 witness_expr      =  { "witness(\"" ~ witness_name ~ "\")" }
 variable_expr     =  { identifier }
 match_arm         =  { match_pattern ~ "=>" ~ (single_expression ~ "," | block_expression ~ ","?) }
-match_expr        =  { "match" ~ expression ~ "{" ~ match_arm ~ match_arm ~ "}" }
+match_keyword     = @{ "match" ~ !ASCII_ALPHANUMERIC }
+match_expr        =  { match_keyword ~ expression ~ "{" ~ match_arm ~ match_arm ~ "}" }
 tuple_expr        =  { "(" ~ ((expression ~ ",")+ ~ expression?)? ~ ")" }
 array_expr        =  { "[" ~ (expression ~ ("," ~ expression)* ~ ","?)? ~ "]" }
 list_expr         =  { "list![" ~ (expression ~ ("," ~ expression)* ~ ","?)? ~ "]" }
