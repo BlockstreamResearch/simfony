@@ -72,6 +72,7 @@ mod tests {
             ),
             ("ctv.simf", "empty.wit"),
             ("function.simf", "empty.wit"),
+            ("hash_loop.simf", "empty.wit"),
             ("list.simf", "empty.wit"),
             ("match.simf", "empty.wit"),
             ("nesting.simf", "empty.wit"),

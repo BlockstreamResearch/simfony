@@ -7,12 +7,12 @@ use either::Either;
 use simplicity::jet::Elements;
 
 use crate::error::{Error, RichError, WithSpan};
-use crate::num::NonZeroPow2Usize;
+use crate::num::{NonZeroPow2Usize, Pow2Usize};
 use crate::parse;
 use crate::parse::{FunctionName, Identifier, MatchPattern, Span, WitnessName};
 use crate::pattern::Pattern;
 use crate::types::{
-    AliasedType, ResolvedType, StructuralType, TypeConstructible, TypeDeconstructible,
+    AliasedType, ResolvedType, StructuralType, TypeConstructible, TypeDeconstructible, UIntType,
 };
 use crate::value::{UIntValue, Value};
 
@@ -251,6 +251,8 @@ pub enum CallName {
     Custom(CustomFunction),
     /// Fold of a bounded list with the given function.
     Fold(CustomFunction, NonZeroPow2Usize),
+    /// Loop over the given function a bounded number of times until it returns success.
+    ForWhile(CustomFunction, Pow2Usize),
 }
 
 /// Definition of a custom function.
@@ -1029,6 +1031,29 @@ impl AbstractSyntaxTree for Call {
                     .map(|(arg_parse, arg_ty)| Expression::analyze(arg_parse, arg_ty, scope))
                     .collect::<Result<Arc<[Expression]>, RichError>>()?
             }
+            CallName::ForWhile(function, _bit_width) => {
+                if from.args.len() != 2 {
+                    return Err(Error::InvalidNumberOfArguments(2, from.args.len()))
+                        .with_span(from);
+                }
+                let out_ty = function.body().ty();
+                if ty != out_ty {
+                    return Err(Error::ExpressionTypeMismatch(ty.clone(), out_ty.clone()))
+                        .with_span(from);
+                }
+                // A for-while loop has the signature:
+                //   for_while::<f>(initial_accumulator: A, readonly_context: C) -> Either<B, A>
+                // where
+                //   fn f(accumulator: A, readonly_context: C, counter: u{N}) -> Either<B, A>
+                //   N is a power of two
+                let accumulator_ty = function.params().first().expect("loopable function").ty();
+                let context_ty = function.params().get(1).expect("loopable function").ty();
+                from.args
+                    .iter()
+                    .zip([accumulator_ty, context_ty])
+                    .map(|(arg_parse, arg_ty)| Expression::analyze(arg_parse, arg_ty, scope))
+                    .collect::<Result<Arc<[Expression]>, RichError>>()?
+            }
         };
 
         Ok(Self {
@@ -1091,6 +1116,39 @@ impl AbstractSyntaxTree for CallName {
                     Err(Error::FunctionNotFoldable(name.clone())).with_span(from)
                 } else {
                     Ok(Self::Fold(function, *bound))
+                }
+            }
+            parse::CallName::ForWhile(name) => {
+                let function = scope
+                    .get_function(name)
+                    .cloned()
+                    .ok_or(Error::FunctionUndefined(name.clone()))
+                    .with_span(from)?;
+                // A function that is used in a for-while loop has the signature:
+                //   fn f(accumulator: A, readonly_context: C, counter: u{N}) -> Either<B, A>
+                // where
+                //   N is a power of two
+                if function.params().len() != 3 {
+                    return Err(Error::FunctionNotLoopable(name.clone())).with_span(from);
+                }
+                match function.body().ty().as_either() {
+                    Some((_, out_r)) if out_r == function.params().first().unwrap().ty() => {}
+                    _ => {
+                        return Err(Error::FunctionNotLoopable(name.clone())).with_span(from);
+                    }
+                }
+                // Disable loops for u32 or higher since no one will want to run
+                // 2^32 = 4294967296 ≈ 4 billion iterations.
+                // The resulting Simplicity program will not fit into a Bitcoin block.
+                match function.params().get(2).unwrap().ty().as_integer() {
+                    Some(
+                        int_ty @ (UIntType::U1
+                        | UIntType::U2
+                        | UIntType::U4
+                        | UIntType::U8
+                        | UIntType::U16),
+                    ) => Ok(Self::ForWhile(function, int_ty.bit_width())),
+                    _ => Err(Error::FunctionNotLoopable(name.clone())).with_span(from),
                 }
             }
         }

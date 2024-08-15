@@ -1,0 +1,32 @@
+// Add counter to streaming hash and finalize when the loop exists
+fn hash_counter_8(ctx: Ctx8, unused: (), byte: u8) -> Either<u256, Ctx8> {
+    let new_ctx: Ctx8 = jet::sha_256_ctx_8_add_1(ctx, byte);
+    match jet::all_8(byte) {
+        true => Left(jet::sha_256_ctx_8_finalize(new_ctx)),
+        false => Right(new_ctx),
+    }
+}
+
+// Add counter to streaming hash and finalize when the loop exists
+fn hash_counter_16(ctx: Ctx8, unused: (), bytes: u16) -> Either<u256, Ctx8> {
+    let new_ctx: Ctx8 = jet::sha_256_ctx_8_add_2(ctx, bytes);
+    match jet::all_16(bytes) {
+        true => Left(jet::sha_256_ctx_8_finalize(new_ctx)),
+        false => Right(new_ctx),
+    }
+}
+
+fn main() {
+    // Hash bytes 0x00 to 0xff
+    let ctx: Ctx8 = jet::sha_256_ctx_8_init();
+    let out: Either<u256, Ctx8> = for_while::<hash_counter_8>(ctx, ());
+    let expected: u256 = 0x40aff2e9d2d8922e47afd4648e6967497158785fbd1da870e7110266bf944880;
+    assert!(jet::eq_256(expected, unwrap_left::<Ctx8>(out)));
+
+    // Hash bytes 0x0000 to 0xffff
+    // This takes ~10 seconds on my computer
+    // let ctx: Ctx8 = jet::sha_256_ctx_8_init();
+    // let out: Either<u256, Ctx8> = for_while::<hash_counter_16>(ctx, ());
+    // let expected: u256 = 0x281f79f89f0121c31db2bea5d7151db246349b25f5901c114505c18bfaa50ba1;
+    // assert!(jet::eq_256(expected, unwrap_left::<Ctx8>(out)));
+}

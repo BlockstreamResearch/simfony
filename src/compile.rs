@@ -14,7 +14,7 @@ use crate::ast::{
 };
 use crate::error::{Error, RichError, WithSpan};
 use crate::named::{CoreExt, PairBuilder};
-use crate::num::NonZeroPow2Usize;
+use crate::num::{NonZeroPow2Usize, Pow2Usize};
 use crate::pattern::{BasePattern, Pattern};
 use crate::types::{StructuralType, TypeDeconstructible};
 use crate::value::StructuralValue;
@@ -323,6 +323,12 @@ impl Call {
                 let fold_body = list_fold(*bound, body.as_ref()).with_span(self)?;
                 args.comp(&fold_body).with_span(self)
             }
+            CallName::ForWhile(function, bit_width) => {
+                let mut function_scope = Scope::new(function.params_pattern());
+                let body = function.body().compile(&mut function_scope)?;
+                let fold_body = for_while(*bit_width, body).with_span(self)?;
+                args.comp(&fold_body).with_span(self)
+            }
         }
     }
 }
@@ -390,6 +396,117 @@ fn list_fold(bound: NonZeroPow2Usize, f: &ProgNode) -> Result<ProgNode, simplici
     }
 
     Ok(f_fold)
+}
+
+/// Run a function at most `2^(2^n)` times and return the first successful output.
+///
+/// Function `f: A × (C × 2^(2^(2^n))) → B + A`
+/// takes an accumulator of type `A`, a readonly context of type `C`,
+/// and a counter of type `2^(2^(2^n))` (unsigned integer of 2^n bits).
+///
+/// `f` may return a left `B` value, which is a successful output value.
+/// In this case, the loop exists and returns this value.
+///
+/// Otherwise, the `f` returns a right `A` value, which is the updated accumulator.
+/// In this case, the loop continues without returning anything.
+/// The loop returns the final iterator after the final iteration
+/// if `f` never returned a successful output.
+fn for_while(
+    bit_width: Pow2Usize,
+    f: PairBuilder<ProgNode>,
+) -> Result<PairBuilder<ProgNode>, simplicity::types::Error> {
+    /* for_while_0 f :  E × A → A
+     * for_while_0 f := (OH ▵ (IH ▵ false); f) ▵ IH;
+     *                  case (injl OH)
+     *                       (OH ▵ (IH ▵ true); f)
+     */
+    fn for_while_0(f: &ProgNode) -> Result<PairBuilder<ProgNode>, simplicity::types::Error> {
+        let f_output = ProgNode::o()
+            .h()
+            .pair(ProgNode::i().h().pair(ProgNode::bit(false)))
+            .comp(f)?;
+        let case_input = f_output.pair(ProgNode::i().h());
+
+        let x = ProgNode::injl(ProgNode::o().h().as_ref());
+        let f_output = ProgNode::o()
+            .h()
+            .pair(ProgNode::i().h().pair(ProgNode::bit(true)))
+            .comp(f)?;
+        let case_output = ProgNode::case(&x, f_output.as_ref())?;
+
+        case_input.comp(&case_output)
+    }
+
+    /* adapt f :  A × ((C × 2^(2^n)) × 2^(2^n)) → B + A
+     * adapt f := OH ▵ (IOOH ▵ (IOIH ▵ IIH)); f
+     * where
+     *       f :  A × (C × 2^(2^(n + 1))) → B + A
+     */
+    fn adapt_f(f: &ProgNode) -> Result<PairBuilder<ProgNode>, simplicity::types::Error> {
+        let f_input = ProgNode::o().h().pair(
+            ProgNode::i()
+                .o()
+                .o()
+                .h()
+                .pair(ProgNode::i().o().i().h().pair(ProgNode::i().i().h())),
+        );
+        f_input.comp(f)
+    }
+
+    /* for_while_(n + 1) f :  E × A → A
+     * for_while_(n + 1) f := for_while_n $ for_while_n $ adapt $ f
+     *
+     * If we write "0" for "for_while_0" and "1" for "adapt" and "." for function composition,
+     * then the extended pattern looks like this:
+     *
+     * for_while_0 f := 0 . f
+     * for_while_1 f := 0 . 0 . 1 . f
+     * for_while_2 f := 0 . 0 . 1 . 0 . 0 . 1 . 1 . f
+     * for_while_3 f := 0 . 0 . 1 . 0 . 0 . 1 . 1 . 0 . 0 . 1 . 0 . 0 . 1 . 1 . 1 . f
+     *
+     * The sequence of zeroes and ones starts with a single 0.
+     * The next sequence is two copies of the previous sequence plus a final 1.
+     *
+     * The following Rust code implements this behavior:
+     * First, a stack of zeroes is allocated. We know its final size, so we allocate exactly once.
+     * The stack is repeatedly copied into itself to produce the seeked sequence of zeroes and ones.
+     * Finally, "for_while_0" and "adapt" are applied to "f" by popping from the stack.
+     */
+    #[derive(Debug, Copy, Clone)]
+    enum Task {
+        /// "Zero"
+        ForWhile0,
+        /// "One"
+        Adapt,
+    }
+    let max_stack = bit_width.mul2().get() - 1;
+    let mut stack = vec![Task::ForWhile0; max_stack];
+
+    let mut i = Pow2Usize::ONE.mul2();
+    while i <= bit_width {
+        let index = i.get() - 1;
+        let (prefix, tail) = stack.as_mut_slice().split_at_mut(index);
+        let suffix = &mut tail[..index];
+        debug_assert_eq!(prefix.len(), suffix.len());
+        suffix.copy_from_slice(prefix);
+        tail[index] = Task::Adapt;
+        i = i.mul2();
+    }
+
+    let mut for_while_f = f;
+
+    while let Some(task) = stack.pop() {
+        match task {
+            Task::ForWhile0 => {
+                for_while_f = for_while_0(for_while_f.as_ref())?;
+            }
+            Task::Adapt => {
+                for_while_f = adapt_f(for_while_f.as_ref())?;
+            }
+        }
+    }
+
+    Ok(for_while_f)
 }
 
 impl Match {
