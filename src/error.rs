@@ -29,9 +29,17 @@ impl Position {
     /// ## Panics
     ///
     /// Line or column are zero.
-    pub fn new(line: usize, col: usize) -> Self {
-        let line = NonZeroUsize::new(line).expect("PEST lines start at 1");
-        let col = NonZeroUsize::new(col).expect("PEST columns start at 1");
+    pub const fn new(line: usize, col: usize) -> Self {
+        if line == 0 {
+            panic!("Line must not be zero");
+        }
+        // Safety: Checked above
+        let line = unsafe { NonZeroUsize::new_unchecked(line) };
+        if col == 0 {
+            panic!("Column must not be zero");
+        }
+        // Safety: Checked above
+        let col = unsafe { NonZeroUsize::new_unchecked(col) };
         Self { line, col }
     }
 }
@@ -55,18 +63,23 @@ impl Span {
     /// ## Panics
     ///
     /// Start comes after end.
-    pub fn new(start: Position, end: Position) -> Self {
-        assert!(start.line <= end.line, "Start cannot come after end");
+    pub const fn new(start: Position, end: Position) -> Self {
+        // NonZeroUsize does not implement const comparisons (yet)
+        // So we call NonZeroUsize:get() to compare usize in const
         assert!(
-            start.line < end.line || start.col <= end.col,
+            start.line.get() <= end.line.get(),
+            "Start cannot come after end"
+        );
+        assert!(
+            start.line.get() < end.line.get() || start.col.get() <= end.col.get(),
             "Start cannot come after end"
         );
         Self { start, end }
     }
 
     /// Check if the span covers more than one line.
-    pub fn is_multiline(&self) -> bool {
-        self.start.line < self.end.line
+    pub const fn is_multiline(&self) -> bool {
+        self.start.line.get() < self.end.line.get()
     }
 }
 
