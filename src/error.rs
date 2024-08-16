@@ -4,7 +4,8 @@ use std::sync::Arc;
 
 use simplicity::elements;
 
-use crate::parse::{FunctionName, Identifier, JetName, MatchPattern, Rule, WitnessName};
+use crate::parse::{MatchPattern, Rule};
+use crate::str::{FunctionName, Identifier, JetName, WitnessName};
 use crate::types::{ResolvedType, UIntType};
 
 /// Position of an object inside a file.

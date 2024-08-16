@@ -8,7 +8,7 @@ use miniscript::iter::{Tree, TreeLike};
 use crate::array::BTreeSlice;
 use crate::error::Error;
 use crate::named::{PairBuilder, SelectorBuilder};
-use crate::parse::Identifier;
+use crate::str::Identifier;
 use crate::types::{ResolvedType, TypeInner};
 use crate::ProgNode;
 

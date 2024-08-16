@@ -12,6 +12,7 @@ pub mod named;
 pub mod num;
 pub mod parse;
 pub mod pattern;
+pub mod str;
 pub mod types;
 pub mod value;
 pub mod witness;

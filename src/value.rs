@@ -8,7 +8,8 @@ use simplicity::Value as SimValue;
 use crate::array::{BTreeSlice, Partition};
 use crate::error::Error;
 use crate::num::{NonZeroPow2Usize, U256};
-use crate::parse::{self, Bits, Bytes, UnsignedDecimal};
+use crate::parse::{self, Bits, Bytes};
+use crate::str::UnsignedDecimal;
 use crate::types::{ResolvedType, StructuralType, TypeConstructible, TypeInner, UIntType};
 
 /// Unsigned integer value.

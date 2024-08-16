@@ -10,7 +10,7 @@ use simplicity::types::arrow::Arrow;
 use simplicity::{types, CommitNode, FailEntropy};
 use simplicity::{Cmr, WitnessNode};
 
-use crate::parse::WitnessName;
+use crate::str::WitnessName;
 use crate::value::{StructuralValue, TypedValue};
 use crate::witness::WitnessValues;
 

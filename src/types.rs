@@ -7,7 +7,7 @@ use simplicity::types::{CompleteBound, Final};
 
 use crate::array::{BTreeSlice, Partition};
 use crate::num::{NonZeroPow2Usize, Pow2Usize};
-use crate::parse::Identifier;
+use crate::str::Identifier;
 
 /// Primitives of the Simfony type system, excluding type aliases.
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]

@@ -15,41 +15,12 @@ use simplicity::elements::hex::FromHex;
 use crate::error::{Error, RichError, Span, WithFile, WithSpan};
 use crate::num::NonZeroPow2Usize;
 use crate::pattern::Pattern;
+use crate::str::{FunctionName, Identifier, JetName, UnsignedDecimal, WitnessName};
 use crate::types::{AliasedType, BuiltinAlias, TypeConstructible, UIntType};
 
 #[derive(Parser)]
 #[grammar = "minimal.pest"]
 struct IdentParser;
-
-/// Implementations for newtypes that wrap [`Arc<str>`].
-macro_rules! wrapped_string {
-    ($wrapper:ident) => {
-        impl $wrapper {
-            /// Access the inner string.
-            pub fn as_inner(&self) -> &str {
-                self.0.as_ref()
-            }
-
-            /// Create a wrapped string without checking for validity.
-            #[cfg(test)]
-            pub fn from_str_unchecked(s: &str) -> Self {
-                Self(std::sync::Arc::from(s))
-            }
-        }
-
-        impl std::fmt::Display for $wrapper {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                std::fmt::Display::fmt(&self.0, f)
-            }
-        }
-
-        impl std::fmt::Debug for $wrapper {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                std::fmt::Display::fmt(&self.0, f)
-            }
-        }
-    };
-}
 
 /// A program is a sequence of items.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -127,19 +98,6 @@ impl FunctionParam {
     }
 }
 
-/// Name of a function.
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct FunctionName(Arc<str>);
-
-wrapped_string!(FunctionName);
-
-impl FunctionName {
-    /// Return the name of the main function.
-    pub fn main() -> Self {
-        Self(Arc::from("main"))
-    }
-}
-
 /// A statement is a component of a block expression.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Statement {
@@ -148,12 +106,6 @@ pub enum Statement {
     /// An expression that returns nothing (the unit value).
     Expression(Expression),
 }
-
-/// Identifier of a variable.
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct Identifier(Arc<str>);
-
-wrapped_string!(Identifier);
 
 /// The output of an expression is assigned to a pattern.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -205,12 +157,6 @@ pub enum CallName {
     /// Loop over the given function a bounded number of times until it returns success.
     ForWhile(FunctionName),
 }
-
-/// Name of a jet.
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct JetName(Arc<str>);
-
-wrapped_string!(JetName);
 
 /// A type alias.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -289,12 +235,6 @@ pub enum SingleExpressionInner {
     /// The exclusive upper bound on the list size is not known at this point
     List(Arc<[Expression]>),
 }
-
-/// Valid unsigned decimal string.
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct UnsignedDecimal(Arc<str>);
-
-wrapped_string!(UnsignedDecimal);
 
 /// Bit string whose length is a power of two.
 ///
@@ -388,12 +328,6 @@ impl AsRef<[u8]> for Bytes {
         self.0.as_ref()
     }
 }
-
-/// String that is a witness name.
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct WitnessName(Arc<str>);
-
-wrapped_string!(WitnessName);
 
 /// Match expression.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -602,8 +536,7 @@ impl PestParse for FunctionName {
 
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Self::RULE));
-        let name = Arc::from(pair.as_str());
-        Ok(Self(name))
+        Ok(Self::from_str_unchecked(pair.as_str()))
     }
 }
 
@@ -677,8 +610,7 @@ impl PestParse for Identifier {
 
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Self::RULE));
-        let identifier = Arc::from(pair.as_str());
-        Ok(Identifier(identifier))
+        Ok(Self::from_str_unchecked(pair.as_str()))
     }
 }
 
@@ -772,7 +704,7 @@ impl PestParse for JetName {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Self::RULE));
         let jet_name = pair.as_str().strip_prefix("jet::").unwrap();
-        Ok(Self(Arc::from(jet_name)))
+        Ok(Self::from_str_unchecked(jet_name))
     }
 }
 
@@ -905,8 +837,8 @@ impl PestParse for UnsignedDecimal {
 
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Self::RULE));
-        let decimal = Arc::from(pair.as_str().replace('_', ""));
-        Ok(Self(decimal))
+        let decimal = pair.as_str().replace('_', "");
+        Ok(Self::from_str_unchecked(decimal.as_str()))
     }
 }
 
@@ -985,8 +917,7 @@ impl PestParse for WitnessName {
 
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Self::RULE));
-        let name = Arc::from(pair.as_str());
-        Ok(Self(name))
+        Ok(Self::from_str_unchecked(pair.as_str()))
     }
 }
 

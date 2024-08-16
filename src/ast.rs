@@ -9,8 +9,9 @@ use simplicity::jet::Elements;
 use crate::error::{Error, RichError, Span, WithSpan};
 use crate::num::{NonZeroPow2Usize, Pow2Usize};
 use crate::parse;
-use crate::parse::{FunctionName, Identifier, MatchPattern, WitnessName};
+use crate::parse::MatchPattern;
 use crate::pattern::Pattern;
+use crate::str::{FunctionName, Identifier, WitnessName};
 use crate::types::{
     AliasedType, ResolvedType, StructuralType, TypeConstructible, TypeDeconstructible, UIntType,
 };
