@@ -40,6 +40,7 @@ impl_eq_hash!(Program; items);
 
 /// An item is a component of a program.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum Item {
     /// A type alias.
     TypeAlias(TypeAlias),
@@ -85,6 +86,7 @@ impl_eq_hash!(Function; name, params, ret, body);
 
 /// Parameter of a function.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct FunctionParam {
     identifier: Identifier,
     ty: AliasedType,
@@ -163,6 +165,7 @@ impl_eq_hash!(Call; name, args);
 
 /// Name of a call.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum CallName {
     /// Name of a jet.
     Jet(JetName),
@@ -190,6 +193,7 @@ pub enum CallName {
 
 /// A type alias.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct TypeAlias {
     name: Identifier,
     ty: AliasedType,
@@ -224,6 +228,18 @@ impl Expression {
     /// Access the inner expression.
     pub fn inner(&self) -> &ExpressionInner {
         &self.inner
+    }
+
+    /// Convert the expression into a block expression.
+    #[cfg(feature = "arbitrary")]
+    fn into_block(self) -> Self {
+        match self.inner {
+            ExpressionInner::Single(_) => Expression {
+                span: self.span,
+                inner: ExpressionInner::Block(Arc::from([]), Some(Arc::new(self))),
+            },
+            _ => self,
+        }
     }
 }
 
@@ -352,6 +368,7 @@ impl MatchArm {
 
 /// Pattern of a match arm.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum MatchPattern {
     /// Bind inner value of left value to variable name.
     Left(Identifier, AliasedType),
@@ -1449,5 +1466,242 @@ impl AsRef<Span> for Call {
 impl AsRef<Span> for Match {
     fn as_ref(&self) -> &Span {
         &self.span
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for Program {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        let len = u.int_in_range(0..=3)?;
+        let items = (0..len)
+            .map(|_| Item::arbitrary(u))
+            .collect::<arbitrary::Result<Arc<[Item]>>>()?;
+        Ok(Self {
+            items,
+            span: Span::DUMMY,
+        })
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for Function {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        <Self as crate::ArbitraryRec>::arbitrary_rec(u, 3)
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl crate::ArbitraryRec for Function {
+    fn arbitrary_rec(u: &mut arbitrary::Unstructured, budget: usize) -> arbitrary::Result<Self> {
+        use arbitrary::Arbitrary;
+
+        let name = FunctionName::arbitrary(u)?;
+        let len = u.int_in_range(0..=3)?;
+        let params = (0..len)
+            .map(|_| FunctionParam::arbitrary(u))
+            .collect::<arbitrary::Result<Arc<[FunctionParam]>>>()?;
+        let ret = Option::<AliasedType>::arbitrary(u)?;
+        let body = Expression::arbitrary_rec(u, budget).map(Expression::into_block)?;
+        Ok(Self {
+            name,
+            params,
+            ret,
+            body,
+            span: Span::DUMMY,
+        })
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl crate::ArbitraryRec for Expression {
+    fn arbitrary_rec(u: &mut arbitrary::Unstructured, budget: usize) -> arbitrary::Result<Self> {
+        use arbitrary::Arbitrary;
+
+        let inner = match budget.checked_sub(1) {
+            None => SingleExpression::arbitrary_rec(u, budget).map(ExpressionInner::Single),
+            Some(new_budget) => match bool::arbitrary(u)? {
+                false => SingleExpression::arbitrary_rec(u, budget).map(ExpressionInner::Single),
+                true => {
+                    let len = u.int_in_range(0..=3)?;
+                    let statements = (0..len)
+                        .map(|_| Statement::arbitrary_rec(u, new_budget))
+                        .collect::<arbitrary::Result<Arc<[Statement]>>>()?;
+                    let maybe_single = match bool::arbitrary(u)? {
+                        false => None,
+                        true => Expression::arbitrary_rec(u, new_budget)
+                            .map(Arc::new)
+                            .map(Some)?,
+                    };
+                    Ok(ExpressionInner::Block(statements, maybe_single))
+                }
+            },
+        }?;
+        Ok(Self {
+            inner,
+            span: Span::DUMMY,
+        })
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl crate::ArbitraryRec for Statement {
+    fn arbitrary_rec(u: &mut arbitrary::Unstructured, budget: usize) -> arbitrary::Result<Self> {
+        use arbitrary::Arbitrary;
+
+        match bool::arbitrary(u)? {
+            false => Assignment::arbitrary_rec(u, budget).map(Self::Assignment),
+            true => Expression::arbitrary_rec(u, budget).map(Self::Expression),
+        }
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl crate::ArbitraryRec for Assignment {
+    fn arbitrary_rec(u: &mut arbitrary::Unstructured, budget: usize) -> arbitrary::Result<Self> {
+        use arbitrary::Arbitrary;
+
+        let pattern = Pattern::arbitrary(u)?;
+        let ty = AliasedType::arbitrary(u)?;
+        let expression = Expression::arbitrary_rec(u, budget)?;
+
+        Ok(Self {
+            pattern,
+            ty,
+            expression,
+            span: Span::DUMMY,
+        })
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl crate::ArbitraryRec for SingleExpression {
+    fn arbitrary_rec(u: &mut arbitrary::Unstructured, budget: usize) -> arbitrary::Result<Self> {
+        use arbitrary::Arbitrary;
+        use SingleExpressionInner as S;
+
+        let inner = match budget.checked_sub(1) {
+            None => match u.int_in_range(0..=6)? {
+                0 => bool::arbitrary(u).map(S::Boolean),
+                1 => Binary::arbitrary(u).map(S::Binary),
+                2 => Decimal::arbitrary(u).map(S::Decimal),
+                3 => Hexadecimal::arbitrary(u).map(S::Hexadecimal),
+                4 => Identifier::arbitrary(u).map(S::Variable),
+                5 => WitnessName::arbitrary(u).map(S::Witness),
+                6 => Ok(S::Option(None)),
+                _ => unreachable!(),
+            },
+            Some(new_budget) => match u.int_in_range(0..=15)? {
+                0 => bool::arbitrary(u).map(S::Boolean),
+                1 => Binary::arbitrary(u).map(S::Binary),
+                2 => Decimal::arbitrary(u).map(S::Decimal),
+                3 => Hexadecimal::arbitrary(u).map(S::Hexadecimal),
+                4 => Identifier::arbitrary(u).map(S::Variable),
+                5 => WitnessName::arbitrary(u).map(S::Witness),
+                6 => Ok(S::Option(None)),
+                7 => Expression::arbitrary_rec(u, new_budget)
+                    .map(Arc::new)
+                    .map(Some)
+                    .map(S::Option),
+                8 => Expression::arbitrary_rec(u, new_budget)
+                    .map(Arc::new)
+                    .map(Either::Left)
+                    .map(S::Either),
+                9 => Expression::arbitrary_rec(u, new_budget)
+                    .map(Arc::new)
+                    .map(Either::Right)
+                    .map(S::Either),
+                10 => Expression::arbitrary_rec(u, new_budget)
+                    .map(Arc::new)
+                    .map(S::Expression),
+                11 => Call::arbitrary_rec(u, new_budget).map(S::Call),
+                12 => Match::arbitrary_rec(u, new_budget).map(S::Match),
+                13 => {
+                    let len = u.int_in_range(0..=3)?;
+                    (0..len)
+                        .map(|_| Expression::arbitrary_rec(u, new_budget))
+                        .collect::<arbitrary::Result<Arc<[Expression]>>>()
+                        .map(S::Tuple)
+                }
+                14 => {
+                    let len = u.int_in_range(0..=3)?;
+                    (0..len)
+                        .map(|_| Expression::arbitrary_rec(u, new_budget))
+                        .collect::<arbitrary::Result<Arc<[Expression]>>>()
+                        .map(S::Array)
+                }
+                15 => {
+                    let len = u.int_in_range(0..=3)?;
+                    let elements = (0..len)
+                        .map(|_| Expression::arbitrary_rec(u, new_budget))
+                        .collect::<arbitrary::Result<Arc<[Expression]>>>()?;
+                    Ok(S::List(elements))
+                }
+                _ => unreachable!(),
+            },
+        }?;
+        Ok(Self {
+            inner,
+            span: Span::DUMMY,
+        })
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl crate::ArbitraryRec for Call {
+    fn arbitrary_rec(u: &mut arbitrary::Unstructured, budget: usize) -> arbitrary::Result<Self> {
+        use arbitrary::Arbitrary;
+
+        let name = CallName::arbitrary(u)?;
+        let len = u.int_in_range(0..=3)?;
+        let args = (0..len)
+            .map(|_| Expression::arbitrary_rec(u, budget))
+            .collect::<arbitrary::Result<Arc<[Expression]>>>()?;
+        Ok(Self {
+            name,
+            args,
+            span: Span::DUMMY,
+        })
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl crate::ArbitraryRec for Match {
+    fn arbitrary_rec(u: &mut arbitrary::Unstructured, budget: usize) -> arbitrary::Result<Self> {
+        use arbitrary::Arbitrary;
+
+        let scrutinee = Expression::arbitrary_rec(u, budget).map(Arc::new)?;
+        let (pat_l, pat_r) = match u.int_in_range(0..=2)? {
+            0 => {
+                let id_l = Identifier::arbitrary(u)?;
+                let ty_l = AliasedType::arbitrary(u)?;
+                let pat_l = MatchPattern::Left(id_l, ty_l);
+                let id_r = Identifier::arbitrary(u)?;
+                let ty_r = AliasedType::arbitrary(u)?;
+                let pat_r = MatchPattern::Right(id_r, ty_r);
+                (pat_l, pat_r)
+            }
+            1 => {
+                let id_r = Identifier::arbitrary(u)?;
+                let ty_r = AliasedType::arbitrary(u)?;
+                let pat_r = MatchPattern::Some(id_r, ty_r);
+                (MatchPattern::None, pat_r)
+            }
+            2 => (MatchPattern::False, MatchPattern::True),
+            _ => unreachable!(),
+        };
+        let expr_l = Expression::arbitrary_rec(u, budget).map(Arc::new)?;
+        let expr_r = Expression::arbitrary_rec(u, budget).map(Arc::new)?;
+        Ok(Self {
+            scrutinee,
+            left: MatchArm {
+                pattern: pat_l,
+                expression: expr_l,
+            },
+            right: MatchArm {
+                pattern: pat_r,
+                expression: expr_r,
+            },
+            span: Span::DUMMY,
+        })
     }
 }

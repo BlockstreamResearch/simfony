@@ -24,6 +24,10 @@ pub struct Position {
 }
 
 impl Position {
+    /// A dummy position.
+    #[cfg(feature = "arbitrary")]
+    pub(crate) const DUMMY: Self = Self::new(1, 1);
+
     /// Create a new position.
     ///
     /// ## Panics
@@ -58,6 +62,10 @@ pub struct Span {
 }
 
 impl Span {
+    /// A dummy span.
+    #[cfg(feature = "arbitrary")]
+    pub(crate) const DUMMY: Self = Self::new(Position::DUMMY, Position::DUMMY);
+
     /// Create a new span.
     ///
     /// ## Panics
@@ -105,6 +113,13 @@ impl<'a> From<&'a str> for Span {
         debug_assert!(start.line <= end.line);
         debug_assert!(start.line < end.line || start.col <= end.col);
         Span::new(start, end)
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for Span {
+    fn arbitrary(_: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(Self::DUMMY)
     }
 }
 
