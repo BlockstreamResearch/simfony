@@ -2,7 +2,6 @@
 //! tokens into an AST.
 
 use std::fmt;
-use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -13,7 +12,7 @@ use pest::Parser;
 use pest_derive::Parser;
 use simplicity::elements::hex::FromHex;
 
-use crate::error::{Error, RichError, WithFile, WithSpan};
+use crate::error::{Error, RichError, Span, WithFile, WithSpan};
 use crate::num::NonZeroPow2Usize;
 use crate::pattern::Pattern;
 use crate::types::{AliasedType, BuiltinAlias, TypeConstructible, UIntType};
@@ -21,93 +20,6 @@ use crate::types::{AliasedType, BuiltinAlias, TypeConstructible, UIntType};
 #[derive(Parser)]
 #[grammar = "minimal.pest"]
 struct IdentParser;
-
-/// Position of an object inside a file.
-///
-/// [`pest::Position<'i>`] forces us to track lifetimes, so we introduce our own struct.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Position {
-    /// Line where the object is located.
-    ///
-    /// Starts at 1.
-    pub line: NonZeroUsize,
-    /// Column where the object is located.
-    ///
-    /// Starts at 1.
-    pub col: NonZeroUsize,
-}
-
-impl Position {
-    /// Create a new position.
-    ///
-    /// ## Panics
-    ///
-    /// Line or column are zero.
-    pub fn new(line: usize, col: usize) -> Self {
-        let line = NonZeroUsize::new(line).expect("PEST lines start at 1");
-        let col = NonZeroUsize::new(col).expect("PEST columns start at 1");
-        Self { line, col }
-    }
-}
-
-/// Area that an object spans inside a file.
-///
-/// The area cannot be empty.
-///
-/// [`pest::Span<'i>`] forces us to track lifetimes, so we introduce our own struct.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Span {
-    /// Position where the object starts, inclusively.
-    pub start: Position,
-    /// Position where the object ends, inclusively.
-    pub end: Position,
-}
-
-impl Span {
-    /// Create a new span.
-    ///
-    /// ## Panics
-    ///
-    /// Start comes after end.
-    pub fn new(start: Position, end: Position) -> Self {
-        assert!(start.line <= end.line, "Start cannot come after end");
-        assert!(
-            start.line < end.line || start.col <= end.col,
-            "Start cannot come after end"
-        );
-        Self { start, end }
-    }
-
-    /// Check if the span covers more than one line.
-    pub fn is_multiline(&self) -> bool {
-        self.start.line < self.end.line
-    }
-}
-
-impl<'a> From<&'a pest::iterators::Pair<'_, Rule>> for Span {
-    fn from(pair: &'a pest::iterators::Pair<Rule>) -> Self {
-        let (line, col) = pair.line_col();
-        let start = Position::new(line, col);
-        // end_pos().line_col() is O(n) in file length
-        // https://github.com/pest-parser/pest/issues/560
-        // We should generate `Span`s only on error paths
-        let (line, col) = pair.as_span().end_pos().line_col();
-        let end = Position::new(line, col);
-        Self::new(start, end)
-    }
-}
-
-impl<'a> From<&'a str> for Span {
-    fn from(s: &str) -> Self {
-        let start = Position::new(1, 1);
-        let end_line = std::cmp::max(1, s.lines().count());
-        let end_col = std::cmp::max(1, s.lines().next_back().unwrap_or("").len());
-        let end = Position::new(end_line, end_col);
-        debug_assert!(start.line <= end.line);
-        debug_assert!(start.line < end.line || start.col <= end.col);
-        Span::new(start, end)
-    }
-}
 
 /// Implementations for newtypes that wrap [`Arc<str>`].
 macro_rules! wrapped_string {

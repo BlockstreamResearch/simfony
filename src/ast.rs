@@ -6,10 +6,10 @@ use std::sync::Arc;
 use either::Either;
 use simplicity::jet::Elements;
 
-use crate::error::{Error, RichError, WithSpan};
+use crate::error::{Error, RichError, Span, WithSpan};
 use crate::num::{NonZeroPow2Usize, Pow2Usize};
 use crate::parse;
-use crate::parse::{FunctionName, Identifier, MatchPattern, Span, WitnessName};
+use crate::parse::{FunctionName, Identifier, MatchPattern, WitnessName};
 use crate::pattern::Pattern;
 use crate::types::{
     AliasedType, ResolvedType, StructuralType, TypeConstructible, TypeDeconstructible, UIntType,
