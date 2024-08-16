@@ -117,9 +117,9 @@ wrapped_string!(JetName);
 
 /// A string of decimal digits.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct UnsignedDecimal(Arc<str>);
+pub struct Decimal(Arc<str>);
 
-impl UnsignedDecimal {
+impl Decimal {
     /// Create a decimal string.
     ///
     /// ## Precondition
@@ -134,4 +134,4 @@ impl UnsignedDecimal {
     }
 }
 
-wrapped_string!(UnsignedDecimal);
+wrapped_string!(Decimal);

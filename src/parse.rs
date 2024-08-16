@@ -15,7 +15,7 @@ use simplicity::elements::hex::FromHex;
 use crate::error::{Error, RichError, Span, WithFile, WithSpan};
 use crate::num::NonZeroPow2Usize;
 use crate::pattern::Pattern;
-use crate::str::{FunctionName, Identifier, JetName, UnsignedDecimal, WitnessName};
+use crate::str::{Decimal, FunctionName, Identifier, JetName, WitnessName};
 use crate::types::{AliasedType, BuiltinAlias, TypeConstructible, UIntType};
 
 #[derive(Parser)]
@@ -211,7 +211,7 @@ pub enum SingleExpressionInner {
     /// Boolean literal expression
     Boolean(bool),
     /// Unsigned integer literal in decimal representation
-    Decimal(UnsignedDecimal),
+    Decimal(Decimal),
     /// Unsigned integer literal in bit string representation
     BitString(Bits),
     /// Unsigned integer literal in byte string representation
@@ -791,9 +791,7 @@ impl PestParse for SingleExpression {
             Rule::call_expr => SingleExpressionInner::Call(Call::parse(inner_pair)?),
             Rule::bit_string => Bits::parse(inner_pair).map(SingleExpressionInner::BitString)?,
             Rule::byte_string => Bytes::parse(inner_pair).map(SingleExpressionInner::ByteString)?,
-            Rule::unsigned_decimal => {
-                UnsignedDecimal::parse(inner_pair).map(SingleExpressionInner::Decimal)?
-            }
+            Rule::dec_literal => Decimal::parse(inner_pair).map(SingleExpressionInner::Decimal)?,
             Rule::witness_expr => {
                 let witness_pair = inner_pair.into_inner().next().unwrap();
                 SingleExpressionInner::Witness(WitnessName::parse(witness_pair)?)
@@ -832,8 +830,8 @@ impl PestParse for SingleExpression {
     }
 }
 
-impl PestParse for UnsignedDecimal {
-    const RULE: Rule = Rule::unsigned_decimal;
+impl PestParse for Decimal {
+    const RULE: Rule = Rule::dec_literal;
 
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Self::RULE));

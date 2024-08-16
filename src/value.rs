@@ -9,7 +9,7 @@ use crate::array::{BTreeSlice, Partition};
 use crate::error::Error;
 use crate::num::{NonZeroPow2Usize, U256};
 use crate::parse::{self, Bits, Bytes};
-use crate::str::UnsignedDecimal;
+use crate::str::Decimal;
 use crate::types::{ResolvedType, StructuralType, TypeConstructible, TypeInner, UIntType};
 
 /// Unsigned integer value.
@@ -109,7 +109,7 @@ impl UIntValue {
     }
 
     /// Create an integer from a `decimal` string and type.
-    pub fn parse_decimal(decimal: &UnsignedDecimal, ty: UIntType) -> Result<Self, Error> {
+    pub fn parse_decimal(decimal: &Decimal, ty: UIntType) -> Result<Self, Error> {
         let s = decimal.as_inner();
         match ty {
             UIntType::U1 => s.parse::<u8>().map_err(Error::from).and_then(Self::u1),
