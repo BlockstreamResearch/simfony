@@ -20,7 +20,7 @@ use crate::types::{AliasedType, BuiltinAlias, TypeConstructible, UIntType};
 
 #[derive(Parser)]
 #[grammar = "minimal.pest"]
-pub struct IdentParser;
+struct IdentParser;
 
 /// Position of an object inside a file.
 ///
