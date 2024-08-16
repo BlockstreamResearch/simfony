@@ -738,20 +738,20 @@ impl AbstractSyntaxTree for SingleExpression {
                     .map(Value::from)
                     .map(SingleExpressionInner::Constant)?
             }
-            parse::SingleExpressionInner::BitString(bits) => {
+            parse::SingleExpressionInner::Binary(bits) => {
                 let ty = ty
                     .as_integer()
                     .ok_or(Error::TypeValueMismatch(ty.clone()))
                     .with_span(from)?;
-                let value = UIntValue::parse_bits(bits, ty).with_span(from)?;
+                let value = UIntValue::parse_binary(bits, ty).with_span(from)?;
                 SingleExpressionInner::Constant(Value::from(value))
             }
-            parse::SingleExpressionInner::ByteString(bytes) => {
+            parse::SingleExpressionInner::Hexadecimal(bytes) => {
                 let ty = ty
                     .as_integer()
                     .ok_or(Error::TypeValueMismatch(ty.clone()))
                     .with_span(from)?;
-                let value = UIntValue::parse_bytes(bytes, ty).with_span(from)?;
+                let value = UIntValue::parse_hexadecimal(bytes, ty).with_span(from)?;
                 SingleExpressionInner::Constant(Value::from(value))
             }
             parse::SingleExpressionInner::Witness(name) => {

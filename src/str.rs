@@ -135,3 +135,45 @@ impl Decimal {
 }
 
 wrapped_string!(Decimal);
+
+/// A string of binary digits.
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct Binary(Arc<str>);
+
+impl Binary {
+    /// Create a binary string.
+    ///
+    /// ## Precondition
+    ///
+    /// The string must be a valid binary string.
+    ///
+    /// ## Panics
+    ///
+    /// Panics may occur down the line if the precondition is not satisfied.
+    pub fn from_str_unchecked(s: &str) -> Self {
+        Self(Arc::from(s))
+    }
+}
+
+wrapped_string!(Binary);
+
+/// A string of hexadecimal digits.
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct Hexadecimal(Arc<str>);
+
+impl Hexadecimal {
+    /// Create a hexadecimal string.
+    ///
+    /// ## Precondition
+    ///
+    /// The string must be a valid hexadecimal string.
+    ///
+    /// ## Panics
+    ///
+    /// Panics may occur down the line if the precondition is not satisfied.
+    pub fn from_str_unchecked(s: &str) -> Self {
+        Self(Arc::from(s))
+    }
+}
+
+wrapped_string!(Hexadecimal);

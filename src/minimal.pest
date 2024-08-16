@@ -70,8 +70,8 @@ call_name         =  { jet | unwrap_left | unwrap_right | is_none | unwrap | ass
 call_args         =  { "(" ~ (expression ~ ("," ~ expression)*)? ~ ")" }
 call_expr         =  { call_name ~ call_args }
 dec_literal       = @{ (ASCII_DIGIT | "_")+ }
-bit_string        = @{ "0b" ~ (ASCII_BIN_DIGIT | "_")+ }
-byte_string       = @{ "0x" ~ (ASCII_HEX_DIGIT | "_")+ }
+bin_literal       = @{ "0b" ~ (ASCII_BIN_DIGIT | "_")+ }
+hex_literal       = @{ "0x" ~ (ASCII_HEX_DIGIT | "_")+ }
 witness_expr      =  { "witness(\"" ~ witness_name ~ "\")" }
 variable_expr     =  { identifier }
 match_arm         =  { match_pattern ~ "=>" ~ (single_expression ~ "," | block_expression ~ ","?) }
@@ -80,4 +80,4 @@ match_expr        =  { match_keyword ~ expression ~ "{" ~ match_arm ~ match_arm 
 tuple_expr        =  { "(" ~ ((expression ~ ",")+ ~ expression?)? ~ ")" }
 array_expr        =  { "[" ~ (expression ~ ("," ~ expression)* ~ ","?)? ~ "]" }
 list_expr         =  { "list![" ~ (expression ~ ("," ~ expression)* ~ ","?)? ~ "]" }
-single_expression =  { left_expr | right_expr | none_expr | some_expr | false_expr | true_expr | call_expr | match_expr | tuple_expr | array_expr | list_expr | bit_string | byte_string | dec_literal | witness_expr | variable_expr | "(" ~ expression ~ ")" }
+single_expression =  { left_expr | right_expr | none_expr | some_expr | false_expr | true_expr | call_expr | match_expr | tuple_expr | array_expr | list_expr | bin_literal | hex_literal | dec_literal | witness_expr | variable_expr | "(" ~ expression ~ ")" }

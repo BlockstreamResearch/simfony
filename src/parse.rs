@@ -10,12 +10,11 @@ use itertools::Itertools;
 use miniscript::iter::{Tree, TreeLike};
 use pest::Parser;
 use pest_derive::Parser;
-use simplicity::elements::hex::FromHex;
 
 use crate::error::{Error, RichError, Span, WithFile, WithSpan};
 use crate::num::NonZeroPow2Usize;
 use crate::pattern::Pattern;
-use crate::str::{Decimal, FunctionName, Identifier, JetName, WitnessName};
+use crate::str::{Binary, Decimal, FunctionName, Hexadecimal, Identifier, JetName, WitnessName};
 use crate::types::{AliasedType, BuiltinAlias, TypeConstructible, UIntType};
 
 #[derive(Parser)]
@@ -210,12 +209,12 @@ pub enum SingleExpressionInner {
     Option(Option<Arc<Expression>>),
     /// Boolean literal expression
     Boolean(bool),
-    /// Unsigned integer literal in decimal representation
+    /// Decimal string literal.
     Decimal(Decimal),
-    /// Unsigned integer literal in bit string representation
-    BitString(Bits),
-    /// Unsigned integer literal in byte string representation
-    ByteString(Bytes),
+    /// Binary string literal.
+    Binary(Binary),
+    /// Hexadecimal string literal.
+    Hexadecimal(Hexadecimal),
     /// Witness identifier expression
     Witness(WitnessName),
     /// Variable identifier expression
@@ -234,99 +233,6 @@ pub enum SingleExpressionInner {
     ///
     /// The exclusive upper bound on the list size is not known at this point
     List(Arc<[Expression]>),
-}
-
-/// Bit string whose length is a power of two.
-///
-/// There is at least 1 bit.
-/// There are at most 256 bits.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Bits(BitsInner);
-
-/// Private enum that upholds invariants about its values.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-enum BitsInner {
-    /// Least significant bit of byte.
-    ///
-    /// The bit is saved as a [`u8`] value that is always less than or equal to 1.
-    U1(u8),
-    /// Two least significant bits of byte.
-    ///
-    /// The bits are saved as a [`u8`] value that is always less than or equal to 3.
-    U2(u8),
-    /// Four least significant bits of byte.
-    ///
-    /// The bits are saved as a [`u8`] value that is always less than or equal to 15.
-    U4(u8),
-    /// All bits from byte string.
-    ///
-    /// There are at least 8 bits, aka 1 byte.
-    /// There are at most 256 bits, aka 32 bytes.
-    Long(Arc<[u8]>),
-}
-
-impl Bits {
-    /// Access the contained 1-bit value,
-    /// represented by a [`u8`] integer that is always less than or equal to 1.
-    pub fn as_u1(&self) -> Option<u8> {
-        match self.0 {
-            BitsInner::U1(byte) => {
-                debug_assert!(byte <= 1);
-                Some(byte)
-            }
-            _ => None,
-        }
-    }
-
-    /// Access the contained 2-bit value,
-    /// represented by a [`u8`] integer that is always less than or equal to 3.
-    pub fn as_u2(&self) -> Option<u8> {
-        match self.0 {
-            BitsInner::U2(byte) => {
-                debug_assert!(byte <= 3);
-                Some(byte)
-            }
-            _ => None,
-        }
-    }
-
-    /// Access the contained 4-bit value,
-    /// represented by a [`u8`] integer that is always less than or equal to 15.
-    pub fn as_u4(&self) -> Option<u8> {
-        match self.0 {
-            BitsInner::U4(byte) => {
-                debug_assert!(byte <= 15);
-                Some(byte)
-            }
-            _ => None,
-        }
-    }
-
-    /// Access the contained value that is between 8 and 256 bits long,
-    /// represented by a slice that is between 1 and 32 bytes long.
-    pub fn as_long(&self) -> Option<&[u8]> {
-        match &self.0 {
-            BitsInner::Long(bytes) => {
-                debug_assert!(1 <= bytes.len());
-                debug_assert!(bytes.len() <= 32);
-                Some(bytes.as_ref())
-            }
-            _ => None,
-        }
-    }
-}
-
-/// Byte string whose length is a power of two.
-///
-/// There is at least 1 byte.
-/// There are at most 32 bytes.
-#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct Bytes(Arc<[u8]>);
-
-impl AsRef<[u8]> for Bytes {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
-    }
 }
 
 /// Match expression.
@@ -789,8 +695,10 @@ impl PestParse for SingleExpression {
             Rule::false_expr => SingleExpressionInner::Boolean(false),
             Rule::true_expr => SingleExpressionInner::Boolean(true),
             Rule::call_expr => SingleExpressionInner::Call(Call::parse(inner_pair)?),
-            Rule::bit_string => Bits::parse(inner_pair).map(SingleExpressionInner::BitString)?,
-            Rule::byte_string => Bytes::parse(inner_pair).map(SingleExpressionInner::ByteString)?,
+            Rule::bin_literal => Binary::parse(inner_pair).map(SingleExpressionInner::Binary)?,
+            Rule::hex_literal => {
+                Hexadecimal::parse(inner_pair).map(SingleExpressionInner::Hexadecimal)?
+            }
             Rule::dec_literal => Decimal::parse(inner_pair).map(SingleExpressionInner::Decimal)?,
             Rule::witness_expr => {
                 let witness_pair = inner_pair.into_inner().next().unwrap();
@@ -840,73 +748,23 @@ impl PestParse for Decimal {
     }
 }
 
-impl PestParse for Bits {
-    const RULE: Rule = Rule::bit_string;
+impl PestParse for Binary {
+    const RULE: Rule = Rule::bin_literal;
 
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Self::RULE));
-        let bit_string = pair.as_str();
-        debug_assert!(&bit_string[0..2] == "0b");
-
-        let bits = &bit_string[2..];
-        if !bits.len().is_power_of_two() {
-            return Err(Error::BitStringPow2(bits.len())).with_span(&pair);
-        }
-
-        let byte_len = (bits.len() + 7) / 8;
-        let mut bytes = Vec::with_capacity(byte_len);
-        let padding_len = 8usize.saturating_sub(bits.len());
-        let padding = std::iter::repeat('0').take(padding_len);
-        let mut padded_bits = padding.chain(bits.chars());
-
-        for _ in 0..byte_len {
-            let mut byte = 0u8;
-            for _ in 0..8 {
-                let bit = padded_bits.next().unwrap();
-                byte = byte << 1 | if bit == '1' { 1 } else { 0 };
-            }
-            bytes.push(byte);
-        }
-
-        match bits.len() {
-            1 => {
-                debug_assert!(bytes[0] < 2);
-                Ok(Bits(BitsInner::U1(bytes[0])))
-            }
-            2 => {
-                debug_assert!(bytes[0] < 4);
-                Ok(Bits(BitsInner::U2(bytes[0])))
-            }
-            4 => {
-                debug_assert!(bytes[0] < 16);
-                Ok(Bits(BitsInner::U4(bytes[0])))
-            }
-            8 | 16 | 32 | 64 | 128 | 256 => Ok(Bits(BitsInner::Long(bytes.into_iter().collect()))),
-            n => Err(Error::BitStringPow2(n)).with_span(&pair),
-        }
+        let binary = pair.as_str().strip_prefix("0b").unwrap().replace('_', "");
+        Ok(Self::from_str_unchecked(binary.as_str()))
     }
 }
 
-impl PestParse for Bytes {
-    const RULE: Rule = Rule::byte_string;
+impl PestParse for Hexadecimal {
+    const RULE: Rule = Rule::hex_literal;
 
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Self::RULE));
-        let hex_string = pair.as_str();
-
-        let hex_digits = hex_string
-            .strip_prefix("0x")
-            .expect("Grammar enforces prefix")
-            .replace('_', "");
-        if hex_digits.len() < 2 || 64 < hex_digits.len() || !hex_digits.len().is_power_of_two() {
-            return Err(Error::HexStringPow2(hex_digits.len())).with_span(&pair);
-        }
-
-        Vec::<u8>::from_hex(&hex_digits)
-            .map_err(Error::from)
-            .with_span(&pair)
-            .map(Arc::from)
-            .map(Bytes)
+        let hexadecimal = pair.as_str().strip_prefix("0x").unwrap().replace('_', "");
+        Ok(Self::from_str_unchecked(hexadecimal.as_str()))
     }
 }
 
