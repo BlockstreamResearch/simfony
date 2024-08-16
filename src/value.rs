@@ -324,49 +324,36 @@ impl fmt::Display for Value {
                 },
                 Value::Boolean(bit) => write!(f, "{bit}")?,
                 Value::UInt(integer) => write!(f, "{integer}")?,
-                Value::Tuple(elements) => match data.n_children_yielded {
-                    0 => {
-                        f.write_str("(")?;
-                        if 0 == elements.len() {
-                            f.write_str(")")?;
-                        }
+                Value::Tuple(tuple) => {
+                    if data.n_children_yielded == 0 {
+                        write!(f, "(")?;
+                    } else if !data.is_complete || tuple.len() == 1 {
+                        write!(f, ", ")?;
                     }
-                    n if n == elements.len() => {
-                        if n == 1 {
-                            f.write_str(",")?;
-                        }
-                        f.write_str(")")?;
+                    if data.is_complete {
+                        write!(f, ")")?;
                     }
-                    n => {
-                        debug_assert!(n < elements.len());
-                        f.write_str(", ")?;
+                }
+                Value::Array(..) => {
+                    if data.n_children_yielded == 0 {
+                        write!(f, "[")?;
+                    } else if !data.is_complete {
+                        write!(f, ", ")?;
                     }
-                },
-                Value::Array(elements) => match data.n_children_yielded {
-                    0 => {
-                        f.write_str("[")?;
-                        if 0 == elements.len() {
-                            f.write_str("]")?;
-                        }
+                    if data.is_complete {
+                        write!(f, "]")?;
                     }
-                    n if n == elements.len() => {
-                        f.write_str("]")?;
+                }
+                Value::List(..) => {
+                    if data.n_children_yielded == 0 {
+                        write!(f, "list![")?;
+                    } else if !data.is_complete {
+                        write!(f, ", ")?;
                     }
-                    n => {
-                        debug_assert!(n < elements.len());
-                        f.write_str(", ")?;
+                    if data.is_complete {
+                        write!(f, "]")?;
                     }
-                },
-                Value::List(elements, _) => match data.n_children_yielded {
-                    0 => f.write_str("list![")?,
-                    n if n == elements.len() => {
-                        f.write_str("]")?;
-                    }
-                    n => {
-                        debug_assert!(n < elements.len());
-                        f.write_str(", ")?;
-                    }
-                },
+                }
             }
         }
 
@@ -864,7 +851,7 @@ mod tests {
         let unit = Value::unit();
         assert_eq!("()", &unit.to_string());
         let singleton = Value::tuple([Value::from(UIntValue::U1(1))]);
-        assert_eq!("(1,)", &singleton.to_string());
+        assert_eq!("(1, )", &singleton.to_string());
         let pair = Value::tuple([
             Value::from(UIntValue::U1(1)),
             Value::from(UIntValue::U8(42)),
