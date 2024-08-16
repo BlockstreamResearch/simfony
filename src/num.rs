@@ -117,6 +117,15 @@ impl NonZeroPow2Usize {
 
 checked_num!(NonZeroPow2Usize, usize, "a power of two greater than 1");
 
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for NonZeroPow2Usize {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        let exp = u.int_in_range(1u32..=8)?;
+        let num = 2usize.saturating_pow(exp);
+        Ok(Self::new_unchecked(num))
+    }
+}
+
 /// An integer that is known to be a power of two.
 ///
 /// The integer is equal to 2^n for some n ≥ 0.
@@ -191,8 +200,18 @@ impl From<NonZeroPow2Usize> for Pow2Usize {
     }
 }
 
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for Pow2Usize {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        let exp = u.int_in_range(0u32..=8)?;
+        let num = 2usize.saturating_pow(exp);
+        Ok(Self::new_unchecked(num))
+    }
+}
+
 /// A 256-bit unsigned integer.
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct U256([u8; 32]);
 
 impl U256 {
