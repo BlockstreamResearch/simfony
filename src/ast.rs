@@ -564,7 +564,7 @@ impl AbstractSyntaxTree for Item {
         match from {
             parse::Item::TypeAlias(alias) => {
                 scope
-                    .insert_alias(alias.name.clone(), alias.ty.clone())
+                    .insert_alias(alias.name().clone(), alias.ty().clone())
                     .with_span(alias)?;
                 Ok(Self::TypeAlias)
             }
@@ -656,17 +656,17 @@ impl AbstractSyntaxTree for Assignment {
         //
         // However, the expression evaluated in the assignment does have a type,
         // namely the type specified in the assignment.
-        let ty_expr = scope.resolve(&from.ty).with_span(from)?;
-        let expression = Expression::analyze(&from.expression, &ty_expr, scope)?;
-        let typed_variables = from.pattern.is_of_type(&ty_expr).with_span(from)?;
+        let ty_expr = scope.resolve(from.ty()).with_span(from)?;
+        let expression = Expression::analyze(from.expression(), &ty_expr, scope)?;
+        let typed_variables = from.pattern().is_of_type(&ty_expr).with_span(from)?;
         for (identifier, ty) in typed_variables {
             scope.insert_variable(identifier, ty);
         }
 
         Ok(Self {
-            pattern: from.pattern.clone(),
+            pattern: from.pattern().clone(),
             expression,
-            span: from.span,
+            span: *from.as_ref(),
         })
     }
 }
@@ -675,13 +675,13 @@ impl AbstractSyntaxTree for Expression {
     type From = parse::Expression;
 
     fn analyze(from: &Self::From, ty: &ResolvedType, scope: &mut Scope) -> Result<Self, RichError> {
-        match &from.inner {
+        match from.inner() {
             parse::ExpressionInner::Single(single) => {
                 let ast_single = SingleExpression::analyze(single, ty, scope)?;
                 Ok(Self {
                     ty: ty.clone(),
                     inner: ExpressionInner::Single(ast_single),
-                    span: from.span,
+                    span: *from.as_ref(),
                 })
             }
             parse::ExpressionInner::Block(statements, expression) => {
@@ -706,7 +706,7 @@ impl AbstractSyntaxTree for Expression {
                 Ok(Self {
                     ty: ty.clone(),
                     inner: ExpressionInner::Block(ast_statements, ast_expression),
-                    span: from.span,
+                    span: *from.as_ref(),
                 })
             }
         }
@@ -717,7 +717,7 @@ impl AbstractSyntaxTree for SingleExpression {
     type From = parse::SingleExpression;
 
     fn analyze(from: &Self::From, ty: &ResolvedType, scope: &mut Scope) -> Result<Self, RichError> {
-        let inner = match &from.inner {
+        let inner = match from.inner() {
             parse::SingleExpressionInner::Boolean(bit) => {
                 if !ty.is_boolean() {
                     return Err(Error::ExpressionTypeMismatch(
@@ -858,7 +858,7 @@ impl AbstractSyntaxTree for SingleExpression {
         Ok(Self {
             inner,
             ty: ty.clone(),
-            span: from.span,
+            span: *from.as_ref(),
         })
     }
 }
@@ -877,10 +877,10 @@ impl AbstractSyntaxTree for Call {
                     .collect::<Result<Vec<ResolvedType>, Identifier>>()
                     .map_err(Error::UndefinedAlias)
                     .with_span(from)?;
-                if from.args.len() != args_ty.len() {
+                if from.args().len() != args_ty.len() {
                     return Err(Error::InvalidNumberOfArguments(
                         args_ty.len(),
-                        from.args.len(),
+                        from.args().len(),
                     ))
                     .with_span(from);
                 }
@@ -891,7 +891,7 @@ impl AbstractSyntaxTree for Call {
                 if ty != &out_ty {
                     return Err(Error::ExpressionTypeMismatch(ty.clone(), out_ty)).with_span(from);
                 }
-                from.args
+                from.args()
                     .iter()
                     .zip(args_ty.iter())
                     .map(|(arg_parse, arg_ty)| Expression::analyze(arg_parse, arg_ty, scope))
@@ -899,31 +899,31 @@ impl AbstractSyntaxTree for Call {
             }
             CallName::UnwrapLeft(right_ty) => {
                 let args_ty = ResolvedType::either(ty.clone(), right_ty);
-                if from.args.len() != 1 {
-                    return Err(Error::InvalidNumberOfArguments(1, from.args.len()))
+                if from.args().len() != 1 {
+                    return Err(Error::InvalidNumberOfArguments(1, from.args().len()))
                         .with_span(from);
                 }
                 Arc::from([Expression::analyze(
-                    from.args.first().unwrap(),
+                    from.args().first().unwrap(),
                     &args_ty,
                     scope,
                 )?])
             }
             CallName::UnwrapRight(left_ty) => {
                 let args_ty = ResolvedType::either(left_ty, ty.clone());
-                if from.args.len() != 1 {
-                    return Err(Error::InvalidNumberOfArguments(1, from.args.len()))
+                if from.args().len() != 1 {
+                    return Err(Error::InvalidNumberOfArguments(1, from.args().len()))
                         .with_span(from);
                 }
                 Arc::from([Expression::analyze(
-                    from.args.first().unwrap(),
+                    from.args().first().unwrap(),
                     &args_ty,
                     scope,
                 )?])
             }
             CallName::IsNone(some_ty) => {
-                if from.args.len() != 1 {
-                    return Err(Error::InvalidNumberOfArguments(1, from.args.len()))
+                if from.args().len() != 1 {
+                    return Err(Error::InvalidNumberOfArguments(1, from.args().len()))
                         .with_span(from);
                 }
                 let out_ty = ResolvedType::boolean();
@@ -932,26 +932,26 @@ impl AbstractSyntaxTree for Call {
                 }
                 let arg_ty = ResolvedType::option(some_ty);
                 Arc::from([Expression::analyze(
-                    from.args.first().unwrap(),
+                    from.args().first().unwrap(),
                     &arg_ty,
                     scope,
                 )?])
             }
             CallName::Unwrap => {
                 let args_ty = ResolvedType::option(ty.clone());
-                if from.args.len() != 1 {
-                    return Err(Error::InvalidNumberOfArguments(1, from.args.len()))
+                if from.args().len() != 1 {
+                    return Err(Error::InvalidNumberOfArguments(1, from.args().len()))
                         .with_span(from);
                 }
                 Arc::from([Expression::analyze(
-                    from.args.first().unwrap(),
+                    from.args().first().unwrap(),
                     &args_ty,
                     scope,
                 )?])
             }
             CallName::Assert => {
-                if from.args.len() != 1 {
-                    return Err(Error::InvalidNumberOfArguments(1, from.args.len()))
+                if from.args().len() != 1 {
+                    return Err(Error::InvalidNumberOfArguments(1, from.args().len()))
                         .with_span(from);
                 }
                 if !ty.is_unit() {
@@ -963,38 +963,38 @@ impl AbstractSyntaxTree for Call {
                 }
                 let arg_type = ResolvedType::boolean();
                 Arc::from([Expression::analyze(
-                    from.args.first().unwrap(),
+                    from.args().first().unwrap(),
                     &arg_type,
                     scope,
                 )?])
             }
             CallName::Panic => {
-                if from.args.len() != 0 {
-                    return Err(Error::InvalidNumberOfArguments(0, from.args.len()))
+                if !from.args().is_empty() {
+                    return Err(Error::InvalidNumberOfArguments(0, from.args().len()))
                         .with_span(from);
                 }
                 // panic! allows every output type because it will never return anything
                 Arc::from([])
             }
             CallName::TypeCast(source) => {
-                if from.args.len() != 1 {
-                    return Err(Error::InvalidNumberOfArguments(1, from.args.len()))
+                if from.args().len() != 1 {
+                    return Err(Error::InvalidNumberOfArguments(1, from.args().len()))
                         .with_span(from);
                 }
                 if StructuralType::from(&source) != StructuralType::from(ty) {
                     return Err(Error::InvalidCast(source, ty.clone())).with_span(from);
                 }
                 Arc::from([Expression::analyze(
-                    from.args.first().unwrap(),
+                    from.args().first().unwrap(),
                     &source,
                     scope,
                 )?])
             }
             CallName::Custom(function) => {
-                if from.args.len() != function.params().len() {
+                if from.args().len() != function.params().len() {
                     return Err(Error::InvalidNumberOfArguments(
                         function.params().len(),
-                        from.args.len(),
+                        from.args().len(),
                     ))
                     .with_span(from);
                 }
@@ -1003,15 +1003,15 @@ impl AbstractSyntaxTree for Call {
                     return Err(Error::ExpressionTypeMismatch(ty.clone(), out_ty.clone()))
                         .with_span(from);
                 }
-                from.args
+                from.args()
                     .iter()
                     .zip(function.params.iter().map(FunctionParam::ty))
                     .map(|(arg_parse, arg_ty)| Expression::analyze(arg_parse, arg_ty, scope))
                     .collect::<Result<Arc<[Expression]>, RichError>>()?
             }
             CallName::Fold(function, bound) => {
-                if from.args.len() != 2 {
-                    return Err(Error::InvalidNumberOfArguments(2, from.args.len()))
+                if from.args().len() != 2 {
+                    return Err(Error::InvalidNumberOfArguments(2, from.args().len()))
                         .with_span(from);
                 }
                 let out_ty = function.body().ty();
@@ -1026,15 +1026,15 @@ impl AbstractSyntaxTree for Call {
                 let element_ty = function.params().first().expect("foldable function").ty();
                 let list_ty = ResolvedType::list(element_ty.clone(), bound);
                 let accumulator_ty = function.params().get(1).expect("foldable function").ty();
-                from.args
+                from.args()
                     .iter()
                     .zip([&list_ty, accumulator_ty])
                     .map(|(arg_parse, arg_ty)| Expression::analyze(arg_parse, arg_ty, scope))
                     .collect::<Result<Arc<[Expression]>, RichError>>()?
             }
             CallName::ForWhile(function, _bit_width) => {
-                if from.args.len() != 2 {
-                    return Err(Error::InvalidNumberOfArguments(2, from.args.len()))
+                if from.args().len() != 2 {
+                    return Err(Error::InvalidNumberOfArguments(2, from.args().len()))
                         .with_span(from);
                 }
                 let out_ty = function.body().ty();
@@ -1049,7 +1049,7 @@ impl AbstractSyntaxTree for Call {
                 //   N is a power of two
                 let accumulator_ty = function.params().first().expect("loopable function").ty();
                 let context_ty = function.params().get(1).expect("loopable function").ty();
-                from.args
+                from.args()
                     .iter()
                     .zip([accumulator_ty, context_ty])
                     .map(|(arg_parse, arg_ty)| Expression::analyze(arg_parse, arg_ty, scope))
@@ -1060,7 +1060,7 @@ impl AbstractSyntaxTree for Call {
         Ok(Self {
             name,
             args,
-            span: from.span,
+            span: *from.as_ref(),
         })
     }
 }
@@ -1074,7 +1074,7 @@ impl AbstractSyntaxTree for CallName {
         _ty: &ResolvedType,
         scope: &mut Scope,
     ) -> Result<Self, RichError> {
-        match &from.name {
+        match from.name() {
             parse::CallName::Jet(name) => match Elements::from_str(name.as_inner()) {
                 Ok(Elements::CheckSigVerify | Elements::Verify) | Err(_) => {
                     Err(Error::JetDoesNotExist(name.clone())).with_span(from)
@@ -1166,28 +1166,28 @@ impl AbstractSyntaxTree for Match {
             Expression::analyze(from.scrutinee(), &scrutinee_ty, scope).map(Arc::new)?;
 
         scope.push_scope();
-        if let Some((id_l, ty_l)) = from.left().pattern.as_typed_variable() {
+        if let Some((id_l, ty_l)) = from.left().pattern().as_typed_variable() {
             let ty_l = scope.resolve(ty_l).with_span(from)?;
             scope.insert_variable(id_l.clone(), ty_l);
         }
-        let ast_l = Expression::analyze(&from.left().expression, ty, scope).map(Arc::new)?;
+        let ast_l = Expression::analyze(from.left().expression(), ty, scope).map(Arc::new)?;
         scope.pop_scope();
         scope.push_scope();
-        if let Some((id_r, ty_r)) = from.right().pattern.as_typed_variable() {
+        if let Some((id_r, ty_r)) = from.right().pattern().as_typed_variable() {
             let ty_r = scope.resolve(ty_r).with_span(from)?;
             scope.insert_variable(id_r.clone(), ty_r);
         }
-        let ast_r = Expression::analyze(&from.right().expression, ty, scope).map(Arc::new)?;
+        let ast_r = Expression::analyze(from.right().expression(), ty, scope).map(Arc::new)?;
         scope.pop_scope();
 
         Ok(Self {
             scrutinee,
             left: MatchArm {
-                pattern: from.left().pattern.clone(),
+                pattern: from.left().pattern().clone(),
                 expression: ast_l,
             },
             right: MatchArm {
-                pattern: from.right().pattern.clone(),
+                pattern: from.right().pattern().clone(),
                 expression: ast_r,
             },
             span: *from.as_ref(),

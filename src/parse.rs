@@ -109,25 +109,47 @@ pub enum Statement {
 /// The output of an expression is assigned to a pattern.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Assignment {
-    /// The pattern.
-    pub pattern: Pattern,
-    /// The return type of the expression.
-    pub ty: AliasedType,
-    /// The expression.
-    pub expression: Expression,
-    /// Area that this assignment spans in the source file.
-    pub span: Span,
+    pattern: Pattern,
+    ty: AliasedType,
+    expression: Expression,
+    span: Span,
+}
+
+impl Assignment {
+    /// Access the pattern of the assignment.
+    pub fn pattern(&self) -> &Pattern {
+        &self.pattern
+    }
+
+    /// Access the return type of assigned expression.
+    pub fn ty(&self) -> &AliasedType {
+        &self.ty
+    }
+
+    /// Access the assigned expression.
+    pub fn expression(&self) -> &Expression {
+        &self.expression
+    }
 }
 
 /// Call expression.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Call {
-    /// The name of the call.
-    pub name: CallName,
-    /// The arguments to the call.
-    pub args: Arc<[Expression]>,
-    /// Area that this call spans in the source file.
-    pub span: Span,
+    name: CallName,
+    args: Arc<[Expression]>,
+    span: Span,
+}
+
+impl Call {
+    /// Access the name of the call.
+    pub fn name(&self) -> &CallName {
+        &self.name
+    }
+
+    /// Access the arguments to the call.
+    pub fn args(&self) -> &[Expression] {
+        self.args.as_ref()
+    }
 }
 
 /// Name of a call.
@@ -160,24 +182,38 @@ pub enum CallName {
 /// A type alias.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct TypeAlias {
-    /// Name of the alias.
-    pub name: Identifier,
-    /// Type that the alias resolves to.
+    name: Identifier,
+    ty: AliasedType,
+    span: Span,
+}
+
+impl TypeAlias {
+    /// Access the name of the alias.
+    pub fn name(&self) -> &Identifier {
+        &self.name
+    }
+
+    /// Access the type that the alias resolves to.
     ///
-    /// During the parsing stage, these types may include aliases.
-    /// The compiler checks if all contained aliases have been declared before.
-    pub ty: AliasedType,
-    /// Area that the alias spans in the source file.
-    pub span: Span,
+    /// During the parsing stage, the resolved type may include aliases.
+    /// The compiler will later check if all contained aliases have been declared before.
+    pub fn ty(&self) -> &AliasedType {
+        &self.ty
+    }
 }
 
 /// An expression is something that returns a value.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Expression {
-    /// The kind of expression
-    pub inner: ExpressionInner,
-    /// Area that this expression spans in the source file.
-    pub span: Span,
+    inner: ExpressionInner,
+    span: Span,
+}
+
+impl Expression {
+    /// Access the inner expression.
+    pub fn inner(&self) -> &ExpressionInner {
+        &self.inner
+    }
 }
 
 /// The kind of expression.
@@ -194,10 +230,15 @@ pub enum ExpressionInner {
 /// A single expression directly returns a value.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct SingleExpression {
-    /// The kind of single expression
-    pub inner: SingleExpressionInner,
-    /// Area that this expression spans in the source file.
-    pub span: Span,
+    inner: SingleExpressionInner,
+    span: Span,
+}
+
+impl SingleExpression {
+    /// Access the inner expression.
+    pub fn inner(&self) -> &SingleExpressionInner {
+        &self.inner
+    }
 }
 
 /// The kind of single expression.
@@ -238,13 +279,9 @@ pub enum SingleExpressionInner {
 /// Match expression.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Match {
-    /// Expression whose output is matched.
     scrutinee: Arc<Expression>,
-    /// Match arm for left sum values.
     left: MatchArm,
-    /// Match arm for right sum values.
     right: MatchArm,
-    /// Area that the match spans in the source file.
     span: Span,
 }
 
@@ -280,10 +317,20 @@ impl Match {
 /// Arm of a match expression.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct MatchArm {
-    /// Matched pattern
-    pub pattern: MatchPattern,
-    /// Executed expression
-    pub expression: Arc<Expression>,
+    pattern: MatchPattern,
+    expression: Arc<Expression>,
+}
+
+impl MatchArm {
+    /// Access the pattern that guards the match arm.
+    pub fn pattern(&self) -> &MatchPattern {
+        &self.pattern
+    }
+
+    /// Access the expression that is executed in the match arm.
+    pub fn expression(&self) -> &Expression {
+        &self.expression
+    }
 }
 
 /// Pattern of a match arm.

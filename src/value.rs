@@ -533,8 +533,8 @@ impl TypedValue {
         while let Some(top) = stack.pop() {
             match top {
                 Task::ConvertAs(expr, ty) => {
-                    let inner = match &expr.inner {
-                        ExpressionInner::Single(single) => &single.inner,
+                    let inner = match expr.inner() {
+                        ExpressionInner::Single(single) => single.inner(),
                         ExpressionInner::Block(..) => return Err(Error::ExpressionNotConstant),
                     };
 
