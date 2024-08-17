@@ -372,13 +372,294 @@ impl MatchPattern {
     }
 }
 
+impl fmt::Display for Program {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for item in self.items() {
+            writeln!(f, "{item}")?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for Item {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::TypeAlias(alias) => write!(f, "{alias}"),
+            Self::Function(function) => write!(f, "{function}"),
+        }
+    }
+}
+
+impl fmt::Display for TypeAlias {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "type {} = {}", self.name(), self.ty())
+    }
+}
+
+impl fmt::Display for Function {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "fn {}(", self.name())?;
+        for (i, param) in self.params().iter().enumerate() {
+            if 0 < i {
+                write!(f, ", ")?;
+            }
+            write!(f, "{param}")?;
+        }
+        write!(f, ")")?;
+        if let Some(ty) = self.ret() {
+            write!(f, " -> {ty}")?;
+        }
+        write!(f, " {}", self.body())
+    }
+}
+
+impl fmt::Display for FunctionParam {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.identifier(), self.ty())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+enum ExprTree<'a> {
+    Expression(&'a Expression),
+    Block(&'a [Statement], &'a Option<Arc<Expression>>),
+    Statement(&'a Statement),
+    Assignment(&'a Assignment),
+    Single(&'a SingleExpression),
+    Call(&'a Call),
+    Match(&'a Match),
+}
+
+impl<'a> TreeLike for ExprTree<'a> {
+    fn as_node(&self) -> Tree<Self> {
+        use SingleExpressionInner as S;
+
+        match self {
+            Self::Expression(expr) => match expr.inner() {
+                ExpressionInner::Block(statements, maybe_expr) => {
+                    Tree::Unary(ExprTree::Block(statements, maybe_expr))
+                }
+                ExpressionInner::Single(single) => Tree::Unary(ExprTree::Single(single)),
+            },
+            Self::Block(statements, maybe_expr) => Tree::Nary(
+                statements
+                    .iter()
+                    .map(ExprTree::Statement)
+                    .chain(maybe_expr.iter().map(Arc::as_ref).map(ExprTree::Expression))
+                    .collect(),
+            ),
+            Self::Statement(statement) => match statement {
+                Statement::Assignment(assignment) => Tree::Unary(ExprTree::Assignment(assignment)),
+                Statement::Expression(expression) => Tree::Unary(ExprTree::Expression(expression)),
+            },
+            Self::Assignment(assignment) => {
+                Tree::Unary(ExprTree::Expression(assignment.expression()))
+            }
+            Self::Single(single) => match single.inner() {
+                S::Boolean(_)
+                | S::Binary(_)
+                | S::Decimal(_)
+                | S::Hexadecimal(_)
+                | S::Variable(_)
+                | S::Witness(_)
+                | S::Option(None) => Tree::Nullary,
+                S::Option(Some(l))
+                | S::Either(Either::Left(l))
+                | S::Either(Either::Right(l))
+                | S::Expression(l) => Tree::Unary(Self::Expression(l)),
+                S::Call(call) => Tree::Unary(Self::Call(call)),
+                S::Match(match_) => Tree::Unary(Self::Match(match_)),
+                S::Tuple(tuple) => Tree::Nary(tuple.iter().map(Self::Expression).collect()),
+                S::Array(array) => Tree::Nary(array.iter().map(Self::Expression).collect()),
+                S::List(list) => Tree::Nary(list.iter().map(Self::Expression).collect()),
+            },
+            Self::Call(call) => Tree::Nary(call.args().iter().map(Self::Expression).collect()),
+            Self::Match(match_) => Tree::Nary(Arc::new([
+                Self::Expression(match_.scrutinee()),
+                Self::Expression(match_.left().expression()),
+                Self::Expression(match_.right().expression()),
+            ])),
+        }
+    }
+}
+
+impl<'a> fmt::Display for ExprTree<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use SingleExpressionInner as S;
+
+        for data in self.verbose_pre_order_iter() {
+            match &data.node {
+                Self::Statement(..) if data.is_complete => writeln!(f, ";")?,
+                Self::Expression(..) | Self::Statement(..) => {}
+                Self::Block(..) => {
+                    if data.n_children_yielded == 0 {
+                        writeln!(f, "{{")?;
+                    } else if !data.is_complete {
+                        write!(f, "    ")?;
+                    }
+                    if data.is_complete {
+                        writeln!(f, "}}")?;
+                    }
+                }
+                Self::Assignment(assignment) => match data.n_children_yielded {
+                    0 => write!(f, "let {}: {} = ", assignment.pattern(), assignment.ty())?,
+                    n => debug_assert_eq!(n, 1),
+                },
+                Self::Single(single) => match single.inner() {
+                    S::Boolean(bit) => write!(f, "{bit}")?,
+                    S::Binary(binary) => write!(f, "0b{binary}")?,
+                    S::Decimal(decimal) => write!(f, "{decimal}")?,
+                    S::Hexadecimal(hexadecimal) => write!(f, "0x{hexadecimal}")?,
+                    S::Variable(name) => write!(f, "{name}")?,
+                    S::Witness(name) => write!(f, "witness(\"{name}\")")?,
+                    S::Option(None) => write!(f, "None")?,
+                    S::Option(Some(_)) => match data.n_children_yielded {
+                        0 => write!(f, "Some(")?,
+                        n => {
+                            debug_assert_eq!(n, 1);
+                            write!(f, ")")?;
+                        }
+                    },
+                    S::Either(Either::Left(_)) => match data.n_children_yielded {
+                        0 => write!(f, "Left(")?,
+                        n => {
+                            debug_assert_eq!(n, 1);
+                            write!(f, ")")?;
+                        }
+                    },
+                    S::Either(Either::Right(_)) => match data.n_children_yielded {
+                        0 => write!(f, "Right(")?,
+                        n => {
+                            debug_assert_eq!(n, 1);
+                            write!(f, ")")?;
+                        }
+                    },
+                    S::Expression(_) => match data.n_children_yielded {
+                        0 => write!(f, "(")?,
+                        n => {
+                            debug_assert_eq!(n, 1);
+                            write!(f, ")")?;
+                        }
+                    },
+                    S::Call(..) | S::Match(..) => {}
+                    S::Tuple(tuple) => {
+                        if data.n_children_yielded == 0 {
+                            write!(f, "(")?;
+                        } else if !data.is_complete || tuple.len() == 1 {
+                            write!(f, ", ")?;
+                        }
+                        if data.is_complete {
+                            write!(f, ")")?;
+                        }
+                    }
+                    S::Array(..) => {
+                        if data.n_children_yielded == 0 {
+                            write!(f, "[")?;
+                        } else if !data.is_complete {
+                            write!(f, ", ")?;
+                        }
+                        if data.is_complete {
+                            write!(f, "]")?;
+                        }
+                    }
+                    S::List(..) => {
+                        if data.n_children_yielded == 0 {
+                            write!(f, "list![")?;
+                        } else if !data.is_complete {
+                            write!(f, ", ")?;
+                        }
+                        if data.is_complete {
+                            write!(f, "]")?;
+                        }
+                    }
+                },
+                Self::Call(call) => {
+                    if data.n_children_yielded == 0 {
+                        write!(f, "{}(", call.name())?;
+                    } else if !data.is_complete {
+                        write!(f, ", ")?;
+                    }
+                    if data.is_complete {
+                        write!(f, ")")?;
+                    }
+                }
+                Self::Match(match_) => match data.n_children_yielded {
+                    0 => write!(f, "match ")?,
+                    1 => write!(f, "{{\n{} => ", match_.left().pattern())?,
+                    2 => write!(f, ",\n{} => ", match_.right().pattern())?,
+                    n => {
+                        debug_assert_eq!(n, 3);
+                        write!(f, ",\n}}")?;
+                    }
+                },
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl fmt::Display for Expression {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", ExprTree::Expression(self))
+    }
+}
+
+impl fmt::Display for Statement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", ExprTree::Statement(self))
+    }
+}
+
+impl fmt::Display for Assignment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", ExprTree::Assignment(self))
+    }
+}
+
+impl fmt::Display for SingleExpression {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", ExprTree::Single(self))
+    }
+}
+
+impl fmt::Display for Call {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", ExprTree::Call(self))
+    }
+}
+
+impl fmt::Display for CallName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CallName::Jet(jet) => write!(f, "jet::{jet}"),
+            CallName::UnwrapLeft(ty) => write!(f, "unwrap_left::<{ty}>"),
+            CallName::UnwrapRight(ty) => write!(f, "unwrap_right::<{ty}>"),
+            CallName::Unwrap => write!(f, "unwrap"),
+            CallName::IsNone(ty) => write!(f, "is_none::<{ty}>"),
+            CallName::Assert => write!(f, "assert!"),
+            CallName::Panic => write!(f, "panic!"),
+            CallName::TypeCast(ty) => write!(f, "<{ty}>::into"),
+            CallName::Custom(name) => write!(f, "{name}"),
+            CallName::Fold(name, bound) => write!(f, "fold::<{name}, {bound}>"),
+            CallName::ForWhile(name) => write!(f, "for_while::<{name}>"),
+        }
+    }
+}
+
+impl fmt::Display for Match {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", ExprTree::Match(self))
+    }
+}
+
 impl fmt::Display for MatchPattern {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MatchPattern::Left(i, ty) => write!(f, "Left({i}: {ty}"),
-            MatchPattern::Right(i, ty) => write!(f, "Right({i}: {ty}"),
+            MatchPattern::Left(i, ty) => write!(f, "Left({i}: {ty})"),
+            MatchPattern::Right(i, ty) => write!(f, "Right({i}: {ty})"),
             MatchPattern::None => write!(f, "None"),
-            MatchPattern::Some(i, ty) => write!(f, "Some({i}: {ty}"),
+            MatchPattern::Some(i, ty) => write!(f, "Some({i}: {ty})"),
             MatchPattern::False => write!(f, "false"),
             MatchPattern::True => write!(f, "true"),
         }
