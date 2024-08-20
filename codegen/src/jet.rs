@@ -520,10 +520,10 @@ Using the notation of BIP-0341, it returns the SHA256 hash of c[33: 33 + 32m]."#
 - The result of [`output_surjection_proofs_hash`] (32 bytes).
 - The result of [`input_utxos_hash`] (32 bytes)."#,
         // Time locks
-        Elements::CheckLockDistance => "Assert that the value returned by [`check_lock_distance`] is greater than or equal to the given value.",
-        Elements::CheckLockDuration => "Assert that the value returned by [`check_lock_duration`] is greater than or equal to the given value.",
-        Elements::CheckLockHeight   => "Assert that the value returned by [`tx_lock_height`]      is greater than or equal to the given value.",
-        Elements::CheckLockTime     => "Assert that the value returned by [`tx_lock_time`]        is greater than or equal to the given value.",
+        Elements::CheckLockDistance => "Assert that the value returned by [`tx_lock_distance`] is greater than or equal to the given value.",
+        Elements::CheckLockDuration => "Assert that the value returned by [`tx_lock_duration`] is greater than or equal to the given value.",
+        Elements::CheckLockHeight   => "Assert that the value returned by [`tx_lock_height`]   is greater than or equal to the given value.",
+        Elements::CheckLockTime     => "Assert that the value returned by [`tx_lock_time`]     is greater than or equal to the given value.",
         Elements::TxIsFinal => "Check if the sequence numbers of all transaction inputs are at their maximum value.",
         Elements::TxLockDistance => "If [`version`] returns 2 or greater, then return the greatest valid [`Distance`] value of any transaction input. Return zeroes otherwise.",
         Elements::TxLockDuration => "If [`version`] returns 2 or greater, then return the greatest valid [`Duration`] value of any transaction input. Return zeroes otherwise.",
