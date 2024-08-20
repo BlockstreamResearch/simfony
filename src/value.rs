@@ -7,8 +7,9 @@ use simplicity::Value as SimValue;
 
 use crate::array::{BTreeSlice, Partition};
 use crate::error::Error;
-use crate::num::{NonZeroPow2Usize, U256};
-use crate::parse::{self, Bits, Bytes, UnsignedDecimal};
+use crate::num::{NonZeroPow2Usize, Pow2Usize, U256};
+use crate::parse;
+use crate::str::{Binary, Decimal, Hexadecimal};
 use crate::types::{ResolvedType, StructuralType, TypeConstructible, TypeInner, UIntType};
 
 /// Unsigned integer value.
@@ -108,7 +109,7 @@ impl UIntValue {
     }
 
     /// Create an integer from a `decimal` string and type.
-    pub fn parse_decimal(decimal: &UnsignedDecimal, ty: UIntType) -> Result<Self, Error> {
+    pub fn parse_decimal(decimal: &Decimal, ty: UIntType) -> Result<Self, Error> {
         let s = decimal.as_inner();
         match ty {
             UIntType::U1 => s.parse::<u8>().map_err(Error::from).and_then(Self::u1),
@@ -123,28 +124,61 @@ impl UIntValue {
         }
     }
 
-    /// Create an integer of the given typed from a bit string.
-    pub fn parse_bits(bits: &Bits, ty: UIntType) -> Result<Self, Error> {
-        let value = Self::from(bits);
-        match value.is_of_type(ty) {
-            true => Ok(value),
-            false => Err(Error::ExpressionTypeMismatch(
-                ty.into(),
-                value.get_type().into(),
-            )),
+    /// Create an integer from a `binary` string and type.
+    pub fn parse_binary(binary: &Binary, ty: UIntType) -> Result<Self, Error> {
+        let s = binary.as_inner();
+        let bit_len = Pow2Usize::new(s.len()).ok_or(Error::BitStringPow2(s.len()))?;
+        let bit_ty = UIntType::from_bit_width(bit_len).ok_or(Error::BitStringPow2(s.len()))?;
+        if ty != bit_ty {
+            return Err(Error::ExpressionTypeMismatch(ty.into(), bit_ty.into()));
+        }
+
+        let byte_len = (bit_len.get() + 7) / 8;
+        let mut bytes = Vec::with_capacity(byte_len);
+        let padding_len = 8usize.saturating_sub(bit_len.get());
+        let padding = std::iter::repeat('0').take(padding_len);
+        let mut padded_bits = padding.chain(s.chars());
+
+        for _ in 0..byte_len {
+            let mut byte = 0u8;
+            for _ in 0..8 {
+                let bit = padded_bits.next().unwrap();
+                byte = byte << 1 | if bit == '1' { 1 } else { 0 };
+            }
+            bytes.push(byte);
+        }
+
+        match ty {
+            UIntType::U1 => {
+                debug_assert!(bytes[0] < 2);
+                Ok(Self::U1(bytes[0]))
+            }
+            UIntType::U2 => {
+                debug_assert!(bytes[0] < 4);
+                Ok(Self::U2(bytes[0]))
+            }
+            UIntType::U4 => {
+                debug_assert!(bytes[0] < 16);
+                Ok(Self::U4(bytes[0]))
+            }
+            _ => Ok(Self::try_from(bytes.as_ref()).expect("Enough bytes")),
         }
     }
 
-    /// Create an integer of the given typed from a byte string.
-    pub fn parse_bytes(bytes: &Bytes, ty: UIntType) -> Result<Self, Error> {
-        let value = Self::from(bytes);
-        match value.is_of_type(ty) {
-            true => Ok(value),
-            false => Err(Error::ExpressionTypeMismatch(
-                ty.into(),
-                value.get_type().into(),
-            )),
+    /// Create an integer from a `hexadecimal` string and type.
+    pub fn parse_hexadecimal(hexadecimal: &Hexadecimal, ty: UIntType) -> Result<Self, Error> {
+        use simplicity::elements::hex::FromHex;
+
+        let s = hexadecimal.as_inner();
+        let nibble_len = Pow2Usize::new(s.len()).ok_or(Error::HexStringPow2(s.len()))?;
+        let bit_len = nibble_len.mul2().mul2();
+        let byte_ty = UIntType::from_bit_width(bit_len).ok_or(Error::HexStringPow2(s.len()))?;
+        if ty != byte_ty {
+            return Err(Error::ExpressionTypeMismatch(ty.into(), byte_ty.into()));
         }
+
+        let bytes = Vec::<u8>::from_hex(s).map_err(Error::from)?;
+        Ok(Self::try_from(bytes.as_ref()).expect("Enough bytes"))
     }
 }
 
@@ -197,28 +231,6 @@ impl TryFrom<&[u8]> for UIntValue {
             32 => Ok(Self::U256(U256::from_byte_array(value.try_into().unwrap()))),
             _ => Err("Too many bytes"),
         }
-    }
-}
-
-impl<'a> From<&'a Bits> for UIntValue {
-    fn from(value: &Bits) -> Self {
-        if let Some(byte) = value.as_u1() {
-            Self::u1(byte).expect("Always <= 1")
-        } else if let Some(byte) = value.as_u2() {
-            Self::u2(byte).expect("Always <= 3")
-        } else if let Some(byte) = value.as_u4() {
-            Self::u4(byte).expect("Always <= 15")
-        } else if let Some(bytes) = value.as_long() {
-            Self::try_from(bytes).expect("At most 32 bytes")
-        } else {
-            unreachable!("Covered all bit string variants")
-        }
-    }
-}
-
-impl<'a> From<&'a Bytes> for UIntValue {
-    fn from(value: &Bytes) -> Self {
-        Self::try_from(value.as_ref()).expect("At most 32 bytes")
     }
 }
 
@@ -324,49 +336,36 @@ impl fmt::Display for Value {
                 },
                 Value::Boolean(bit) => write!(f, "{bit}")?,
                 Value::UInt(integer) => write!(f, "{integer}")?,
-                Value::Tuple(elements) => match data.n_children_yielded {
-                    0 => {
-                        f.write_str("(")?;
-                        if 0 == elements.len() {
-                            f.write_str(")")?;
-                        }
+                Value::Tuple(tuple) => {
+                    if data.n_children_yielded == 0 {
+                        write!(f, "(")?;
+                    } else if !data.is_complete || tuple.len() == 1 {
+                        write!(f, ", ")?;
                     }
-                    n if n == elements.len() => {
-                        if n == 1 {
-                            f.write_str(",")?;
-                        }
-                        f.write_str(")")?;
+                    if data.is_complete {
+                        write!(f, ")")?;
                     }
-                    n => {
-                        debug_assert!(n < elements.len());
-                        f.write_str(", ")?;
+                }
+                Value::Array(..) => {
+                    if data.n_children_yielded == 0 {
+                        write!(f, "[")?;
+                    } else if !data.is_complete {
+                        write!(f, ", ")?;
                     }
-                },
-                Value::Array(elements) => match data.n_children_yielded {
-                    0 => {
-                        f.write_str("[")?;
-                        if 0 == elements.len() {
-                            f.write_str("]")?;
-                        }
+                    if data.is_complete {
+                        write!(f, "]")?;
                     }
-                    n if n == elements.len() => {
-                        f.write_str("]")?;
+                }
+                Value::List(..) => {
+                    if data.n_children_yielded == 0 {
+                        write!(f, "list![")?;
+                    } else if !data.is_complete {
+                        write!(f, ", ")?;
                     }
-                    n => {
-                        debug_assert!(n < elements.len());
-                        f.write_str(", ")?;
+                    if data.is_complete {
+                        write!(f, "]")?;
                     }
-                },
-                Value::List(elements, _) => match data.n_children_yielded {
-                    0 => f.write_str("list![")?,
-                    n if n == elements.len() => {
-                        f.write_str("]")?;
-                    }
-                    n => {
-                        debug_assert!(n < elements.len());
-                        f.write_str(", ")?;
-                    }
-                },
+                }
             }
         }
 
@@ -534,8 +533,8 @@ impl TypedValue {
         while let Some(top) = stack.pop() {
             match top {
                 Task::ConvertAs(expr, ty) => {
-                    let inner = match &expr.inner {
-                        ExpressionInner::Single(single) => &single.inner,
+                    let inner = match expr.inner() {
+                        ExpressionInner::Single(single) => single.inner(),
                         ExpressionInner::Block(..) => return Err(Error::ExpressionNotConstant),
                     };
 
@@ -547,12 +546,12 @@ impl TypedValue {
                             let value = UIntValue::parse_decimal(decimal, *ty)?;
                             output.push(Value::from(value));
                         }
-                        (SingleExpressionInner::BitString(bits), TypeInner::UInt(ty)) => {
-                            let value = UIntValue::parse_bits(bits, *ty)?;
+                        (SingleExpressionInner::Binary(binary), TypeInner::UInt(ty)) => {
+                            let value = UIntValue::parse_binary(binary, *ty)?;
                             output.push(Value::from(value));
                         }
-                        (SingleExpressionInner::ByteString(bytes), TypeInner::UInt(ty)) => {
-                            let value = UIntValue::parse_bytes(bytes, *ty)?;
+                        (SingleExpressionInner::Hexadecimal(hexadecimal), TypeInner::UInt(ty)) => {
+                            let value = UIntValue::parse_hexadecimal(hexadecimal, *ty)?;
                             output.push(Value::from(value));
                         }
                         (
@@ -864,7 +863,7 @@ mod tests {
         let unit = Value::unit();
         assert_eq!("()", &unit.to_string());
         let singleton = Value::tuple([Value::from(UIntValue::U1(1))]);
-        assert_eq!("(1,)", &singleton.to_string());
+        assert_eq!("(1, )", &singleton.to_string());
         let pair = Value::tuple([
             Value::from(UIntValue::U1(1)),
             Value::from(UIntValue::U8(42)),

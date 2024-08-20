@@ -2,7 +2,6 @@
 //! tokens into an AST.
 
 use std::fmt;
-use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -11,136 +10,20 @@ use itertools::Itertools;
 use miniscript::iter::{Tree, TreeLike};
 use pest::Parser;
 use pest_derive::Parser;
-use simplicity::elements::hex::FromHex;
 
-use crate::error::{Error, RichError, WithFile, WithSpan};
+use crate::error::{Error, RichError, Span, WithFile, WithSpan};
+use crate::impl_eq_hash;
 use crate::num::NonZeroPow2Usize;
 use crate::pattern::Pattern;
+use crate::str::{Binary, Decimal, FunctionName, Hexadecimal, Identifier, JetName, WitnessName};
 use crate::types::{AliasedType, BuiltinAlias, TypeConstructible, UIntType};
 
 #[derive(Parser)]
 #[grammar = "minimal.pest"]
-pub struct IdentParser;
-
-/// Position of an object inside a file.
-///
-/// [`pest::Position<'i>`] forces us to track lifetimes, so we introduce our own struct.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Position {
-    /// Line where the object is located.
-    ///
-    /// Starts at 1.
-    pub line: NonZeroUsize,
-    /// Column where the object is located.
-    ///
-    /// Starts at 1.
-    pub col: NonZeroUsize,
-}
-
-impl Position {
-    /// Create a new position.
-    ///
-    /// ## Panics
-    ///
-    /// Line or column are zero.
-    pub fn new(line: usize, col: usize) -> Self {
-        let line = NonZeroUsize::new(line).expect("PEST lines start at 1");
-        let col = NonZeroUsize::new(col).expect("PEST columns start at 1");
-        Self { line, col }
-    }
-}
-
-/// Area that an object spans inside a file.
-///
-/// The area cannot be empty.
-///
-/// [`pest::Span<'i>`] forces us to track lifetimes, so we introduce our own struct.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Span {
-    /// Position where the object starts, inclusively.
-    pub start: Position,
-    /// Position where the object ends, inclusively.
-    pub end: Position,
-}
-
-impl Span {
-    /// Create a new span.
-    ///
-    /// ## Panics
-    ///
-    /// Start comes after end.
-    pub fn new(start: Position, end: Position) -> Self {
-        assert!(start.line <= end.line, "Start cannot come after end");
-        assert!(
-            start.line < end.line || start.col <= end.col,
-            "Start cannot come after end"
-        );
-        Self { start, end }
-    }
-
-    /// Check if the span covers more than one line.
-    pub fn is_multiline(&self) -> bool {
-        self.start.line < self.end.line
-    }
-}
-
-impl<'a> From<&'a pest::iterators::Pair<'_, Rule>> for Span {
-    fn from(pair: &'a pest::iterators::Pair<Rule>) -> Self {
-        let (line, col) = pair.line_col();
-        let start = Position::new(line, col);
-        // end_pos().line_col() is O(n) in file length
-        // https://github.com/pest-parser/pest/issues/560
-        // We should generate `Span`s only on error paths
-        let (line, col) = pair.as_span().end_pos().line_col();
-        let end = Position::new(line, col);
-        Self::new(start, end)
-    }
-}
-
-impl<'a> From<&'a str> for Span {
-    fn from(s: &str) -> Self {
-        let start = Position::new(1, 1);
-        let end_line = std::cmp::max(1, s.lines().count());
-        let end_col = std::cmp::max(1, s.lines().next_back().unwrap_or("").len());
-        let end = Position::new(end_line, end_col);
-        debug_assert!(start.line <= end.line);
-        debug_assert!(start.line < end.line || start.col <= end.col);
-        Span::new(start, end)
-    }
-}
-
-/// Implementations for newtypes that wrap [`Arc<str>`].
-macro_rules! wrapped_string {
-    ($wrapper:ident) => {
-        impl $wrapper {
-            /// Access the inner string.
-            pub fn as_inner(&self) -> &str {
-                self.0.as_ref()
-            }
-
-            /// Create a wrapped string without checking for validity.
-            #[cfg(test)]
-            pub fn from_str_unchecked(s: &str) -> Self {
-                Self(std::sync::Arc::from(s))
-            }
-        }
-
-        impl std::fmt::Display for $wrapper {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                std::fmt::Display::fmt(&self.0, f)
-            }
-        }
-
-        impl std::fmt::Debug for $wrapper {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                std::fmt::Display::fmt(&self.0, f)
-            }
-        }
-    };
-}
+struct IdentParser;
 
 /// A program is a sequence of items.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug)]
 pub struct Program {
     items: Arc<[Item]>,
     span: Span,
@@ -153,6 +36,8 @@ impl Program {
     }
 }
 
+impl_eq_hash!(Program; items);
+
 /// An item is a component of a program.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Item {
@@ -163,7 +48,7 @@ pub enum Item {
 }
 
 /// Definition of a function.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug)]
 pub struct Function {
     name: FunctionName,
     params: Arc<[FunctionParam]>,
@@ -196,6 +81,8 @@ impl Function {
     }
 }
 
+impl_eq_hash!(Function; name, params, ret, body);
+
 /// Parameter of a function.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct FunctionParam {
@@ -215,19 +102,6 @@ impl FunctionParam {
     }
 }
 
-/// Name of a function.
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct FunctionName(Arc<str>);
-
-wrapped_string!(FunctionName);
-
-impl FunctionName {
-    /// Return the name of the main function.
-    pub fn main() -> Self {
-        Self(Arc::from("main"))
-    }
-}
-
 /// A statement is a component of a block expression.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Statement {
@@ -237,35 +111,55 @@ pub enum Statement {
     Expression(Expression),
 }
 
-/// Identifier of a variable.
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct Identifier(Arc<str>);
-
-wrapped_string!(Identifier);
-
 /// The output of an expression is assigned to a pattern.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug)]
 pub struct Assignment {
-    /// The pattern.
-    pub pattern: Pattern,
-    /// The return type of the expression.
-    pub ty: AliasedType,
-    /// The expression.
-    pub expression: Expression,
-    /// Area that this assignment spans in the source file.
-    pub span: Span,
+    pattern: Pattern,
+    ty: AliasedType,
+    expression: Expression,
+    span: Span,
 }
+
+impl Assignment {
+    /// Access the pattern of the assignment.
+    pub fn pattern(&self) -> &Pattern {
+        &self.pattern
+    }
+
+    /// Access the return type of assigned expression.
+    pub fn ty(&self) -> &AliasedType {
+        &self.ty
+    }
+
+    /// Access the assigned expression.
+    pub fn expression(&self) -> &Expression {
+        &self.expression
+    }
+}
+
+impl_eq_hash!(Assignment; pattern, ty, expression);
 
 /// Call expression.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug)]
 pub struct Call {
-    /// The name of the call.
-    pub name: CallName,
-    /// The arguments to the call.
-    pub args: Arc<[Expression]>,
-    /// Area that this call spans in the source file.
-    pub span: Span,
+    name: CallName,
+    args: Arc<[Expression]>,
+    span: Span,
 }
+
+impl Call {
+    /// Access the name of the call.
+    pub fn name(&self) -> &CallName {
+        &self.name
+    }
+
+    /// Access the arguments to the call.
+    pub fn args(&self) -> &[Expression] {
+        self.args.as_ref()
+    }
+}
+
+impl_eq_hash!(Call; name, args);
 
 /// Name of a call.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -294,34 +188,46 @@ pub enum CallName {
     ForWhile(FunctionName),
 }
 
-/// Name of a jet.
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct JetName(Arc<str>);
-
-wrapped_string!(JetName);
-
 /// A type alias.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug)]
 pub struct TypeAlias {
-    /// Name of the alias.
-    pub name: Identifier,
-    /// Type that the alias resolves to.
-    ///
-    /// During the parsing stage, these types may include aliases.
-    /// The compiler checks if all contained aliases have been declared before.
-    pub ty: AliasedType,
-    /// Area that the alias spans in the source file.
-    pub span: Span,
+    name: Identifier,
+    ty: AliasedType,
+    span: Span,
 }
+
+impl TypeAlias {
+    /// Access the name of the alias.
+    pub fn name(&self) -> &Identifier {
+        &self.name
+    }
+
+    /// Access the type that the alias resolves to.
+    ///
+    /// During the parsing stage, the resolved type may include aliases.
+    /// The compiler will later check if all contained aliases have been declared before.
+    pub fn ty(&self) -> &AliasedType {
+        &self.ty
+    }
+}
+
+impl_eq_hash!(TypeAlias; name, ty);
 
 /// An expression is something that returns a value.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug)]
 pub struct Expression {
-    /// The kind of expression
-    pub inner: ExpressionInner,
-    /// Area that this expression spans in the source file.
-    pub span: Span,
+    inner: ExpressionInner,
+    span: Span,
 }
+
+impl Expression {
+    /// Access the inner expression.
+    pub fn inner(&self) -> &ExpressionInner {
+        &self.inner
+    }
+}
+
+impl_eq_hash!(Expression; inner);
 
 /// The kind of expression.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -335,13 +241,20 @@ pub enum ExpressionInner {
 }
 
 /// A single expression directly returns a value.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug)]
 pub struct SingleExpression {
-    /// The kind of single expression
-    pub inner: SingleExpressionInner,
-    /// Area that this expression spans in the source file.
-    pub span: Span,
+    inner: SingleExpressionInner,
+    span: Span,
 }
+
+impl SingleExpression {
+    /// Access the inner expression.
+    pub fn inner(&self) -> &SingleExpressionInner {
+        &self.inner
+    }
+}
+
+impl_eq_hash!(SingleExpression; inner);
 
 /// The kind of single expression.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -352,12 +265,12 @@ pub enum SingleExpressionInner {
     Option(Option<Arc<Expression>>),
     /// Boolean literal expression
     Boolean(bool),
-    /// Unsigned integer literal in decimal representation
-    Decimal(UnsignedDecimal),
-    /// Unsigned integer literal in bit string representation
-    BitString(Bits),
-    /// Unsigned integer literal in byte string representation
-    ByteString(Bytes),
+    /// Decimal string literal.
+    Decimal(Decimal),
+    /// Binary string literal.
+    Binary(Binary),
+    /// Hexadecimal string literal.
+    Hexadecimal(Hexadecimal),
     /// Witness identifier expression
     Witness(WitnessName),
     /// Variable identifier expression
@@ -378,121 +291,12 @@ pub enum SingleExpressionInner {
     List(Arc<[Expression]>),
 }
 
-/// Valid unsigned decimal string.
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct UnsignedDecimal(Arc<str>);
-
-wrapped_string!(UnsignedDecimal);
-
-/// Bit string whose length is a power of two.
-///
-/// There is at least 1 bit.
-/// There are at most 256 bits.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Bits(BitsInner);
-
-/// Private enum that upholds invariants about its values.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-enum BitsInner {
-    /// Least significant bit of byte.
-    ///
-    /// The bit is saved as a [`u8`] value that is always less than or equal to 1.
-    U1(u8),
-    /// Two least significant bits of byte.
-    ///
-    /// The bits are saved as a [`u8`] value that is always less than or equal to 3.
-    U2(u8),
-    /// Four least significant bits of byte.
-    ///
-    /// The bits are saved as a [`u8`] value that is always less than or equal to 15.
-    U4(u8),
-    /// All bits from byte string.
-    ///
-    /// There are at least 8 bits, aka 1 byte.
-    /// There are at most 256 bits, aka 32 bytes.
-    Long(Arc<[u8]>),
-}
-
-impl Bits {
-    /// Access the contained 1-bit value,
-    /// represented by a [`u8`] integer that is always less than or equal to 1.
-    pub fn as_u1(&self) -> Option<u8> {
-        match self.0 {
-            BitsInner::U1(byte) => {
-                debug_assert!(byte <= 1);
-                Some(byte)
-            }
-            _ => None,
-        }
-    }
-
-    /// Access the contained 2-bit value,
-    /// represented by a [`u8`] integer that is always less than or equal to 3.
-    pub fn as_u2(&self) -> Option<u8> {
-        match self.0 {
-            BitsInner::U2(byte) => {
-                debug_assert!(byte <= 3);
-                Some(byte)
-            }
-            _ => None,
-        }
-    }
-
-    /// Access the contained 4-bit value,
-    /// represented by a [`u8`] integer that is always less than or equal to 15.
-    pub fn as_u4(&self) -> Option<u8> {
-        match self.0 {
-            BitsInner::U4(byte) => {
-                debug_assert!(byte <= 15);
-                Some(byte)
-            }
-            _ => None,
-        }
-    }
-
-    /// Access the contained value that is between 8 and 256 bits long,
-    /// represented by a slice that is between 1 and 32 bytes long.
-    pub fn as_long(&self) -> Option<&[u8]> {
-        match &self.0 {
-            BitsInner::Long(bytes) => {
-                debug_assert!(1 <= bytes.len());
-                debug_assert!(bytes.len() <= 32);
-                Some(bytes.as_ref())
-            }
-            _ => None,
-        }
-    }
-}
-
-/// Byte string whose length is a power of two.
-///
-/// There is at least 1 byte.
-/// There are at most 32 bytes.
-#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct Bytes(Arc<[u8]>);
-
-impl AsRef<[u8]> for Bytes {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
-    }
-}
-
-/// String that is a witness name.
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct WitnessName(Arc<str>);
-
-wrapped_string!(WitnessName);
-
 /// Match expression.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug)]
 pub struct Match {
-    /// Expression whose output is matched.
     scrutinee: Arc<Expression>,
-    /// Match arm for left sum values.
     left: MatchArm,
-    /// Match arm for right sum values.
     right: MatchArm,
-    /// Area that the match spans in the source file.
     span: Span,
 }
 
@@ -525,13 +329,25 @@ impl Match {
     }
 }
 
+impl_eq_hash!(Match; scrutinee, left, right);
+
 /// Arm of a match expression.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct MatchArm {
-    /// Matched pattern
-    pub pattern: MatchPattern,
-    /// Executed expression
-    pub expression: Arc<Expression>,
+    pattern: MatchPattern,
+    expression: Arc<Expression>,
+}
+
+impl MatchArm {
+    /// Access the pattern that guards the match arm.
+    pub fn pattern(&self) -> &MatchPattern {
+        &self.pattern
+    }
+
+    /// Access the expression that is executed in the match arm.
+    pub fn expression(&self) -> &Expression {
+        &self.expression
+    }
 }
 
 /// Pattern of a match arm.
@@ -573,13 +389,294 @@ impl MatchPattern {
     }
 }
 
+impl fmt::Display for Program {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for item in self.items() {
+            writeln!(f, "{item}")?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for Item {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::TypeAlias(alias) => write!(f, "{alias}"),
+            Self::Function(function) => write!(f, "{function}"),
+        }
+    }
+}
+
+impl fmt::Display for TypeAlias {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "type {} = {}", self.name(), self.ty())
+    }
+}
+
+impl fmt::Display for Function {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "fn {}(", self.name())?;
+        for (i, param) in self.params().iter().enumerate() {
+            if 0 < i {
+                write!(f, ", ")?;
+            }
+            write!(f, "{param}")?;
+        }
+        write!(f, ")")?;
+        if let Some(ty) = self.ret() {
+            write!(f, " -> {ty}")?;
+        }
+        write!(f, " {}", self.body())
+    }
+}
+
+impl fmt::Display for FunctionParam {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.identifier(), self.ty())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+enum ExprTree<'a> {
+    Expression(&'a Expression),
+    Block(&'a [Statement], &'a Option<Arc<Expression>>),
+    Statement(&'a Statement),
+    Assignment(&'a Assignment),
+    Single(&'a SingleExpression),
+    Call(&'a Call),
+    Match(&'a Match),
+}
+
+impl<'a> TreeLike for ExprTree<'a> {
+    fn as_node(&self) -> Tree<Self> {
+        use SingleExpressionInner as S;
+
+        match self {
+            Self::Expression(expr) => match expr.inner() {
+                ExpressionInner::Block(statements, maybe_expr) => {
+                    Tree::Unary(ExprTree::Block(statements, maybe_expr))
+                }
+                ExpressionInner::Single(single) => Tree::Unary(ExprTree::Single(single)),
+            },
+            Self::Block(statements, maybe_expr) => Tree::Nary(
+                statements
+                    .iter()
+                    .map(ExprTree::Statement)
+                    .chain(maybe_expr.iter().map(Arc::as_ref).map(ExprTree::Expression))
+                    .collect(),
+            ),
+            Self::Statement(statement) => match statement {
+                Statement::Assignment(assignment) => Tree::Unary(ExprTree::Assignment(assignment)),
+                Statement::Expression(expression) => Tree::Unary(ExprTree::Expression(expression)),
+            },
+            Self::Assignment(assignment) => {
+                Tree::Unary(ExprTree::Expression(assignment.expression()))
+            }
+            Self::Single(single) => match single.inner() {
+                S::Boolean(_)
+                | S::Binary(_)
+                | S::Decimal(_)
+                | S::Hexadecimal(_)
+                | S::Variable(_)
+                | S::Witness(_)
+                | S::Option(None) => Tree::Nullary,
+                S::Option(Some(l))
+                | S::Either(Either::Left(l))
+                | S::Either(Either::Right(l))
+                | S::Expression(l) => Tree::Unary(Self::Expression(l)),
+                S::Call(call) => Tree::Unary(Self::Call(call)),
+                S::Match(match_) => Tree::Unary(Self::Match(match_)),
+                S::Tuple(tuple) => Tree::Nary(tuple.iter().map(Self::Expression).collect()),
+                S::Array(array) => Tree::Nary(array.iter().map(Self::Expression).collect()),
+                S::List(list) => Tree::Nary(list.iter().map(Self::Expression).collect()),
+            },
+            Self::Call(call) => Tree::Nary(call.args().iter().map(Self::Expression).collect()),
+            Self::Match(match_) => Tree::Nary(Arc::new([
+                Self::Expression(match_.scrutinee()),
+                Self::Expression(match_.left().expression()),
+                Self::Expression(match_.right().expression()),
+            ])),
+        }
+    }
+}
+
+impl<'a> fmt::Display for ExprTree<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use SingleExpressionInner as S;
+
+        for data in self.verbose_pre_order_iter() {
+            match &data.node {
+                Self::Statement(..) if data.is_complete => writeln!(f, ";")?,
+                Self::Expression(..) | Self::Statement(..) => {}
+                Self::Block(..) => {
+                    if data.n_children_yielded == 0 {
+                        writeln!(f, "{{")?;
+                    } else if !data.is_complete {
+                        write!(f, "    ")?;
+                    }
+                    if data.is_complete {
+                        writeln!(f, "}}")?;
+                    }
+                }
+                Self::Assignment(assignment) => match data.n_children_yielded {
+                    0 => write!(f, "let {}: {} = ", assignment.pattern(), assignment.ty())?,
+                    n => debug_assert_eq!(n, 1),
+                },
+                Self::Single(single) => match single.inner() {
+                    S::Boolean(bit) => write!(f, "{bit}")?,
+                    S::Binary(binary) => write!(f, "0b{binary}")?,
+                    S::Decimal(decimal) => write!(f, "{decimal}")?,
+                    S::Hexadecimal(hexadecimal) => write!(f, "0x{hexadecimal}")?,
+                    S::Variable(name) => write!(f, "{name}")?,
+                    S::Witness(name) => write!(f, "witness(\"{name}\")")?,
+                    S::Option(None) => write!(f, "None")?,
+                    S::Option(Some(_)) => match data.n_children_yielded {
+                        0 => write!(f, "Some(")?,
+                        n => {
+                            debug_assert_eq!(n, 1);
+                            write!(f, ")")?;
+                        }
+                    },
+                    S::Either(Either::Left(_)) => match data.n_children_yielded {
+                        0 => write!(f, "Left(")?,
+                        n => {
+                            debug_assert_eq!(n, 1);
+                            write!(f, ")")?;
+                        }
+                    },
+                    S::Either(Either::Right(_)) => match data.n_children_yielded {
+                        0 => write!(f, "Right(")?,
+                        n => {
+                            debug_assert_eq!(n, 1);
+                            write!(f, ")")?;
+                        }
+                    },
+                    S::Expression(_) => match data.n_children_yielded {
+                        0 => write!(f, "(")?,
+                        n => {
+                            debug_assert_eq!(n, 1);
+                            write!(f, ")")?;
+                        }
+                    },
+                    S::Call(..) | S::Match(..) => {}
+                    S::Tuple(tuple) => {
+                        if data.n_children_yielded == 0 {
+                            write!(f, "(")?;
+                        } else if !data.is_complete || tuple.len() == 1 {
+                            write!(f, ", ")?;
+                        }
+                        if data.is_complete {
+                            write!(f, ")")?;
+                        }
+                    }
+                    S::Array(..) => {
+                        if data.n_children_yielded == 0 {
+                            write!(f, "[")?;
+                        } else if !data.is_complete {
+                            write!(f, ", ")?;
+                        }
+                        if data.is_complete {
+                            write!(f, "]")?;
+                        }
+                    }
+                    S::List(..) => {
+                        if data.n_children_yielded == 0 {
+                            write!(f, "list![")?;
+                        } else if !data.is_complete {
+                            write!(f, ", ")?;
+                        }
+                        if data.is_complete {
+                            write!(f, "]")?;
+                        }
+                    }
+                },
+                Self::Call(call) => {
+                    if data.n_children_yielded == 0 {
+                        write!(f, "{}(", call.name())?;
+                    } else if !data.is_complete {
+                        write!(f, ", ")?;
+                    }
+                    if data.is_complete {
+                        write!(f, ")")?;
+                    }
+                }
+                Self::Match(match_) => match data.n_children_yielded {
+                    0 => write!(f, "match ")?,
+                    1 => write!(f, "{{\n{} => ", match_.left().pattern())?,
+                    2 => write!(f, ",\n{} => ", match_.right().pattern())?,
+                    n => {
+                        debug_assert_eq!(n, 3);
+                        write!(f, ",\n}}")?;
+                    }
+                },
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl fmt::Display for Expression {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", ExprTree::Expression(self))
+    }
+}
+
+impl fmt::Display for Statement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", ExprTree::Statement(self))
+    }
+}
+
+impl fmt::Display for Assignment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", ExprTree::Assignment(self))
+    }
+}
+
+impl fmt::Display for SingleExpression {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", ExprTree::Single(self))
+    }
+}
+
+impl fmt::Display for Call {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", ExprTree::Call(self))
+    }
+}
+
+impl fmt::Display for CallName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CallName::Jet(jet) => write!(f, "jet::{jet}"),
+            CallName::UnwrapLeft(ty) => write!(f, "unwrap_left::<{ty}>"),
+            CallName::UnwrapRight(ty) => write!(f, "unwrap_right::<{ty}>"),
+            CallName::Unwrap => write!(f, "unwrap"),
+            CallName::IsNone(ty) => write!(f, "is_none::<{ty}>"),
+            CallName::Assert => write!(f, "assert!"),
+            CallName::Panic => write!(f, "panic!"),
+            CallName::TypeCast(ty) => write!(f, "<{ty}>::into"),
+            CallName::Custom(name) => write!(f, "{name}"),
+            CallName::Fold(name, bound) => write!(f, "fold::<{name}, {bound}>"),
+            CallName::ForWhile(name) => write!(f, "for_while::<{name}>"),
+        }
+    }
+}
+
+impl fmt::Display for Match {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", ExprTree::Match(self))
+    }
+}
+
 impl fmt::Display for MatchPattern {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MatchPattern::Left(i, ty) => write!(f, "Left({i}: {ty}"),
-            MatchPattern::Right(i, ty) => write!(f, "Right({i}: {ty}"),
+            MatchPattern::Left(i, ty) => write!(f, "Left({i}: {ty})"),
+            MatchPattern::Right(i, ty) => write!(f, "Right({i}: {ty})"),
             MatchPattern::None => write!(f, "None"),
-            MatchPattern::Some(i, ty) => write!(f, "Some({i}: {ty}"),
+            MatchPattern::Some(i, ty) => write!(f, "Some({i}: {ty})"),
             MatchPattern::False => write!(f, "false"),
             MatchPattern::True => write!(f, "true"),
         }
@@ -690,8 +787,7 @@ impl PestParse for FunctionName {
 
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Self::RULE));
-        let name = Arc::from(pair.as_str());
-        Ok(Self(name))
+        Ok(Self::from_str_unchecked(pair.as_str()))
     }
 }
 
@@ -765,8 +861,7 @@ impl PestParse for Identifier {
 
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Self::RULE));
-        let identifier = Arc::from(pair.as_str());
-        Ok(Identifier(identifier))
+        Ok(Self::from_str_unchecked(pair.as_str()))
     }
 }
 
@@ -860,7 +955,7 @@ impl PestParse for JetName {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Self::RULE));
         let jet_name = pair.as_str().strip_prefix("jet::").unwrap();
-        Ok(Self(Arc::from(jet_name)))
+        Ok(Self::from_str_unchecked(jet_name))
     }
 }
 
@@ -945,11 +1040,11 @@ impl PestParse for SingleExpression {
             Rule::false_expr => SingleExpressionInner::Boolean(false),
             Rule::true_expr => SingleExpressionInner::Boolean(true),
             Rule::call_expr => SingleExpressionInner::Call(Call::parse(inner_pair)?),
-            Rule::bit_string => Bits::parse(inner_pair).map(SingleExpressionInner::BitString)?,
-            Rule::byte_string => Bytes::parse(inner_pair).map(SingleExpressionInner::ByteString)?,
-            Rule::unsigned_decimal => {
-                UnsignedDecimal::parse(inner_pair).map(SingleExpressionInner::Decimal)?
+            Rule::bin_literal => Binary::parse(inner_pair).map(SingleExpressionInner::Binary)?,
+            Rule::hex_literal => {
+                Hexadecimal::parse(inner_pair).map(SingleExpressionInner::Hexadecimal)?
             }
+            Rule::dec_literal => Decimal::parse(inner_pair).map(SingleExpressionInner::Decimal)?,
             Rule::witness_expr => {
                 let witness_pair = inner_pair.into_inner().next().unwrap();
                 SingleExpressionInner::Witness(WitnessName::parse(witness_pair)?)
@@ -988,83 +1083,33 @@ impl PestParse for SingleExpression {
     }
 }
 
-impl PestParse for UnsignedDecimal {
-    const RULE: Rule = Rule::unsigned_decimal;
+impl PestParse for Decimal {
+    const RULE: Rule = Rule::dec_literal;
 
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Self::RULE));
-        let decimal = Arc::from(pair.as_str().replace('_', ""));
-        Ok(Self(decimal))
+        let decimal = pair.as_str().replace('_', "");
+        Ok(Self::from_str_unchecked(decimal.as_str()))
     }
 }
 
-impl PestParse for Bits {
-    const RULE: Rule = Rule::bit_string;
+impl PestParse for Binary {
+    const RULE: Rule = Rule::bin_literal;
 
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Self::RULE));
-        let bit_string = pair.as_str();
-        debug_assert!(&bit_string[0..2] == "0b");
-
-        let bits = &bit_string[2..];
-        if !bits.len().is_power_of_two() {
-            return Err(Error::BitStringPow2(bits.len())).with_span(&pair);
-        }
-
-        let byte_len = (bits.len() + 7) / 8;
-        let mut bytes = Vec::with_capacity(byte_len);
-        let padding_len = 8usize.saturating_sub(bits.len());
-        let padding = std::iter::repeat('0').take(padding_len);
-        let mut padded_bits = padding.chain(bits.chars());
-
-        for _ in 0..byte_len {
-            let mut byte = 0u8;
-            for _ in 0..8 {
-                let bit = padded_bits.next().unwrap();
-                byte = byte << 1 | if bit == '1' { 1 } else { 0 };
-            }
-            bytes.push(byte);
-        }
-
-        match bits.len() {
-            1 => {
-                debug_assert!(bytes[0] < 2);
-                Ok(Bits(BitsInner::U1(bytes[0])))
-            }
-            2 => {
-                debug_assert!(bytes[0] < 4);
-                Ok(Bits(BitsInner::U2(bytes[0])))
-            }
-            4 => {
-                debug_assert!(bytes[0] < 16);
-                Ok(Bits(BitsInner::U4(bytes[0])))
-            }
-            8 | 16 | 32 | 64 | 128 | 256 => Ok(Bits(BitsInner::Long(bytes.into_iter().collect()))),
-            n => Err(Error::BitStringPow2(n)).with_span(&pair),
-        }
+        let binary = pair.as_str().strip_prefix("0b").unwrap().replace('_', "");
+        Ok(Self::from_str_unchecked(binary.as_str()))
     }
 }
 
-impl PestParse for Bytes {
-    const RULE: Rule = Rule::byte_string;
+impl PestParse for Hexadecimal {
+    const RULE: Rule = Rule::hex_literal;
 
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Self::RULE));
-        let hex_string = pair.as_str();
-
-        let hex_digits = hex_string
-            .strip_prefix("0x")
-            .expect("Grammar enforces prefix")
-            .replace('_', "");
-        if hex_digits.len() < 2 || 64 < hex_digits.len() || !hex_digits.len().is_power_of_two() {
-            return Err(Error::HexStringPow2(hex_digits.len())).with_span(&pair);
-        }
-
-        Vec::<u8>::from_hex(&hex_digits)
-            .map_err(Error::from)
-            .with_span(&pair)
-            .map(Arc::from)
-            .map(Bytes)
+        let hexadecimal = pair.as_str().strip_prefix("0x").unwrap().replace('_', "");
+        Ok(Self::from_str_unchecked(hexadecimal.as_str()))
     }
 }
 
@@ -1073,8 +1118,7 @@ impl PestParse for WitnessName {
 
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Self::RULE));
-        let name = Arc::from(pair.as_str());
-        Ok(Self(name))
+        Ok(Self::from_str_unchecked(pair.as_str()))
     }
 }
 

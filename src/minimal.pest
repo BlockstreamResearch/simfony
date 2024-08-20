@@ -12,7 +12,7 @@ jet               = @{ "jet::" ~ (ASCII_ALPHANUMERIC | "_")+ }
 witness_name      = @{ (ASCII_ALPHANUMERIC | "_")+ }
 builtin_type      = @{ "Either" | "Option" | "bool" | "List" | unsigned_type }
 
-builtin_function  = @{ jet | "unwrap_left" | "unwrap_right" | "for_while" | "is_none" | "unwrap" | "assert" | "panic" | "into" | "fold" }
+builtin_function  = @{ jet | "unwrap_left" | "unwrap_right" | "for_while" | "is_none" | "unwrap" | "assert" | "panic" | "match" | "into" | "fold" }
 function_name     =  { !builtin_function ~ identifier }
 typed_identifier  =  { identifier ~ ":" ~ ty }
 function_params   =  { "(" ~ (typed_identifier ~ ("," ~ typed_identifier)*)? ~ ")" }
@@ -46,7 +46,7 @@ array_type        =  { "[" ~ ty ~ ";" ~ array_size ~ "]" }
 list_bound        = @{ ASCII_DIGIT+ }
 list_type         =  { "List<" ~ ty ~ "," ~ list_bound ~ ">" }
 ty                =  { alias_name | builtin_alias | sum_type | option_type | boolean_type | unsigned_type | tuple_type | array_type | list_type }
-builtin_alias     = @{ "Ctx8" | "Pubkey" | "Message64" | "Signature" | "Scalar" | "Fe" | "Gej" | "Ge" | "Point" | "Height" | "Time" | "Distance" | "Duration" | "Lock" | "Outpoint" | "Confidential1" | "ExplicitAsset" | "Asset1" | "ExplicitAmount" | "Amount1" | "ExplicitNonce" | "Nonce" | "TokenAmount1" }
+builtin_alias     = @{ "Ctx8" | "Pubkey" | "Message64" | "Message" | "Signature" | "Scalar" | "Fe" | "Gej" | "Ge" | "Point" | "Height" | "Time" | "Distance" | "Duration" | "Lock" | "Outpoint" | "Confidential1" | "ExplicitAsset" | "Asset1" | "ExplicitAmount" | "Amount1" | "ExplicitNonce" | "Nonce" | "TokenAmount1" }
 alias_name        =  { !builtin_alias ~ identifier }
 type_keyword      = @{ "type" ~ !ASCII_ALPHANUMERIC }
 type_alias        =  { type_keyword ~ alias_name ~ "=" ~ ty }
@@ -69,9 +69,9 @@ for_while         =  { "for_while::<" ~ function_name ~ ">" }
 call_name         =  { jet | unwrap_left | unwrap_right | is_none | unwrap | assert | panic | type_cast | fold | for_while | function_name }
 call_args         =  { "(" ~ (expression ~ ("," ~ expression)*)? ~ ")" }
 call_expr         =  { call_name ~ call_args }
-unsigned_decimal  = @{ (ASCII_DIGIT | "_")+ }
-bit_string        = @{ "0b" ~ (ASCII_BIN_DIGIT | "_")+ }
-byte_string       = @{ "0x" ~ (ASCII_HEX_DIGIT | "_")+ }
+dec_literal       = @{ (ASCII_DIGIT | "_")+ }
+bin_literal       = @{ "0b" ~ (ASCII_BIN_DIGIT | "_")+ }
+hex_literal       = @{ "0x" ~ (ASCII_HEX_DIGIT | "_")+ }
 witness_expr      =  { "witness(\"" ~ witness_name ~ "\")" }
 variable_expr     =  { identifier }
 match_arm         =  { match_pattern ~ "=>" ~ (single_expression ~ "," | block_expression ~ ","?) }
@@ -80,4 +80,4 @@ match_expr        =  { match_keyword ~ expression ~ "{" ~ match_arm ~ match_arm 
 tuple_expr        =  { "(" ~ ((expression ~ ",")+ ~ expression?)? ~ ")" }
 array_expr        =  { "[" ~ (expression ~ ("," ~ expression)* ~ ","?)? ~ "]" }
 list_expr         =  { "list![" ~ (expression ~ ("," ~ expression)* ~ ","?)? ~ "]" }
-single_expression =  { left_expr | right_expr | none_expr | some_expr | false_expr | true_expr | call_expr | match_expr | tuple_expr | array_expr | list_expr | bit_string | byte_string | unsigned_decimal | witness_expr | variable_expr | "(" ~ expression ~ ")" }
+single_expression =  { left_expr | right_expr | none_expr | some_expr | false_expr | true_expr | call_expr | match_expr | tuple_expr | array_expr | list_expr | bin_literal | hex_literal | dec_literal | witness_expr | variable_expr | "(" ~ expression ~ ")" }

@@ -12,6 +12,7 @@ pub mod named;
 pub mod num;
 pub mod parse;
 pub mod pattern;
+pub mod str;
 pub mod types;
 pub mod value;
 pub mod witness;
@@ -49,6 +50,28 @@ pub fn satisfy(
 
     let simplicity_witness = named::to_witness_node(&simplicity_named_construct, witness);
     simplicity_witness.finalize().map_err(|e| e.to_string())
+}
+
+/// Recursively implement [`PartialEq`], [`Eq`] and [`std::hash::Hash`]
+/// using selected members of a given type. The type must have a getter
+/// method for each selected member.
+#[macro_export]
+macro_rules! impl_eq_hash {
+    ($ty: ident; $($member: ident),*) => {
+        impl PartialEq for $ty {
+            fn eq(&self, other: &Self) -> bool {
+                true $(&& self.$member() == other.$member())*
+            }
+        }
+
+        impl Eq for $ty {}
+
+        impl std::hash::Hash for $ty {
+            fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+                $(self.$member().hash(state);)*
+            }
+        }
+    };
 }
 
 #[cfg(test)]

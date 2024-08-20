@@ -5,7 +5,8 @@ use std::fmt;
 use serde::{de, Deserialize, Deserializer};
 
 use crate::error::{Error, RichError, WithFile, WithSpan};
-use crate::parse::{ParseFromStr, WitnessName};
+use crate::parse::ParseFromStr;
+use crate::str::WitnessName;
 use crate::types::{AliasedType, ResolvedType};
 use crate::value::TypedValue;
 use crate::{ast, parse};

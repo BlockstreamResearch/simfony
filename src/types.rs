@@ -7,7 +7,7 @@ use simplicity::types::{CompleteBound, Final};
 
 use crate::array::{BTreeSlice, Partition};
 use crate::num::{NonZeroPow2Usize, Pow2Usize};
-use crate::parse::Identifier;
+use crate::str::Identifier;
 
 /// Primitives of the Simfony type system, excluding type aliases.
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
@@ -144,6 +144,22 @@ impl UIntType {
         };
         debug_assert!(bit_width.is_power_of_two());
         Pow2Usize::new_unchecked(bit_width)
+    }
+
+    /// Create the unsigned integer type for the given `bit_width`.
+    pub const fn from_bit_width(bit_width: Pow2Usize) -> Option<Self> {
+        match bit_width.get() {
+            1 => Some(UIntType::U1),
+            2 => Some(UIntType::U2),
+            4 => Some(UIntType::U4),
+            8 => Some(UIntType::U8),
+            16 => Some(UIntType::U16),
+            32 => Some(UIntType::U32),
+            64 => Some(UIntType::U64),
+            128 => Some(UIntType::U128),
+            256 => Some(UIntType::U256),
+            _ => None,
+        }
     }
 }
 
