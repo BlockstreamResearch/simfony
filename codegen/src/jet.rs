@@ -241,7 +241,7 @@ The assertion fails."#,
         Elements::Divides8
         | Elements::Divides16
         | Elements::Divides32
-        | Elements::Divides64 => "Check if the first integer divides the second integer.",
+        | Elements::Divides64 => "Check if the first integer is divisible by the second integer.",
         Elements::FullAdd8
         | Elements::FullAdd16
         | Elements::FullAdd32
@@ -257,7 +257,7 @@ The assertion fails."#,
         Elements::FullMultiply8
         | Elements::FullMultiply16
         | Elements::FullMultiply32
-        | Elements::FullMultiply64 => "Helper for multiplying integers. Take the sum of the first pair of integers and add the product of the second pair.",
+        | Elements::FullMultiply64 => "Helper for multiplying integers. Take the product of the first pair of integers and add the sum of the second pair.",
         Elements::FullSubtract8
         | Elements::FullSubtract16
         | Elements::FullSubtract32
@@ -331,7 +331,10 @@ The assertion fails."#,
         Elements::Sha256Ctx8Init => "Initialize a default SHA256 hash engine.",
         Elements::Sha256Iv => "Return the SHA256 initial value.",
         // Elliptic curve functions
-        Elements::Decompress => "Decompress a point into affine coordinates.  Fails if the x-coordinate is not on the curve, but succeeds even if the x-coordinate is not normalized.",
+        Elements::Decompress => r#"Decompress a point into affine coordinates.
+
+- Return `None` if the x-coordinate is not on the curve.
+- Return `Some(ge)` even if the x-coordinate is not normalized."#,
         Elements::FeAdd => "Add two field elements.",
         Elements::FeInvert => "Compute the modular inverse of a field element.",
         Elements::FeIsOdd => "Check if the canonical representative of the field element is odd.",
