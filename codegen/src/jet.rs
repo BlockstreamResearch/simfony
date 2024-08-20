@@ -207,7 +207,10 @@ pub fn documentation(jet: Elements) -> &'static str {
         Elements::Some16 => "Check if a 16-bit value is nonzero.",
         Elements::Some32 => "Check if a 32-bit value is nonzero.",
         Elements::Some64 => "Check if a 64-bit value is nonzero.",
-        Elements::Verify => "Assert that a bit is true or panic otherwise.",
+        Elements::Verify => r#"Assert that a bit is true.
+
+## Panics
+The assertion fails."#,
         Elements::Xor1  => "Bitwise XOR of two 1-bit  values.",
         Elements::Xor8  => "Bitwise XOR of two 8-bit  values.",
         Elements::Xor16 => "Bitwise XOR of two 16-bit values.",
@@ -357,8 +360,15 @@ pub fn documentation(jet: Elements) -> &'static str {
         Elements::GejYIsOdd => "Check if the point represents an affine point with odd y-coordinate.",
         Elements::Generate => "Multiply the generator point with the given scalar.",
         Elements::LinearCombination1 => "Compute the the linear combination `b * a + c * g` for point `b` and scalars `a` and `c`, where `g` is the generator point.",
-        Elements::LinearVerify1 => "Check if point `b` is equal to the linear combination `a.0 * a.1 + a.2 * g`, where `g` is the generator point.",
-        Elements::PointVerify1 => "Check if point `b` is equal to the linear combination `a.0 * a.1 + a.2 * g`, where `g` is the generator point. Fails if the points cannot be decompressed.",
+        Elements::LinearVerify1 => r#"Assert that a point `b` is equal to the linear combination `a.0 * a.1 + a.2 * g`, where `g` is the generator point.
+
+## Panics
+The assertion fails."#,
+        Elements::PointVerify1 => r#"Assert that a point `b` is equal to the linear combination `a.0 * a.1 + a.2 * g`, where `g` is the generator point.
+
+## Panics
+- The assertion fails.
+- Fails if the points cannot be decompressed."#,
         Elements::ScalarAdd => "Add two scalars.",
         Elements::ScalarInvert => "Compute the modular inverse of a scalar.",
         Elements::ScalarIsZero => "Check if the scalar represents zero.",
@@ -369,8 +379,17 @@ pub fn documentation(jet: Elements) -> &'static str {
         Elements::ScalarSquare => "Square a scalar.",
         Elements::Scale => "Multiply a point by a scalar.",
         // Digital Signatures
-        Elements::Bip0340Verify => "Assert that a Schnorr signature matches a public key and message, or panic otherwise.",
-        Elements::CheckSigVerify => "Assert that a Schnorr signature matches a public key and message, using a custom sighash mode. This jet should not be used directly.",
+        Elements::Bip0340Verify => r#"Assert that a Schnorr signature matches a public key and message.
+
+## Panics
+The assertion fails."#,
+        Elements::CheckSigVerify => r#"Assert that a Schnorr signature matches a public key and message, using a custom sighash mode.
+
+## Panics
+The assertion fails.
+
+## Safety
+This jet should not be used directly."#,
         // Bitcoin (without primitives)
         Elements::ParseLock => "Parse an integer as a consensus-encoded Bitcoin lock time.",
         Elements::ParseSequence => "Parse an integer as a consensus-encoded Bitcoin sequence number.",
@@ -520,10 +539,22 @@ Using the notation of BIP-0341, it returns the SHA256 hash of c[33: 33 + 32m]."#
 - The result of [`output_surjection_proofs_hash`] (32 bytes).
 - The result of [`input_utxos_hash`] (32 bytes)."#,
         // Time locks
-        Elements::CheckLockDistance => "Assert that the value returned by [`tx_lock_distance`] is greater than or equal to the given value.",
-        Elements::CheckLockDuration => "Assert that the value returned by [`tx_lock_duration`] is greater than or equal to the given value.",
-        Elements::CheckLockHeight   => "Assert that the value returned by [`tx_lock_height`]   is greater than or equal to the given value.",
-        Elements::CheckLockTime     => "Assert that the value returned by [`tx_lock_time`]     is greater than or equal to the given value.",
+        Elements::CheckLockDistance => r#"Assert that the value returned by [`tx_lock_distance`] is greater than or equal to the given value.
+
+## Panics
+The assertion fails."#,
+        Elements::CheckLockDuration => r#"Assert that the value returned by [`tx_lock_duration`] is greater than or equal to the given value.
+
+## Panics
+The assertion fails"#,
+        Elements::CheckLockHeight   => r#"Assert that the value returned by [`tx_lock_height`]   is greater than or equal to the given value.
+
+## Panics
+The assertion fails."#,
+        Elements::CheckLockTime     => r#"Assert that the value returned by [`tx_lock_time`]     is greater than or equal to the given value.
+
+## Panics
+The assertion fails."#,
         Elements::TxIsFinal => "Check if the sequence numbers of all transaction inputs are at their maximum value.",
         Elements::TxLockDistance => "If [`version`] returns 2 or greater, then return the greatest valid [`Distance`] value of any transaction input. Return zeroes otherwise.",
         Elements::TxLockDuration => "If [`version`] returns 2 or greater, then return the greatest valid [`Duration`] value of any transaction input. Return zeroes otherwise.",
