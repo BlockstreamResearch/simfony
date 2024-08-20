@@ -12,6 +12,7 @@ use pest::Parser;
 use pest_derive::Parser;
 
 use crate::error::{Error, RichError, Span, WithFile, WithSpan};
+use crate::impl_eq_hash;
 use crate::num::NonZeroPow2Usize;
 use crate::pattern::Pattern;
 use crate::str::{Binary, Decimal, FunctionName, Hexadecimal, Identifier, JetName, WitnessName};
@@ -22,7 +23,7 @@ use crate::types::{AliasedType, BuiltinAlias, TypeConstructible, UIntType};
 struct IdentParser;
 
 /// A program is a sequence of items.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug)]
 pub struct Program {
     items: Arc<[Item]>,
     span: Span,
@@ -35,6 +36,8 @@ impl Program {
     }
 }
 
+impl_eq_hash!(Program; items);
+
 /// An item is a component of a program.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Item {
@@ -45,7 +48,7 @@ pub enum Item {
 }
 
 /// Definition of a function.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug)]
 pub struct Function {
     name: FunctionName,
     params: Arc<[FunctionParam]>,
@@ -78,6 +81,8 @@ impl Function {
     }
 }
 
+impl_eq_hash!(Function; name, params, ret, body);
+
 /// Parameter of a function.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct FunctionParam {
@@ -107,7 +112,7 @@ pub enum Statement {
 }
 
 /// The output of an expression is assigned to a pattern.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug)]
 pub struct Assignment {
     pattern: Pattern,
     ty: AliasedType,
@@ -132,8 +137,10 @@ impl Assignment {
     }
 }
 
+impl_eq_hash!(Assignment; pattern, ty, expression);
+
 /// Call expression.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug)]
 pub struct Call {
     name: CallName,
     args: Arc<[Expression]>,
@@ -151,6 +158,8 @@ impl Call {
         self.args.as_ref()
     }
 }
+
+impl_eq_hash!(Call; name, args);
 
 /// Name of a call.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -180,7 +189,7 @@ pub enum CallName {
 }
 
 /// A type alias.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug)]
 pub struct TypeAlias {
     name: Identifier,
     ty: AliasedType,
@@ -202,8 +211,10 @@ impl TypeAlias {
     }
 }
 
+impl_eq_hash!(TypeAlias; name, ty);
+
 /// An expression is something that returns a value.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug)]
 pub struct Expression {
     inner: ExpressionInner,
     span: Span,
@@ -215,6 +226,8 @@ impl Expression {
         &self.inner
     }
 }
+
+impl_eq_hash!(Expression; inner);
 
 /// The kind of expression.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -228,7 +241,7 @@ pub enum ExpressionInner {
 }
 
 /// A single expression directly returns a value.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug)]
 pub struct SingleExpression {
     inner: SingleExpressionInner,
     span: Span,
@@ -240,6 +253,8 @@ impl SingleExpression {
         &self.inner
     }
 }
+
+impl_eq_hash!(SingleExpression; inner);
 
 /// The kind of single expression.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -277,7 +292,7 @@ pub enum SingleExpressionInner {
 }
 
 /// Match expression.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug)]
 pub struct Match {
     scrutinee: Arc<Expression>,
     left: MatchArm,
@@ -313,6 +328,8 @@ impl Match {
         }
     }
 }
+
+impl_eq_hash!(Match; scrutinee, left, right);
 
 /// Arm of a match expression.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]

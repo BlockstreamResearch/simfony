@@ -8,7 +8,6 @@ use simplicity::jet::Elements;
 
 use crate::error::{Error, RichError, Span, WithSpan};
 use crate::num::{NonZeroPow2Usize, Pow2Usize};
-use crate::parse;
 use crate::parse::MatchPattern;
 use crate::pattern::Pattern;
 use crate::str::{FunctionName, Identifier, WitnessName};
@@ -16,6 +15,7 @@ use crate::types::{
     AliasedType, ResolvedType, StructuralType, TypeConstructible, TypeDeconstructible, UIntType,
 };
 use crate::value::{UIntValue, Value};
+use crate::{impl_eq_hash, parse};
 
 /// Map of witness names to their expected type, as declared in the program.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -97,7 +97,7 @@ pub enum Statement {
 }
 
 /// Assignment of a value to a variable identifier.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug)]
 pub struct Assignment {
     pattern: Pattern,
     expression: Expression,
@@ -116,13 +116,17 @@ impl Assignment {
     }
 }
 
+impl_eq_hash!(Assignment; pattern, expression);
+
 /// An expression returns a value.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug)]
 pub struct Expression {
     inner: ExpressionInner,
     ty: ResolvedType,
     span: Span,
 }
+
+impl_eq_hash!(Expression; inner, ty);
 
 impl Expression {
     /// Access the inner expression.
@@ -148,7 +152,7 @@ pub enum ExpressionInner {
 }
 
 /// A single expression directly returns its value.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug)]
 pub struct SingleExpression {
     inner: SingleExpressionInner,
     ty: ResolvedType,
@@ -179,6 +183,8 @@ impl SingleExpression {
     }
 }
 
+impl_eq_hash!(SingleExpression; inner, ty);
+
 /// Variant of a single expression.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum SingleExpressionInner {
@@ -207,7 +213,7 @@ pub enum SingleExpressionInner {
 }
 
 /// Call of a user-defined or of a builtin function.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug)]
 pub struct Call {
     name: CallName,
     args: Arc<[Expression]>,
@@ -225,6 +231,8 @@ impl Call {
         &self.args
     }
 }
+
+impl_eq_hash!(Call; name, args);
 
 /// Name of a called function.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -306,7 +314,7 @@ impl FunctionParam {
 }
 
 /// Match expression.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug)]
 pub struct Match {
     scrutinee: Arc<Expression>,
     left: MatchArm,
@@ -330,6 +338,8 @@ impl Match {
         &self.right
     }
 }
+
+impl_eq_hash!(Match; scrutinee, left, right);
 
 /// Arm of a [`Match`] expression.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
