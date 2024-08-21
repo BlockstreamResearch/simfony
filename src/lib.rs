@@ -74,6 +74,27 @@ macro_rules! impl_eq_hash {
     };
 }
 
+/// Helper trait for implementing [`arbitrary::Arbitrary`] for recursive structures.
+///
+/// [`ArbitraryRec::arbitrary_rec`] allows the caller to set a budget that is decreased every time
+/// the generated structure gets deeper. The maximum depth of the generated structure is equal to
+/// the initial budget. The budget prevents the generated structure from becoming too deep, which
+/// could cause issues in the code that processes these structures.
+///
+/// https://github.com/rust-fuzz/arbitrary/issues/78
+#[cfg(feature = "arbitrary")]
+trait ArbitraryRec: Sized {
+    /// Generate a recursive structure from unstructured data.
+    ///
+    /// Generate leaves or parents when the budget is positive.
+    /// Generate only leaves when the budget is zero.
+    ///
+    /// ## Implementation
+    ///
+    /// Recursive calls of [`arbitrary_rec`] must decrease the budget by one.
+    fn arbitrary_rec(u: &mut arbitrary::Unstructured, budget: usize) -> arbitrary::Result<Self>;
+}
+
 #[cfg(test)]
 mod tests {
     use base64::display::Base64Display;
