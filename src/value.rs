@@ -14,6 +14,7 @@ use crate::types::{ResolvedType, StructuralType, TypeConstructible, TypeInner, U
 
 /// Unsigned integer value.
 #[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum UIntValue {
     /// 1-bit unsigned integer.
     U1(u8),
@@ -453,6 +454,69 @@ impl Value {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl crate::ArbitraryRec for Value {
+    fn arbitrary_rec(u: &mut arbitrary::Unstructured, budget: usize) -> arbitrary::Result<Self> {
+        use arbitrary::Arbitrary;
+
+        match budget.checked_sub(1) {
+            None => match u.int_in_range(0..=2)? {
+                0 => bool::arbitrary(u).map(Self::Boolean),
+                1 => UIntValue::arbitrary(u).map(Self::UInt),
+                2 => Ok(Self::Option(None)),
+                _ => unreachable!(),
+            },
+            Some(new_budget) => match u.int_in_range(0..=8)? {
+                0 => bool::arbitrary(u).map(Self::Boolean),
+                1 => UIntValue::arbitrary(u).map(Self::UInt),
+                2 => Ok(Self::Option(None)),
+                3 => Self::arbitrary_rec(u, new_budget)
+                    .map(Arc::new)
+                    .map(Some)
+                    .map(Self::Option),
+                4 => Self::arbitrary_rec(u, new_budget)
+                    .map(Arc::new)
+                    .map(Either::Left)
+                    .map(Self::Either),
+                5 => Self::arbitrary_rec(u, new_budget)
+                    .map(Arc::new)
+                    .map(Either::Right)
+                    .map(Self::Either),
+                6 => {
+                    let len = u.int_in_range(0..=3)?;
+                    (0..len)
+                        .map(|_| Self::arbitrary_rec(u, new_budget))
+                        .collect::<arbitrary::Result<Arc<[Self]>>>()
+                        .map(Self::Tuple)
+                }
+                7 => {
+                    let len = u.int_in_range(0..=3)?;
+                    (0..len)
+                        .map(|_| Self::arbitrary_rec(u, new_budget))
+                        .collect::<arbitrary::Result<Arc<[Self]>>>()
+                        .map(Self::Array)
+                }
+                8 => {
+                    let len = u.int_in_range(0..=3)?;
+                    let elements = (0..len)
+                        .map(|_| Self::arbitrary_rec(u, new_budget))
+                        .collect::<arbitrary::Result<Arc<[Self]>>>()?;
+                    let bound = NonZeroPow2Usize::arbitrary(u)?;
+                    Ok(Self::List(elements, bound))
+                }
+                _ => unreachable!(),
+            },
+        }
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for Value {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        <Self as crate::ArbitraryRec>::arbitrary_rec(u, 3)
     }
 }
 

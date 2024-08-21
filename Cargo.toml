@@ -28,9 +28,11 @@ simplicity-lang = { git = "https://github.com/BlockstreamResearch/rust-simplicit
 miniscript = "11.0.0"
 either = "1.12.0"
 itertools = "0.13.0"
+arbitrary = { version = "1", optional = true, features = ["derive"] }
 
 [target.wasm32-unknown-unknown.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
 
 [workspace]
 members = ["codegen"]
+exclude = ["fuzz"]

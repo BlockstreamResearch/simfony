@@ -91,6 +91,7 @@ impl<A> TypeInner<A> {
 
 /// Unsigned integer type.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum UIntType {
     /// 1-bit unsigned integer
     U1,
@@ -407,6 +408,7 @@ enum AliasedInner {
 
 /// Type alias with predefined definition.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum BuiltinAlias {
     Ctx8,
     Pubkey,
@@ -647,6 +649,60 @@ impl From<Identifier> for AliasedType {
 impl From<BuiltinAlias> for AliasedType {
     fn from(value: BuiltinAlias) -> Self {
         Self::builtin(value)
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl crate::ArbitraryRec for AliasedType {
+    fn arbitrary_rec(u: &mut arbitrary::Unstructured, budget: usize) -> arbitrary::Result<Self> {
+        use arbitrary::Arbitrary;
+
+        match budget.checked_sub(1) {
+            None => match u.int_in_range(0..=3)? {
+                0 => Identifier::arbitrary(u).map(Self::alias),
+                1 => BuiltinAlias::arbitrary(u).map(Self::builtin),
+                2 => Ok(Self::boolean()),
+                3 => UIntType::arbitrary(u).map(Self::from),
+                _ => unreachable!(),
+            },
+            Some(new_budget) => match u.int_in_range(0..=8)? {
+                0 => Identifier::arbitrary(u).map(Self::alias),
+                1 => BuiltinAlias::arbitrary(u).map(Self::builtin),
+                2 => Ok(Self::boolean()),
+                3 => UIntType::arbitrary(u).map(Self::from),
+                4 => Self::arbitrary_rec(u, new_budget).map(Self::option),
+                5 => {
+                    let left = Self::arbitrary_rec(u, new_budget)?;
+                    let right = Self::arbitrary_rec(u, new_budget)?;
+                    Ok(Self::either(left, right))
+                }
+                6 => {
+                    let len = u.int_in_range(0..=3)?;
+                    (0..len)
+                        .map(|_| Self::arbitrary_rec(u, new_budget))
+                        .collect::<arbitrary::Result<Vec<Self>>>()
+                        .map(Self::tuple)
+                }
+                7 => {
+                    let element = Self::arbitrary_rec(u, new_budget)?;
+                    let size = u.int_in_range(0..=3)?;
+                    Ok(Self::array(element, size))
+                }
+                8 => {
+                    let element = Self::arbitrary_rec(u, new_budget)?;
+                    let bound = NonZeroPow2Usize::arbitrary(u)?;
+                    Ok(Self::list(element, bound))
+                }
+                _ => unreachable!(),
+            },
+        }
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for AliasedType {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        <Self as crate::ArbitraryRec>::arbitrary_rec(u, 3)
     }
 }
 

@@ -1,0 +1,35 @@
+[package]
+name = "simfony-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+simfony = { path = "..", features = ["arbitrary"]}
+itertools = "0.13.0"
+
+[[bin]]
+name = "compile_text"
+path = "fuzz_targets/compile_text.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "compile_parse_tree"
+path = "fuzz_targets/compile_parse_tree.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "display_parse_tree"
+path = "fuzz_targets/display_parse_tree.rs"
+test = false
+doc = false
+bench = false

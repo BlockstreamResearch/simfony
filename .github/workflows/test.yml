@@ -1,0 +1,80 @@
+name: Test
+on:
+  push:
+  pull_request:
+jobs:
+  check-flake:
+    name: Check flake
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Install nix
+      uses: cachix/install-nix-action@v24
+      with:
+        github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Check flake
+      run: nix flake check --all-systems
+
+  test-stable:
+    name: Test - stable toolchain
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Install nix
+      uses: cachix/install-nix-action@v24
+      with:
+        github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Enable Rust cache
+      uses: Swatinem/rust-cache@v2
+
+    - name: Run all checks
+      run: |
+        nix develop .#ci --command bash -c "just check"
+
+  test-msrv:
+    name: Test - MSRV toolchain
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Install nix
+      uses: cachix/install-nix-action@v24
+      with:
+        github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Enable Rust cache
+      uses: Swatinem/rust-cache@v2
+
+    - name: Run unit tests
+      run: |
+        nix develop .#msrv --command bash -c "just test"
+
+  test-fuzz:
+    name: Test - fuzzer
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Install nix
+      uses: cachix/install-nix-action@v24
+      with:
+        github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Enable Rust cache
+      uses: Swatinem/rust-cache@v2
+
+    - name: Run each fuzzer for 30s
+      run: |
+        nix develop .#fuzz --command bash -c "just check_fuzz"

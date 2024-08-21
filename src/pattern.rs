@@ -129,6 +129,47 @@ impl fmt::Display for Pattern {
     }
 }
 
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for Pattern {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        <Self as crate::ArbitraryRec>::arbitrary_rec(u, 3)
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl crate::ArbitraryRec for Pattern {
+    fn arbitrary_rec(u: &mut arbitrary::Unstructured, budget: usize) -> arbitrary::Result<Self> {
+        use arbitrary::Arbitrary;
+
+        match budget.checked_sub(1) {
+            None => match u.int_in_range(0..=1)? {
+                0 => Identifier::arbitrary(u).map(Self::Identifier),
+                1 => Ok(Self::Ignore),
+                _ => unreachable!(),
+            },
+            Some(new_budget) => match u.int_in_range(0..=3)? {
+                0 => Identifier::arbitrary(u).map(Self::Identifier),
+                1 => Ok(Self::Ignore),
+                2 => {
+                    let len = u.int_in_range(0..=3)?;
+                    (0..len)
+                        .map(|_| Self::arbitrary_rec(u, new_budget))
+                        .collect::<arbitrary::Result<Arc<[Self]>>>()
+                        .map(Self::Tuple)
+                }
+                3 => {
+                    let len = u.int_in_range(0..=3)?;
+                    (0..len)
+                        .map(|_| Self::arbitrary_rec(u, new_budget))
+                        .collect::<arbitrary::Result<Arc<[Self]>>>()
+                        .map(Self::Array)
+                }
+                _ => unreachable!(),
+            },
+        }
+    }
+}
+
 /// Basic structure of a Simfony value for pattern matching.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum BasePattern {
