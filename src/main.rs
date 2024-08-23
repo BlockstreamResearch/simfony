@@ -35,14 +35,24 @@ fn run() -> Result<(), String> {
         let wit_text = std::fs::read_to_string(wit_path).map_err(|e| e.to_string())?;
         let witness = serde_json::from_str::<WitnessValues>(&wit_text).unwrap();
 
-        let res = satisfy(&prog_text, &witness)?;
-        let redeem_bytes = res.encode_to_vec();
-        println!("{}", Base64Display::new(&redeem_bytes, &STANDARD));
+        let program = satisfy(&prog_text, &witness)?;
+        let (program_bytes, witness_bytes) = program.encode_to_vec();
+        println!(
+            "Program:\n{}",
+            Base64Display::new(&program_bytes, &STANDARD)
+        );
+        println!(
+            "Witness:\n{}",
+            Base64Display::new(&witness_bytes, &STANDARD)
+        );
     } else {
         // No second argument is provided. Just compile the program.
-        let prog = compile(&prog_text)?;
-        let res = prog.encode_to_vec();
-        println!("{}", Base64Display::new(&res, &STANDARD));
+        let program = compile(&prog_text)?;
+        let program_bytes = program.encode_to_vec();
+        println!(
+            "Program:\n{}",
+            Base64Display::new(&program_bytes, &STANDARD)
+        );
     }
 
     Ok(())

@@ -144,7 +144,7 @@ wrapped_string!(JetName);
 #[cfg(feature = "arbitrary")]
 impl<'a> arbitrary::Arbitrary<'a> for JetName {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
-        u.choose(&crate::jet::ALL)
+        u.choose(&simplicity::jet::Elements::ALL)
             .map(simplicity::jet::Elements::to_string)
             .map(Arc::from)
             .map(Self)

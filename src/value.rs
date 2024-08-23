@@ -777,8 +777,8 @@ impl TreeLike for StructuralValue {
     fn as_node(&self) -> Tree<Self> {
         match self.as_ref() {
             SimValue::Unit => Tree::Nullary,
-            SimValue::SumL(l) | SimValue::SumR(l) => Tree::Unary(Self(l.clone())),
-            SimValue::Prod(l, r) => Tree::Binary(Self(l.clone()), Self(r.clone())),
+            SimValue::Left(l) | SimValue::Right(l) => Tree::Unary(Self(l.clone())),
+            SimValue::Product(l, r) => Tree::Binary(Self(l.clone()), Self(r.clone())),
         }
     }
 }
@@ -797,7 +797,7 @@ impl ValueConstructible for StructuralValue {
 
     // Keep this implementation to prevent an infinite loop in <Self as ValueConstructible>::tuple
     fn product(left: Self, right: Self) -> Self {
-        Self(SimValue::prod(left.0, right.0))
+        Self(SimValue::product(left.0, right.0))
     }
 
     fn array<I: IntoIterator<Item = Self>>(elements: I) -> Self {
@@ -824,8 +824,8 @@ impl ValueConstructible for StructuralValue {
 impl From<Option<Self>> for StructuralValue {
     fn from(value: Option<Self>) -> Self {
         match value {
-            None => Self(SimValue::sum_l(SimValue::unit())),
-            Some(inner) => Self(SimValue::sum_r(inner.0)),
+            None => Self(SimValue::left(SimValue::unit())),
+            Some(inner) => Self(SimValue::right(inner.0)),
         }
     }
 }
@@ -833,8 +833,8 @@ impl From<Option<Self>> for StructuralValue {
 impl From<Either<Self, Self>> for StructuralValue {
     fn from(value: Either<Self, Self>) -> Self {
         match value {
-            Either::Left(left) => Self(SimValue::sum_l(left.0)),
-            Either::Right(right) => Self(SimValue::sum_r(right.0)),
+            Either::Left(left) => Self(SimValue::left(left.0)),
+            Either::Right(right) => Self(SimValue::right(right.0)),
         }
     }
 }
@@ -842,8 +842,8 @@ impl From<Either<Self, Self>> for StructuralValue {
 impl From<bool> for StructuralValue {
     fn from(value: bool) -> Self {
         match value {
-            false => Self(SimValue::sum_l(SimValue::unit())),
-            true => Self(SimValue::sum_r(SimValue::unit())),
+            false => Self(SimValue::left(SimValue::unit())),
+            true => Self(SimValue::right(SimValue::unit())),
         }
     }
 }
@@ -859,7 +859,7 @@ impl From<UIntValue> for StructuralValue {
             UIntValue::U32(n) => Self(SimValue::u32(n)),
             UIntValue::U64(n) => Self(SimValue::u64(n)),
             UIntValue::U128(n) => Self(SimValue::u128(n)),
-            UIntValue::U256(n) => Self(SimValue::u256_from_slice(n.as_ref())),
+            UIntValue::U256(n) => Self(SimValue::u256(n.to_byte_array())),
         }
     }
 }

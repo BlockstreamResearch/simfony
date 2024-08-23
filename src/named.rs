@@ -102,6 +102,7 @@ pub fn to_commit_node(node: &ConstructNode) -> Result<Arc<CommitNode<Elements>>,
 pub fn to_witness_node(node: &ConstructNode, values: &WitnessValues) -> Arc<WitnessNode<Elements>> {
     struct Populator<'a> {
         values: &'a WitnessValues,
+        inference_context: types::Context,
     }
 
     impl<'a, J: Jet> Converter<Construct<J>, node::Witness<J>> for Populator<'a> {
@@ -144,11 +145,14 @@ pub fn to_witness_node(node: &ConstructNode, values: &WitnessValues) -> Arc<Witn
                 .map(Arc::as_ref)
                 .map(WitnessNode::<J>::cached_data)
                 .map_witness(Option::<Arc<simplicity::Value>>::clone);
-            Ok(WitnessData::from_inner(inner).unwrap())
+            Ok(WitnessData::from_inner(&self.inference_context, inner).unwrap())
         }
     }
 
-    let mut populator = Populator { values };
+    let mut populator = Populator {
+        inference_context: types::Context::new(),
+        values,
+    };
     node.convert::<InternalSharing, _, _>(&mut populator)
         .unwrap()
 }
@@ -177,12 +181,12 @@ impl<J> From<Arrow> for ConstructData<J> {
 }
 
 impl<J> CoreConstructible for ConstructData<J> {
-    fn iden() -> Self {
-        Arrow::iden().into()
+    fn iden(inference_context: &types::Context) -> Self {
+        Arrow::iden(inference_context).into()
     }
 
-    fn unit() -> Self {
-        Arrow::unit().into()
+    fn unit(inference_context: &types::Context) -> Self {
+        Arrow::unit(inference_context).into()
     }
 
     fn injl(child: &Self) -> Self {
@@ -221,31 +225,35 @@ impl<J> CoreConstructible for ConstructData<J> {
         Arrow::pair(&left.arrow, &right.arrow).map(Self::from)
     }
 
-    fn fail(entropy: simplicity::FailEntropy) -> Self {
-        Arrow::fail(entropy).into()
+    fn fail(inference_context: &types::Context, entropy: FailEntropy) -> Self {
+        Arrow::fail(inference_context, entropy).into()
     }
 
-    fn const_word(word: Arc<simplicity::Value>) -> Self {
-        Arrow::const_word(word).into()
+    fn const_word(inference_context: &types::Context, word: Arc<simplicity::Value>) -> Self {
+        Arrow::const_word(inference_context, word).into()
+    }
+
+    fn inference_context(&self) -> &types::Context {
+        self.arrow.inference_context()
     }
 }
 
 impl<J: Jet> JetConstructible<J> for ConstructData<J> {
-    fn jet(jet: J) -> Self {
-        Arrow::jet(jet).into()
+    fn jet(inference_context: &types::Context, jet: J) -> Self {
+        Arrow::jet(inference_context, jet).into()
     }
 }
 
 impl<J> WitnessConstructible<WitnessName> for ConstructData<J> {
-    fn witness(_: WitnessName) -> Self {
-        Arrow::for_witness().into()
+    fn witness(inference_context: &types::Context, _: WitnessName) -> Self {
+        Arrow::witness(inference_context, ()).into()
     }
 }
 
 /// More constructors for types that implement [`CoreConstructible`].
 pub trait CoreExt: CoreConstructible + Sized {
-    fn h() -> PairBuilder<Self> {
-        PairBuilder::iden()
+    fn h(inference_context: &types::Context) -> PairBuilder<Self> {
+        PairBuilder::iden(inference_context)
     }
 
     fn o() -> SelectorBuilder<Self> {
@@ -256,10 +264,10 @@ pub trait CoreExt: CoreConstructible + Sized {
         SelectorBuilder::default().i()
     }
 
-    fn bit(bit: bool) -> PairBuilder<Self> {
+    fn bit(inference_context: &types::Context, bit: bool) -> PairBuilder<Self> {
         match bit {
-            false => PairBuilder::unit().injl(),
-            true => PairBuilder::unit().injr(),
+            false => PairBuilder::unit(inference_context).injl(),
+            true => PairBuilder::unit(inference_context).injr(),
         }
     }
 
@@ -275,8 +283,12 @@ pub trait CoreExt: CoreConstructible + Sized {
     /// -------------------
     /// comp unit (const v) : A → B
     /// ```
-    fn unit_const_value(value: Arc<simplicity::Value>) -> Self {
-        Self::comp(&Self::unit(), &Self::const_word(value)).unwrap()
+    fn unit_const_value(inference_context: &types::Context, value: Arc<simplicity::Value>) -> Self {
+        Self::comp(
+            &Self::unit(inference_context),
+            &Self::const_word(inference_context, value),
+        )
+        .unwrap()
     }
 
     /// `assertl (take s) cmr` always type checks.
@@ -300,13 +312,21 @@ pub trait CoreExt: CoreConstructible + Sized {
     }
 
     /// `case false true` always type-checks.
-    fn case_false_true() -> Self {
-        Self::case(&Self::bit_false(), &Self::bit_true()).unwrap()
+    fn case_false_true(inference_context: &types::Context) -> Self {
+        Self::case(
+            &Self::bit_false(inference_context),
+            &Self::bit_true(inference_context),
+        )
+        .unwrap()
     }
 
     /// `case true false` always type-checks.
-    fn case_true_false() -> Self {
-        Self::case(&Self::bit_true(), &Self::bit_false()).unwrap()
+    fn case_true_false(inference_context: &types::Context) -> Self {
+        Self::case(
+            &Self::bit_true(inference_context),
+            &Self::bit_false(inference_context),
+        )
+        .unwrap()
     }
 }
 
@@ -345,8 +365,8 @@ impl<P: CoreExt> SelectorBuilder<P> {
     }
 
     /// Select the current input value.
-    pub fn h(self) -> PairBuilder<P> {
-        let mut expr = PairBuilder::iden();
+    pub fn h(self, inference_context: &types::Context) -> PairBuilder<P> {
+        let mut expr = PairBuilder::iden(inference_context);
         for bit in self.selection.into_iter().rev() {
             match bit {
                 false => expr = expr.take(),
@@ -378,8 +398,8 @@ impl<P: CoreExt> PairBuilder<P> {
     /// ------------
     /// unit : A → 1
     /// ```
-    pub fn unit() -> Self {
-        Self(P::unit())
+    pub fn unit(inference_context: &types::Context) -> Self {
+        Self(P::unit(inference_context))
     }
 
     /// Create the identity expression.
@@ -392,8 +412,8 @@ impl<P: CoreExt> PairBuilder<P> {
     /// ------------
     /// iden : A → A
     /// ```
-    pub fn iden() -> Self {
-        Self(P::iden())
+    pub fn iden(inference_context: &types::Context) -> Self {
+        Self(P::iden(inference_context))
     }
 
     /// Create the fail expression.
@@ -406,8 +426,8 @@ impl<P: CoreExt> PairBuilder<P> {
     /// ------------
     /// fail : A → B
     /// ```
-    pub fn fail(entropy: FailEntropy) -> Self {
-        Self(P::fail(entropy))
+    pub fn fail(inference_context: &types::Context, entropy: FailEntropy) -> Self {
+        Self(P::fail(inference_context, entropy))
     }
 
     /// Left-inject the expression.
@@ -557,8 +577,11 @@ impl<P: CoreExt> PairBuilder<P> {
     /// ---------------------------
     /// comp unit (const v) : A → B
     /// ```
-    pub fn unit_const_value(value: Arc<simplicity::Value>) -> Self {
-        Self(P::unit_const_value(value))
+    pub fn unit_const_value(
+        inference_context: &types::Context,
+        value: Arc<simplicity::Value>,
+    ) -> Self {
+        Self(P::unit_const_value(inference_context, value))
     }
 }
 
@@ -573,8 +596,8 @@ impl<P: WitnessConstructible<WitnessName>> PairBuilder<P> {
     /// ---------------
     /// witness : A → B
     /// ```
-    pub fn witness(witness: WitnessName) -> Self {
-        Self(P::witness(witness))
+    pub fn witness(inference_context: &types::Context, witness: WitnessName) -> Self {
+        Self(P::witness(inference_context, witness))
     }
 }
 
