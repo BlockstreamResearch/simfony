@@ -8,11 +8,11 @@ fmtcheck:
 
 # Run code linter
 lint:
-    cargo clippy --all-targets -- --deny warnings
+    cargo clippy --all-targets --workspace -- --deny warnings
 
 # Run unit tests
 test:
-    cargo test
+    cargo test --workspace
 
 # Check code (CI)
 check:
