@@ -419,14 +419,14 @@ This jet should not be used directly."#,
 - If there is no hash, then the byte `0x00`.
 - If there is a hash, then the byte `0x01` followed by the given hash (32 bytes)."#,
         Elements::AssetAmountHash => "Continue a SHA256 hash with the serialization of a confidential asset followed by the serialization of a amount.",
-        Elements::BuildTapbranch => r#"Return a SHA256 hash of the following:
+        Elements::BuildTapbranch => r#"Return the SHA256 hash of the following:
 - The hash of the ASCII string `TapBranch/elements` (32 bytes).
 - The lexicographically smaller of the two inputs (32 bytes).
 - The hash of the ASCII string `TapBranch/elements` again (32 bytes).
 - The lexicographically larger of the two inputs (32 bytes).
 
 This builds a taproot from two branches."#,
-        Elements::BuildTapleafSimplicity => r#"Return a SHA256 hash of the following:
+        Elements::BuildTapleafSimplicity => r#"Return the SHA256 hash of the following:
 - The hash of the ASCII string `TapBranch/elements` (32 bytes).
 - The hash of the ASCII string `TapBranch/elements` again (32 bytes).
 - The lexicographically smaller of the two inputs (32 bytes).
@@ -434,10 +434,10 @@ This builds a taproot from two branches."#,
 
 This builds a taproot from two branches."#,
         Elements::InputAmountsHash => "Return the SHA256 hash of the serialization of each input UTXO's asset and amount fields.",
-        Elements::InputAnnexesHash => r#"Return a SHA256 hash of the concatenation of the following for every input:
+        Elements::InputAnnexesHash => r#"Return the SHA256 hash of the concatenation of the following for every input:
 - If the input has no annex, or isn't a taproot spend, then the byte `0x00`.
-- If the input has an annex, then the byte `0x01` followed by a SHA256 hash of the annex (32 bytes)."#,
-        Elements::InputOutpointsHash => r#"Return a SHA256 hash of the concatenation of the following for every input:
+- If the input has an annex, then the byte `0x01` followed by the SHA256 hash of the annex (32 bytes)."#,
+        Elements::InputOutpointsHash => r#"Return the SHA256 hash of the concatenation of the following for every input:
 - If the input is not a pegin, then the byte `0x00`.
 - If the input is a pegin, then the byte `0x01` followed by the parent chain's genesis hash (32 bytes).
 - The input's serialized previous transaction id (32 bytes).
@@ -449,7 +449,7 @@ IMPORTANT: the index is serialized in big endian format rather than little endia
 Note that if an input's UTXO uses segwit, then it's scriptSig will necessarily be the empty string. In
 such cases we still use the SHA256 hash of the empty string."#,
         Elements::InputScriptsHash => "Return the SHA256 hash of the concatenation of the SHA256 hash of each input UTXO's scriptPubKey.",
-        Elements::InputSequencesHash => r#"Return a SHA256 hash of the concatenation of the following for every input:
+        Elements::InputSequencesHash => r#"Return the SHA256 hash of the concatenation of the following for every input:
 - The input's sequence number in big endian format (4 bytes).
 
 IMPORTANT, the sequence number is serialized in big endian format rather than little endian format."#,
@@ -458,7 +458,7 @@ IMPORTANT, the sequence number is serialized in big endian format rather than li
 - The SHA256 hash of the input UTXO's scriptPubKey.
 
 Return `None` if the input does not exist."#,
-        Elements::InputUtxosHash => r#"Return a SHA256 hash of the following:
+        Elements::InputUtxosHash => r#"Return the SHA256 hash of the following:
 - The result of [`input_amounts_hash`] (32 bytes).
 - The result of [`input_scripts_hash`] (32 bytes)."#,
         Elements::InputHash => r#"Return the SHA256 hash of the following:
@@ -471,11 +471,11 @@ Return `None` if the input does not exist."#,
 - If the input has an annex, then the byte `0x01` followed by the SHA256 hash of the annex (32 bytes).
 
 Return `None` if the input does not exist."#,
-        Elements::InputsHash => r#"Return a SHA256 hash of the following:
+        Elements::InputsHash => r#"Return the SHA256 hash of the following:
 - The result of [`input_outpoints_hash`] (32 bytes).
 - The result of [`input_sequences_hash`] (32 bytes).
 - The result of [`input_annexes_hash`] (32 bytes)."#,
-        Elements::IssuanceAssetAmountsHash => r#"Return a SHA256 hash of the concatenation of the following for every input:
+        Elements::IssuanceAssetAmountsHash => r#"Return the SHA256 hash of the concatenation of the following for every input:
 - If the input has no issuance then two bytes `0x00 0x00`.
 - If the input is has a new issuance then the byte `0x01` followed by a serialization of the calculated issued
 asset id (32 bytes) followed by the serialization of the (possibly confidential) issued asset amount (9
@@ -488,7 +488,7 @@ IMPORTANT: If there is an issuance but there are no asset issued (i.e. the amoun
 the vase as the explicit 0 amount, (i.e. `0x01 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00`).
 
 Note, the issuance asset id is serialized in the same format as an explicit asset id would be."#,
-        Elements::IssuanceBlindingEntropyHash => r#"Return a SHA256 hash of the concatenation of the following for every input:
+        Elements::IssuanceBlindingEntropyHash => r#"Return the SHA256 hash of the concatenation of the following for every input:
 - If the input has no issuance then the byte `0x00`.
 - If the input is has a new issuance then the byte `0x01` followed by 32 `0x00` bytes and the new issuance's
 contract hash field (32 bytes).
@@ -497,14 +497,14 @@ nonce field (32 bytes) and the reissuance's entropy field (32 bytes).
 
 Note that if the issuance is a new issuance then the blinding nonce field is 32 `0x00` bytes and new issuance's
 contract hash."#,
-        Elements::IssuanceRangeProofsHash => r#"Return a SHA256 hash of the concatenation of the following for every input:
+        Elements::IssuanceRangeProofsHash => r#"Return the SHA256 hash of the concatenation of the following for every input:
 - The SHA256 hash of the range proof of the input's issuance asset amount (32 bytes).
 - The SHA256 hash of the range proof of the input's issuance token amount (32 bytes).
 
 Note that each the range proof is considered to be the empty string in the case there is no issuance, or if the
 asset or token amount doesn't exist (i.e is null). The SHA256 hash of the empty string is still used in these
 cases."#,
-        Elements::IssuanceTokenAmountsHash => r#"Return a SHA256 hash of the concatenation of the following for every input:
+        Elements::IssuanceTokenAmountsHash => r#"Return the SHA256 hash of the concatenation of the following for every input:
 - If the input has no issuance then two bytes `0x00 0x00`.
 - If the input is has a new issuance then the byte `0x01` followed by a serialization of the calculated issued
 token id (32 bytes) followed by the serialization of the (possibly confidential) issued token amount (9
@@ -540,13 +540,13 @@ Note, the issuance token id is serialized in the same format as an explicit asse
     nonce field (32 bytes) and the reissuance's entropy field (32 bytes).
 
 Return `None` if the input does not exist."#,
-        Elements::IssuancesHash => r#"Return a SHA256 hash of the following:
+        Elements::IssuancesHash => r#"Return the SHA256 hash of the following:
 - The result of [`issuance_asset_amounts_hash`] (32 bytes).
 - The result of [`issuance_token_amounts_hash`] (32 bytes).
 - The result of [`issuance_range_proofs_hash`] (32 bytes).
 - The result of [`issuance_blinding_entropy_hash`] (32 bytes)."#,
-        Elements::NonceHash => "Continue a SHA256 hash with the serialization of an optional nonce.",
-        Elements::OutpointHash => r#"Continue a SHA256 hash with an optional pegin and an outpoint by appending the following:
+        Elements::NonceHash => "Continue the SHA256 hash with the serialization of an optional nonce.",
+        Elements::OutpointHash => r#"Continue the SHA256 hash with an optional pegin and an outpoint by appending the following:
 - If the input is not a pegin, then the byte `0x00`.
 - If the input is a pegin, then the byte `0x01` followed by the given parent genesis hash (32 bytes).
 - The input's previous transaction id (32 bytes).
@@ -569,14 +569,14 @@ Note that if the output's asset is explicit then the surjection proof is conside
 Return `None` if the output does not exist.
 
 Note: the result of [`output_surjection_proofs_hash`] is specifically excluded because surjection proofs are dependent on the inputs as well as the output."#,
-        Elements::OutputsHash => r#"Return a SHA256 hash of the following:
+        Elements::OutputsHash => r#"Return the SHA256 hash of the following:
 - The result of [`output_amounts_hash`] (32 bytes).
 - The result of [`output_nonces_hash`] (32 bytes).
 - The result of [`output_scripts_hash`] (32 bytes).
 - The result of [`output_range_proofs_hash`] (32 bytes).
 
 Note: the result of [`output_surjection_proofs_hash`] is specifically excluded because surjection proofs are dependent on the inputs as well as the output. See also [`tx_hash`]."#,
-        Elements::SigAllHash => r#"Return a SHA256 hash of the following:
+        Elements::SigAllHash => r#"Return the SHA256 hash of the following:
 - The result of [`genesis_block_hash`] (32 bytes).
 - The result of [`genesis_block_hash`] again (32 bytes).
 - The result of [`tx_hash`] (32 bytes).
@@ -584,11 +584,11 @@ Note: the result of [`output_surjection_proofs_hash`] is specifically excluded b
 - The result of [`current_index`] (Note: this is in big endian format) (4 bytes).
 
 Note: the two copies of the [`genesis_block_hash`] values effectively makes this result a BIP-340 style tagged hash."#,
-        Elements::TapEnvHash => r#"Return a SHA256 hash of the following:
+        Elements::TapEnvHash => r#"Return the SHA256 hash of the following:
 - The result of [`tapleaf_hash`] (32 bytes).
 - The result of [`tappath_hash`] (32 bytes).
 - The result of [`internal_key`] (32 bytes)."#,
-        Elements::TapleafHash => r#"Return a SHA256 hash of the following:
+        Elements::TapleafHash => r#"Return the SHA256 hash of the following:
 - The hash of the ASCII string `TapLeaf/elements` (32 bytes).
 - The hash of the ASCII string `TapLeaf/elements` again (32 bytes).
 - The result of [`tapleaf_version`] (1 byte).
@@ -599,7 +599,7 @@ Note: this matches Element's modified BIP-0341 definition of tapleaf hash."#,
         Elements::TappathHash => r#"Return a hash of the current input's control block excluding the leaf version and the taproot internal key.
 
 Using the notation of BIP-0341, it returns the SHA256 hash of c[33: 33 + 32m]."#,
-        Elements::TxHash => r#"Return a SHA256 hash of the following:
+        Elements::TxHash => r#"Return the SHA256 hash of the following:
 - The result of [`version`] (Note: this is in big endian format) (4 bytes).
 - The result of [`tx_lock_time`] (Note: this is in big endian format) (4 bytes).
 - The result of [`inputs_hash`] (32 bytes).
