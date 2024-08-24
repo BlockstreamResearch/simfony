@@ -988,19 +988,16 @@ mod tests {
         for jet in Elements::ALL {
             match Category::ALL.iter().find(|c| c.contains(&jet)) {
                 Some(category) => {
-                    match Category::ALL
+                    if let Some(other) = Category::ALL
                         .into_iter()
                         .filter(|other| other != category)
                         .find(|other| other.contains(&jet))
                     {
-                        Some(other) => panic!(
-                            "{jet} is assigned conflicting categories {category} and {other}"
-                        ),
-                        None => {}
+                        panic!("{jet} is assigned conflicting categories {category} and {other}");
                     }
                 }
                 None => {
-                    assert!(DISABLED.contains(&jet), "{jet} is not categorized")
+                    assert!(DISABLED.contains(&jet), "{jet} is not categorized");
                 }
             }
         }
