@@ -439,8 +439,8 @@ This builds a taproot from two branches."#,
 - If the input has an annex, then the byte `0x01` followed by a SHA256 hash of the annex (32 bytes)."#,
         Elements::InputOutpointsHash => r#"Return a SHA256 hash of the concatenation of the following for every input:
 - If the input is not a pegin, then the byte `0x00`.
-- The input's serialized previous transaction id (32 bytes).
 - If the input is a pegin, then the byte `0x01` followed by the parent chain's genesis hash (32 bytes).
+- The input's serialized previous transaction id (32 bytes).
 - The input's previous transaction index in big endian format (4 bytes).
 
 IMPORTANT: the index is serialized in big endian format rather than little endian format."#,
