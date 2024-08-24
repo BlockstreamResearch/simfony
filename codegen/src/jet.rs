@@ -450,7 +450,7 @@ Note that if an input's UTXO uses segwit, then it's scriptSig will necessarily b
 such cases we still use the SHA256 hash of the empty string."#,
         Elements::InputScriptsHash => "Return the SHA256 hash of the concatenation of the SHA256 hash of each input UTXO's scriptPubKey.",
         Elements::InputSequencesHash => r#"Return a SHA256 hash of the concatenation of the following for every input:
-- The inputs sequence number in big endian format (4 bytes).
+- The input's sequence number in big endian format (4 bytes).
 
 IMPORTANT, the sequence number is serialized in big endian format rather than little endian format."#,
         Elements::InputUtxoHash => r#"Return the SHA256 hash of the following:
