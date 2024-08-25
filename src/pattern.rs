@@ -1,5 +1,5 @@
 use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
 
@@ -208,38 +208,34 @@ impl BasePattern {
 
     /// Check if the `identifier` is contained inside the pattern.
     pub fn contains(&self, identifier: &Identifier) -> bool {
-        self.pre_order_iter().any(|sub_pattern| {
-            sub_pattern
-                .as_identifier()
-                .map(|sub_id| sub_id == identifier)
-                .unwrap_or(false)
-        })
+        self.get(identifier).is_some()
     }
 
     /// Compute a Simplicity expression that returns the value of the given `identifier`.
     /// The expression takes as input a value that matches the `self` pattern.
     ///
     /// The expression is a sequence of `take` and `drop` followed by `iden`.
-    fn get(mut self: &Self, identifier: &Identifier) -> Option<SelectorBuilder<ProgNode>> {
+    fn get(&self, identifier: &Identifier) -> Option<SelectorBuilder<ProgNode>> {
         let mut selector = SelectorBuilder::default();
-        loop {
-            // Termination: self becomes strictly smaller in each iteration
-            match self {
-                BasePattern::Identifier(self_id) if self_id == identifier => return Some(selector),
-                BasePattern::Identifier(_) | BasePattern::Ignore => return None,
-                BasePattern::Product(self_left, self_right) => {
-                    if self_left.contains(identifier) {
-                        selector = selector.o();
-                        self = self_left;
-                    } else if self_right.contains(identifier) {
-                        selector = selector.i();
-                        self = self_right;
-                    } else {
-                        return None;
-                    }
+
+        for data in self.verbose_pre_order_iter() {
+            match data.node {
+                BasePattern::Identifier(id) if id == identifier => return Some(selector),
+                BasePattern::Identifier(_) | BasePattern::Ignore => {
+                    selector = selector.pop();
                 }
+                BasePattern::Product(..) => match data.n_children_yielded {
+                    0 => selector = selector.o(),
+                    1 => selector = selector.i(),
+                    n => {
+                        debug_assert_eq!(n, 2);
+                        selector = selector.pop();
+                    }
+                },
             }
         }
+
+        None
     }
 
     /// Check if `self` subsumes the `other` pattern.
@@ -284,7 +280,11 @@ impl BasePattern {
     where
         I: Iterator<Item = &'a Identifier>,
     {
-        identifiers.all(|id| self.contains(id))
+        let contained_ids = self
+            .pre_order_iter()
+            .filter_map(BasePattern::as_identifier)
+            .collect::<HashSet<&Identifier>>();
+        identifiers.all(|id| contained_ids.contains(id))
     }
 
     /// Check if `self` covers the `other` pattern in terms of variable names.
@@ -349,7 +349,7 @@ impl BasePattern {
 
                     match to {
                         BasePattern::Ignore => {
-                            output.push(SelectorBuilder::default().h(ctx));
+                            output.push(PairBuilder::iden(ctx));
                         }
                         BasePattern::Identifier(to_id) => {
                             output.push(from.get(to_id).map(|selector| selector.h(ctx))?);
