@@ -58,13 +58,25 @@ struct Scope {
     /// Later assignments occur higher in the tree than earlier assignments.
     /// ```
     variables: Vec<Vec<Pattern>>,
+    ctx: simplicity::types::Context,
 }
 
 impl Scope {
-    /// Create a new [`Scope`] for an `input` value that matches the pattern.
-    pub fn new(input: Pattern) -> Self {
+    /// Create the main scope.
+    ///
+    /// _This function should be called at the start of the compilation and then never again._
+    pub fn new() -> Self {
+        Self {
+            variables: vec![vec![Pattern::Ignore]],
+            ctx: simplicity::types::Context::new(),
+        }
+    }
+
+    /// Create a child scope for a function that takes `input` of the given pattern.
+    pub fn child(&self, input: Pattern) -> Self {
         Self {
             variables: vec![vec![input]],
+            ctx: self.ctx.shallow_clone(),
         }
     }
 
@@ -144,7 +156,12 @@ impl Scope {
     ///
     /// The expression `drop (IOH & OH)` returns the seeked value.
     pub fn get(&self, target: &BasePattern) -> Option<PairBuilder<ProgNode>> {
-        BasePattern::from(&self.get_input_pattern()).translate(target)
+        BasePattern::from(&self.get_input_pattern()).translate(&self.ctx, target)
+    }
+
+    /// Access the Simplicity type inference context.
+    pub fn ctx(&self) -> &simplicity::types::Context {
+        &self.ctx
     }
 }
 
@@ -157,37 +174,30 @@ fn compile_blk(
     if index >= stmts.len() {
         return match last_expr {
             Some(expr) => expr.compile(scope),
-            None => Ok(PairBuilder::unit()),
+            None => Ok(PairBuilder::unit(scope.ctx())),
         };
     }
     match &stmts[index] {
         Statement::Assignment(assignment) => {
             let expr = assignment.expression().compile(scope)?;
             scope.insert(assignment.pattern().clone());
-            let left = expr.pair(PairBuilder::iden());
+            let left = expr.pair(PairBuilder::iden(scope.ctx()));
             let right = compile_blk(stmts, scope, index + 1, last_expr)?;
             left.comp(&right).with_span(assignment)
         }
         Statement::Expression(expression) => {
             let left = expression.compile(scope)?;
             let right = compile_blk(stmts, scope, index + 1, last_expr)?;
-            combine_seq(left, right).with_span(expression)
+            let pair = left.pair(right);
+            let drop_iden = ProgNode::drop_(&ProgNode::iden(scope.ctx()));
+            pair.comp(&drop_iden).with_span(expression)
         }
     }
 }
 
-fn combine_seq(
-    a: PairBuilder<ProgNode>,
-    b: PairBuilder<ProgNode>,
-) -> Result<PairBuilder<ProgNode>, simplicity::types::Error> {
-    let pair = a.pair(b);
-    let drop_iden = ProgNode::drop_(&ProgNode::iden());
-    pair.comp(&drop_iden)
-}
-
 impl Program {
     pub fn compile(&self) -> Result<ProgNode, RichError> {
-        let mut scope = Scope::new(Pattern::Ignore);
+        let mut scope = Scope::new();
         self.main().compile(&mut scope).map(PairBuilder::build)
     }
 }
@@ -212,9 +222,9 @@ impl SingleExpression {
             SingleExpressionInner::Constant(value) => {
                 // FIXME: Handle values that are not powers of two (requires updated rust-simplicity API)
                 let value = StructuralValue::from(value);
-                PairBuilder::unit_const_value(value.into())
+                PairBuilder::unit_const_value(scope.ctx(), value.into())
             }
-            SingleExpressionInner::Witness(name) => PairBuilder::witness(name.clone()),
+            SingleExpressionInner::Witness(name) => PairBuilder::witness(scope.ctx(), name.clone()),
             SingleExpressionInner::Variable(identifier) => scope
                 .get(&BasePattern::Identifier(identifier.clone()))
                 .ok_or(Error::UndefinedVariable(identifier.clone()))
@@ -227,7 +237,7 @@ impl SingleExpression {
                     .collect::<Result<Vec<PairBuilder<ProgNode>>, RichError>>()?;
                 let tree = BTreeSlice::from_slice(&compiled);
                 tree.fold(PairBuilder::pair)
-                    .unwrap_or_else(PairBuilder::unit)
+                    .unwrap_or_else(|| PairBuilder::unit(scope.ctx()))
             }
             SingleExpressionInner::List(elements) => {
                 let compiled = elements
@@ -240,14 +250,14 @@ impl SingleExpression {
                     |block| {
                         let tree = BTreeSlice::from_slice(block);
                         match tree.fold(PairBuilder::pair) {
-                            None => PairBuilder::unit().injl(),
+                            None => PairBuilder::unit(scope.ctx()).injl(),
                             Some(pair) => pair.injr(),
                         }
                     },
                     PairBuilder::pair,
                 )
             }
-            SingleExpressionInner::Option(None) => PairBuilder::unit().injl(),
+            SingleExpressionInner::Option(None) => PairBuilder::unit(scope.ctx()).injl(),
             SingleExpressionInner::Either(Either::Left(inner)) => {
                 inner.compile(scope).map(PairBuilder::injl)?
             }
@@ -259,12 +269,13 @@ impl SingleExpression {
             SingleExpressionInner::Match(match_) => match_.compile(scope)?,
         };
 
-        expr.as_ref()
-            .cached_data()
-            .arrow()
-            .target
-            .unify(&StructuralType::from(self.ty()).to_unfinalized(), "")
-            .map_err(|e| Error::CannotCompile(e.to_string()))
+        scope
+            .ctx()
+            .unify(
+                &expr.as_ref().cached_data().arrow().target,
+                &StructuralType::from(self.ty()).to_unfinalized(scope.ctx()),
+                "",
+            )
             .with_span(self)?;
         Ok(expr)
     }
@@ -277,33 +288,33 @@ impl Call {
 
         match self.name() {
             CallName::Jet(name) => {
-                let jet = ProgNode::jet(*name);
+                let jet = ProgNode::jet(scope.ctx(), *name);
                 args.comp(&jet).with_span(self)
             }
             CallName::UnwrapLeft(..) => {
-                let left_and_unit = args.pair(PairBuilder::unit());
+                let left_and_unit = args.pair(PairBuilder::unit(scope.ctx()));
                 let fail_cmr = Cmr::fail(FailEntropy::ZERO);
-                let get_inner = ProgNode::assertl_take(&ProgNode::iden(), fail_cmr);
+                let get_inner = ProgNode::assertl_take(&ProgNode::iden(scope.ctx()), fail_cmr);
                 left_and_unit.comp(&get_inner).with_span(self)
             }
             CallName::UnwrapRight(..) | CallName::Unwrap => {
-                let right_and_unit = args.pair(PairBuilder::unit());
+                let right_and_unit = args.pair(PairBuilder::unit(scope.ctx()));
                 let fail_cmr = Cmr::fail(FailEntropy::ZERO);
-                let get_inner = ProgNode::assertr_take(fail_cmr, &ProgNode::iden());
+                let get_inner = ProgNode::assertr_take(fail_cmr, &ProgNode::iden(scope.ctx()));
                 right_and_unit.comp(&get_inner).with_span(self)
             }
             CallName::IsNone(..) => {
-                let sum_and_unit = args.pair(PairBuilder::unit());
-                let is_right = ProgNode::case_true_false();
+                let sum_and_unit = args.pair(PairBuilder::unit(scope.ctx()));
+                let is_right = ProgNode::case_true_false(scope.ctx());
                 sum_and_unit.comp(&is_right).with_span(self)
             }
             CallName::Assert => {
-                let jet = ProgNode::jet(Elements::Verify);
+                let jet = ProgNode::jet(scope.ctx(), Elements::Verify);
                 args.comp(&jet).with_span(self)
             }
             CallName::Panic => {
                 // panic! ignores its arguments
-                Ok(PairBuilder::fail(FailEntropy::ZERO))
+                Ok(PairBuilder::fail(scope.ctx(), FailEntropy::ZERO))
             }
             CallName::TypeCast(..) => {
                 // A cast converts between two structurally equal types.
@@ -313,18 +324,18 @@ impl Call {
                 Ok(args)
             }
             CallName::Custom(function) => {
-                let mut function_scope = Scope::new(function.params_pattern());
+                let mut function_scope = scope.child(function.params_pattern());
                 let body = function.body().compile(&mut function_scope)?;
                 args.comp(&body).with_span(self)
             }
             CallName::Fold(function, bound) => {
-                let mut function_scope = Scope::new(function.params_pattern());
+                let mut function_scope = scope.child(function.params_pattern());
                 let body = function.body().compile(&mut function_scope)?;
                 let fold_body = list_fold(*bound, body.as_ref()).with_span(self)?;
                 args.comp(&fold_body).with_span(self)
             }
             CallName::ForWhile(function, bit_width) => {
-                let mut function_scope = Scope::new(function.params_pattern());
+                let mut function_scope = scope.child(function.params_pattern());
                 let body = function.body().compile(&mut function_scope)?;
                 let fold_body = for_while(*bit_width, body).with_span(self)?;
                 args.comp(&fold_body).with_span(self)
@@ -351,7 +362,8 @@ fn list_fold(bound: NonZeroPow2Usize, f: &ProgNode) -> Result<ProgNode, simplici
     /* (fold f)_1 :  E^<2 × A → A
      * (fold f)_1 := case IH f_0
      */
-    let ioh = ProgNode::i().h();
+    let ctx = f.inference_context();
+    let ioh = ProgNode::i().h(ctx);
     let mut f_fold = ProgNode::case(ioh.as_ref(), &f_array)?;
     let mut i = NonZeroPow2Usize::TWO;
 
@@ -359,9 +371,10 @@ fn list_fold(bound: NonZeroPow2Usize, f: &ProgNode) -> Result<ProgNode, simplici
         /* f_(n + 1) :  E^(2^(n + 1)) × A → A
          * f_(n + 1) := OIH ▵ (OOH ▵ IH; f_n); f_n
          */
-        let half1_acc = ProgNode::o().o().h().pair(ProgNode::i().h());
+        let ctx = f_array.inference_context();
+        let half1_acc = ProgNode::o().o().h(ctx).pair(ProgNode::i().h(ctx));
         let updated_acc = half1_acc.comp(f_array)?;
-        let half2_acc = ProgNode::o().i().h().pair(updated_acc);
+        let half2_acc = ProgNode::o().i().h(ctx).pair(updated_acc);
         half2_acc.comp(f_array).map(PairBuilder::build)
     }
     fn next_f_fold(
@@ -373,15 +386,16 @@ fn list_fold(bound: NonZeroPow2Usize, f: &ProgNode) -> Result<ProgNode, simplici
          *                     case (drop (fold f)_n)
          *                          ((IOH ▵ (OH ▵ IIH; f_n)); (fold f)_n)
          */
+        let ctx = f_array.inference_context();
         let case_input = ProgNode::o()
             .o()
-            .h()
-            .pair(ProgNode::o().i().h().pair(ProgNode::i().h()));
+            .h(ctx)
+            .pair(ProgNode::o().i().h(ctx).pair(ProgNode::i().h(ctx)));
         let case_left = ProgNode::drop_(f_fold);
 
-        let f_n_input = ProgNode::o().h().pair(ProgNode::i().i().h());
+        let f_n_input = ProgNode::o().h(ctx).pair(ProgNode::i().i().h(ctx));
         let f_n_output = f_n_input.comp(f_array)?;
-        let fold_n_input = ProgNode::i().o().h().pair(f_n_output);
+        let fold_n_input = ProgNode::i().o().h(ctx).pair(f_n_output);
         let case_right = fold_n_input.comp(f_fold)?;
 
         case_input
@@ -421,16 +435,17 @@ fn for_while(
      *                       (OH ▵ (IH ▵ true); f)
      */
     fn for_while_0(f: &ProgNode) -> Result<PairBuilder<ProgNode>, simplicity::types::Error> {
+        let ctx = f.inference_context();
         let f_output = ProgNode::o()
-            .h()
-            .pair(ProgNode::i().h().pair(ProgNode::bit(false)))
+            .h(ctx)
+            .pair(ProgNode::i().h(ctx).pair(ProgNode::bit(ctx, false)))
             .comp(f)?;
-        let case_input = f_output.pair(ProgNode::i().h());
+        let case_input = f_output.pair(ProgNode::i().h(ctx));
 
-        let x = ProgNode::injl(ProgNode::o().h().as_ref());
+        let x = ProgNode::injl(ProgNode::o().h(ctx).as_ref());
         let f_output = ProgNode::o()
-            .h()
-            .pair(ProgNode::i().h().pair(ProgNode::bit(true)))
+            .h(ctx)
+            .pair(ProgNode::i().h(ctx).pair(ProgNode::bit(ctx, true)))
             .comp(f)?;
         let case_output = ProgNode::case(&x, f_output.as_ref())?;
 
@@ -443,12 +458,13 @@ fn for_while(
      *       f :  A × (C × 2^(2^(n + 1))) → B + A
      */
     fn adapt_f(f: &ProgNode) -> Result<PairBuilder<ProgNode>, simplicity::types::Error> {
-        let f_input = ProgNode::o().h().pair(
+        let ctx = f.inference_context();
+        let f_input = ProgNode::o().h(ctx).pair(
             ProgNode::i()
                 .o()
                 .o()
-                .h()
-                .pair(ProgNode::i().o().i().h().pair(ProgNode::i().i().h())),
+                .h(ctx)
+                .pair(ProgNode::i().o().i().h(ctx).pair(ProgNode::i().i().h(ctx))),
         );
         f_input.comp(f)
     }
@@ -536,7 +552,7 @@ impl Match {
         scope.pop_scope();
 
         let scrutinee = self.scrutinee().compile(scope)?;
-        let input = scrutinee.pair(PairBuilder::iden());
+        let input = scrutinee.pair(PairBuilder::iden(scope.ctx()));
         let output = ProgNode::case(left.as_ref(), right.as_ref()).with_span(self)?;
         input.comp(&output).with_span(self)
     }

@@ -234,6 +234,16 @@ The assertion fails."#,
         | Elements::DivMod16
         | Elements::DivMod32
         | Elements::DivMod64 => "Divide the first integer by the second integer, and return the remainder.",
+        Elements::DivMod128_64 => r#"Divide the 128-bit integer `a` by the 64-bit integer `b`.
+Return a tuple of the quotient `q` and the remainer `r`.
+
+Use this jet to recursively define wide integer divisions.
+
+## Preconditions
+1. `q` < 2^64
+2. 2^63 ≤ `b`
+
+Return `(u64::MAX, u64::MAX)` when the preconditions are not satisfied."#,
         Elements::Divide8
         | Elements::Divide16
         | Elements::Divide32
@@ -381,6 +391,14 @@ The assertion fails."#,
         Elements::ScalarNormalize => "Return the canonical representation of the scalar.",
         Elements::ScalarSquare => "Square a scalar.",
         Elements::Scale => "Multiply a point by a scalar.",
+        Elements::HashToCurve => r#" A cryptographic hash function that results in a point on the secp256k1 curve.
+
+This matches the hash function used to map asset IDs to asset commitments."#,
+        Elements::Swu => r#"Algebraically distribute a field element over the secp256k1 curve as defined in
+["Indifferentiable Hashing to Barreto-Naehrig Curves" by Pierre-Alain Fouque, Mehdi Tibouchi](https://inria.hal.science/hal-01094321/file/FT12.pdf).
+
+While this by iteslf is not a cryptographic hash function, it can be used as a subrotuine
+in a [`hash_to_curve`] function. However the distribution only apporaches uniform when it is called twice."#,
         // Digital Signatures
         Elements::Bip0340Verify => r#"Assert that a Schnorr signature matches a public key and message.
 
@@ -401,14 +419,14 @@ This jet should not be used directly."#,
 - If there is no hash, then the byte `0x00`.
 - If there is a hash, then the byte `0x01` followed by the given hash (32 bytes)."#,
         Elements::AssetAmountHash => "Continue a SHA256 hash with the serialization of a confidential asset followed by the serialization of a amount.",
-        Elements::BuildTapbranch => r#"Return a SHA256 hash of the following:
+        Elements::BuildTapbranch => r#"Return the SHA256 hash of the following:
 - The hash of the ASCII string `TapBranch/elements` (32 bytes).
 - The lexicographically smaller of the two inputs (32 bytes).
 - The hash of the ASCII string `TapBranch/elements` again (32 bytes).
 - The lexicographically larger of the two inputs (32 bytes).
 
 This builds a taproot from two branches."#,
-        Elements::BuildTapleafSimplicity => r#"Return a SHA256 hash of the following:
+        Elements::BuildTapleafSimplicity => r#"Return the SHA256 hash of the following:
 - The hash of the ASCII string `TapBranch/elements` (32 bytes).
 - The hash of the ASCII string `TapBranch/elements` again (32 bytes).
 - The lexicographically smaller of the two inputs (32 bytes).
@@ -416,13 +434,13 @@ This builds a taproot from two branches."#,
 
 This builds a taproot from two branches."#,
         Elements::InputAmountsHash => "Return the SHA256 hash of the serialization of each input UTXO's asset and amount fields.",
-        Elements::InputAnnexesHash => r#"Return a SHA256 hash of the concatenation of the following for every input:
+        Elements::InputAnnexesHash => r#"Return the SHA256 hash of the concatenation of the following for every input:
 - If the input has no annex, or isn't a taproot spend, then the byte `0x00`.
-- If the input has an annex, then the byte `0x01` followed by a SHA256 hash of the annex (32 bytes)."#,
-        Elements::InputOutpointsHash => r#"Return a SHA256 hash of the concatenation of the following for every input:
+- If the input has an annex, then the byte `0x01` followed by the SHA256 hash of the annex (32 bytes)."#,
+        Elements::InputOutpointsHash => r#"Return the SHA256 hash of the concatenation of the following for every input:
 - If the input is not a pegin, then the byte `0x00`.
-- The input's serialized previous transaction id (32 bytes).
 - If the input is a pegin, then the byte `0x01` followed by the parent chain's genesis hash (32 bytes).
+- The input's serialized previous transaction id (32 bytes).
 - The input's previous transaction index in big endian format (4 bytes).
 
 IMPORTANT: the index is serialized in big endian format rather than little endian format."#,
@@ -431,18 +449,33 @@ IMPORTANT: the index is serialized in big endian format rather than little endia
 Note that if an input's UTXO uses segwit, then it's scriptSig will necessarily be the empty string. In
 such cases we still use the SHA256 hash of the empty string."#,
         Elements::InputScriptsHash => "Return the SHA256 hash of the concatenation of the SHA256 hash of each input UTXO's scriptPubKey.",
-        Elements::InputSequencesHash => r#"Return a SHA256 hash of the concatenation of the following for every input:
-- The inputs sequence number in big endian format (4 bytes).
+        Elements::InputSequencesHash => r#"Return the SHA256 hash of the concatenation of the following for every input:
+- The input's sequence number in big endian format (4 bytes).
 
 IMPORTANT, the sequence number is serialized in big endian format rather than little endian format."#,
-        Elements::InputUtxosHash => r#"Return a SHA256 hash of the following:
+        Elements::InputUtxoHash => r#"Return the SHA256 hash of the following:
+- The serialization of the input UTXO's asset and amount fields.
+- The SHA256 hash of the input UTXO's scriptPubKey.
+
+Return `None` if the input does not exist."#,
+        Elements::InputUtxosHash => r#"Return the SHA256 hash of the following:
 - The result of [`input_amounts_hash`] (32 bytes).
 - The result of [`input_scripts_hash`] (32 bytes)."#,
-        Elements::InputsHash => r#"Return a SHA256 hash of the following:
+        Elements::InputHash => r#"Return the SHA256 hash of the following:
+- If the input is not a pegin, then the byte `0x00`.
+- If the input is a pegin, then the byte `0x01` followed by the parent chain's genesis hash (32 bytes).
+- The input's serialized previous transaction id (32 bytes).
+- The input's previous transaction index in big endian format (4 bytes).
+- The input's sequence number in big endian format (4 bytes).
+- If the input has no annex, or isn't a taproot spend, then the byte `0x00`.
+- If the input has an annex, then the byte `0x01` followed by the SHA256 hash of the annex (32 bytes).
+
+Return `None` if the input does not exist."#,
+        Elements::InputsHash => r#"Return the SHA256 hash of the following:
 - The result of [`input_outpoints_hash`] (32 bytes).
 - The result of [`input_sequences_hash`] (32 bytes).
 - The result of [`input_annexes_hash`] (32 bytes)."#,
-        Elements::IssuanceAssetAmountsHash => r#"Return a SHA256 hash of the concatenation of the following for every input:
+        Elements::IssuanceAssetAmountsHash => r#"Return the SHA256 hash of the concatenation of the following for every input:
 - If the input has no issuance then two bytes `0x00 0x00`.
 - If the input is has a new issuance then the byte `0x01` followed by a serialization of the calculated issued
 asset id (32 bytes) followed by the serialization of the (possibly confidential) issued asset amount (9
@@ -455,7 +488,7 @@ IMPORTANT: If there is an issuance but there are no asset issued (i.e. the amoun
 the vase as the explicit 0 amount, (i.e. `0x01 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00`).
 
 Note, the issuance asset id is serialized in the same format as an explicit asset id would be."#,
-        Elements::IssuanceBlindingEntropyHash => r#"Return a SHA256 hash of the concatenation of the following for every input:
+        Elements::IssuanceBlindingEntropyHash => r#"Return the SHA256 hash of the concatenation of the following for every input:
 - If the input has no issuance then the byte `0x00`.
 - If the input is has a new issuance then the byte `0x01` followed by 32 `0x00` bytes and the new issuance's
 contract hash field (32 bytes).
@@ -464,14 +497,14 @@ nonce field (32 bytes) and the reissuance's entropy field (32 bytes).
 
 Note that if the issuance is a new issuance then the blinding nonce field is 32 `0x00` bytes and new issuance's
 contract hash."#,
-        Elements::IssuanceRangeProofsHash => r#"Return a SHA256 hash of the concatenation of the following for every input:
+        Elements::IssuanceRangeProofsHash => r#"Return the SHA256 hash of the concatenation of the following for every input:
 - The SHA256 hash of the range proof of the input's issuance asset amount (32 bytes).
 - The SHA256 hash of the range proof of the input's issuance token amount (32 bytes).
 
 Note that each the range proof is considered to be the empty string in the case there is no issuance, or if the
 asset or token amount doesn't exist (i.e is null). The SHA256 hash of the empty string is still used in these
 cases."#,
-        Elements::IssuanceTokenAmountsHash => r#"Return a SHA256 hash of the concatenation of the following for every input:
+        Elements::IssuanceTokenAmountsHash => r#"Return the SHA256 hash of the concatenation of the following for every input:
 - If the input has no issuance then two bytes `0x00 0x00`.
 - If the input is has a new issuance then the byte `0x01` followed by a serialization of the calculated issued
 token id (32 bytes) followed by the serialization of the (possibly confidential) issued token amount (9
@@ -483,13 +516,37 @@ IMPORTANT: If there is an issuance but there are no tokens issued (i.e. the amou
 the vase as the explicit 0 amount, (i.e. `0x01 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00`).
 
 Note, the issuance token id is serialized in the same format as an explicit asset id would be."#,
-        Elements::IssuancesHash => r#"Return a SHA256 hash of the following:
+        Elements::IssuanceHash => r#"Return the SHA256 hash of the following:
+1. The asset issuance:
+    - If the input has no issuance then two bytes `0x00 0x00`.
+    - If the input is has a new issuance then the byte `0x01` followed by a serialization of the calculated issued
+    asset id (32 bytes) followed by the serialization of the (possibly confidential) issued asset amount (9 bytes or 33 bytes).
+    - If the input is has a reissuance then the byte `0x01` followed by a serialization of the issued asset id
+    (32 bytes), followed by the serialization of the (possibly confidential) issued asset amount (9 bytes or 33 bytes).
+2. The token issuance:
+    - If the input has no issuance then two bytes `0x00 0x00`.
+    - If the input is has a new issuance then the byte `0x01` followed by a serialization of the calculated issued
+    token id (32 bytes) followed by the serialization of the (possibly confidential) issued token amount (9 bytes or 33 bytes).
+    - If the input is has a reissuance then the byte `0x01` followed by a serialization of the issued token id (32 bytes),
+    followed by the serialization of the explicit 0 amount (i.e `0x01 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00`) (9 bytes).
+3. The range proofs:
+    - The SHA256 hash of the range proof of the input's issuance asset amount (32 bytes).
+    - The SHA256 hash of the range proof of the input's issuance token amount (32 bytes).
+4. The blinding entropy:
+    - If the input has no issuance then the byte `0x00`.
+    - If the input is has a new issuance then the byte `0x01` followed by 32 `0x00` bytes and the new issuance's
+    contract hash field (32 bytes).
+    - If the input is has reissuance then the byte `0x01` followed by a serializaiton of the reissuance's blinding
+    nonce field (32 bytes) and the reissuance's entropy field (32 bytes).
+
+Return `None` if the input does not exist."#,
+        Elements::IssuancesHash => r#"Return the SHA256 hash of the following:
 - The result of [`issuance_asset_amounts_hash`] (32 bytes).
 - The result of [`issuance_token_amounts_hash`] (32 bytes).
 - The result of [`issuance_range_proofs_hash`] (32 bytes).
 - The result of [`issuance_blinding_entropy_hash`] (32 bytes)."#,
-        Elements::NonceHash => "Continue a SHA256 hash with the serialization of an optional nonce.",
-        Elements::OutpointHash => r#"Continue a SHA256 hash with an optional pegin and an outpoint by appending the following:
+        Elements::NonceHash => "Continue the SHA256 hash with the serialization of an optional nonce.",
+        Elements::OutpointHash => r#"Continue the SHA256 hash with an optional pegin and an outpoint by appending the following:
 - If the input is not a pegin, then the byte `0x00`.
 - If the input is a pegin, then the byte `0x01` followed by the given parent genesis hash (32 bytes).
 - The input's previous transaction id (32 bytes).
@@ -503,14 +560,23 @@ Note that if the output's amount is explicit then the range proof is considered 
         Elements::OutputSurjectionProofsHash => r#"Return the SHA256 hash of the concatenation of the SHA256 hash of each output's surjection proof.
 
 Note that if the output's asset is explicit then the surjection proof is considered the empty string."#,
-        Elements::OutputsHash => r#"Return a SHA256 hash of the following:
+        Elements::OutputHash => r#"Return the SHA256 hash of the following:
+- The serialization of the output's asset and amount fields.
+- The serialization of the output's nonce field.
+- The SHA256 hash of the output's scriptPubKey.
+- The SHA256 hash of the output's range proof.
+
+Return `None` if the output does not exist.
+
+Note: the result of [`output_surjection_proofs_hash`] is specifically excluded because surjection proofs are dependent on the inputs as well as the output."#,
+        Elements::OutputsHash => r#"Return the SHA256 hash of the following:
 - The result of [`output_amounts_hash`] (32 bytes).
 - The result of [`output_nonces_hash`] (32 bytes).
 - The result of [`output_scripts_hash`] (32 bytes).
 - The result of [`output_range_proofs_hash`] (32 bytes).
 
 Note: the result of [`output_surjection_proofs_hash`] is specifically excluded because surjection proofs are dependent on the inputs as well as the output. See also [`tx_hash`]."#,
-        Elements::SigAllHash => r#"Return a SHA256 hash of the following:
+        Elements::SigAllHash => r#"Return the SHA256 hash of the following:
 - The result of [`genesis_block_hash`] (32 bytes).
 - The result of [`genesis_block_hash`] again (32 bytes).
 - The result of [`tx_hash`] (32 bytes).
@@ -518,11 +584,11 @@ Note: the result of [`output_surjection_proofs_hash`] is specifically excluded b
 - The result of [`current_index`] (Note: this is in big endian format) (4 bytes).
 
 Note: the two copies of the [`genesis_block_hash`] values effectively makes this result a BIP-340 style tagged hash."#,
-        Elements::TapEnvHash => r#"Return a SHA256 hash of the following:
+        Elements::TapEnvHash => r#"Return the SHA256 hash of the following:
 - The result of [`tapleaf_hash`] (32 bytes).
 - The result of [`tappath_hash`] (32 bytes).
 - The result of [`internal_key`] (32 bytes)."#,
-        Elements::TapleafHash => r#"Return a SHA256 hash of the following:
+        Elements::TapleafHash => r#"Return the SHA256 hash of the following:
 - The hash of the ASCII string `TapLeaf/elements` (32 bytes).
 - The hash of the ASCII string `TapLeaf/elements` again (32 bytes).
 - The result of [`tapleaf_version`] (1 byte).
@@ -533,7 +599,7 @@ Note: this matches Element's modified BIP-0341 definition of tapleaf hash."#,
         Elements::TappathHash => r#"Return a hash of the current input's control block excluding the leaf version and the taproot internal key.
 
 Using the notation of BIP-0341, it returns the SHA256 hash of c[33: 33 + 32m]."#,
-        Elements::TxHash => r#"Return a SHA256 hash of the following:
+        Elements::TxHash => r#"Return the SHA256 hash of the following:
 - The result of [`version`] (Note: this is in big endian format) (4 bytes).
 - The result of [`tx_lock_time`] (Note: this is in big endian format) (4 bytes).
 - The result of [`inputs_hash`] (32 bytes).
@@ -587,6 +653,7 @@ This entropy value is used to compute issued asset and token IDs."#,
 - Return `Some(Some(x))` if the input has issuance with the reissuance token ID `x`.
 - Return `Some(None)` if the input has no issuance.
 - Return `None` if the input does not exist."#,
+        Elements::LbtcAsset => "Return the asset for Liquid Bitcoin.",
         // Transaction
         Elements::CurrentAmount => "Return the [`input_amount`] at the [`current_index`].",
         Elements::CurrentAnnexHash => "Return the [`input_annex_hash`] at th [`current_index`].",
@@ -721,6 +788,7 @@ We assume that Simplicity can be spent in Taproot outputs only, so there always 
         Elements::TotalFee => r#"Return the total amount of fees paid to the given asset id.
 
 Return zero for any asset without fees."#,
+        Elements::TransactionId => "Return the transaction ID.",
         Elements::Version => "Return the version number of the transaction.",
     }
 }
@@ -869,16 +937,16 @@ const MULTI_BIT_LOGIC: [Elements; 212] = [
     Elements::All8, Elements::All16, Elements::All32, Elements::All64, Elements::And1, Elements::And8, Elements::And16, Elements::And32, Elements::And64, Elements::Ch1, Elements::Ch8, Elements::Ch16, Elements::Ch32, Elements::Ch64, Elements::Complement1, Elements::Complement8, Elements::Complement16, Elements::Complement32, Elements::Complement64, Elements::Eq1, Elements::Eq8, Elements::Eq16, Elements::Eq32, Elements::Eq64, Elements::Eq256, Elements::FullLeftShift16_1, Elements::FullLeftShift16_2, Elements::FullLeftShift16_4, Elements::FullLeftShift16_8, Elements::FullLeftShift32_1, Elements::FullLeftShift32_2, Elements::FullLeftShift32_4, Elements::FullLeftShift32_8, Elements::FullLeftShift32_16, Elements::FullLeftShift64_1, Elements::FullLeftShift64_2, Elements::FullLeftShift64_4, Elements::FullLeftShift64_8, Elements::FullLeftShift64_16, Elements::FullLeftShift64_32, Elements::FullLeftShift8_1, Elements::FullLeftShift8_2, Elements::FullLeftShift8_4, Elements::FullRightShift16_1, Elements::FullRightShift16_2, Elements::FullRightShift16_4, Elements::FullRightShift16_8, Elements::FullRightShift32_1, Elements::FullRightShift32_2, Elements::FullRightShift32_4, Elements::FullRightShift32_8, Elements::FullRightShift32_16, Elements::FullRightShift64_1, Elements::FullRightShift64_2, Elements::FullRightShift64_4, Elements::FullRightShift64_8, Elements::FullRightShift64_16, Elements::FullRightShift64_32, Elements::FullRightShift8_1, Elements::FullRightShift8_2, Elements::FullRightShift8_4, Elements::High1, Elements::High8, Elements::High16, Elements::High32, Elements::High64, Elements::LeftExtend16_32, Elements::LeftExtend16_64, Elements::LeftExtend1_8, Elements::LeftExtend1_16, Elements::LeftExtend1_32, Elements::LeftExtend1_64, Elements::LeftExtend32_64, Elements::LeftExtend8_16, Elements::LeftExtend8_32, Elements::LeftExtend8_64, Elements::LeftPadHigh16_32, Elements::LeftPadHigh16_64, Elements::LeftPadHigh1_8, Elements::LeftPadHigh1_16, Elements::LeftPadHigh1_32, Elements::LeftPadHigh1_64, Elements::LeftPadHigh32_64, Elements::LeftPadHigh8_16, Elements::LeftPadHigh8_32, Elements::LeftPadHigh8_64, Elements::LeftPadLow16_32, Elements::LeftPadLow16_64, Elements::LeftPadLow1_8, Elements::LeftPadLow1_16, Elements::LeftPadLow1_32, Elements::LeftPadLow1_64, Elements::LeftPadLow32_64, Elements::LeftPadLow8_16, Elements::LeftPadLow8_32, Elements::LeftPadLow8_64, Elements::LeftRotate8, Elements::LeftRotate16, Elements::LeftRotate32, Elements::LeftRotate64, Elements::LeftShift8, Elements::LeftShift16, Elements::LeftShift32, Elements::LeftShift64, Elements::LeftShiftWith8, Elements::LeftShiftWith16, Elements::LeftShiftWith32, Elements::LeftShiftWith64, Elements::Leftmost16_1, Elements::Leftmost16_2, Elements::Leftmost16_4, Elements::Leftmost16_8, Elements::Leftmost32_1, Elements::Leftmost32_2, Elements::Leftmost32_4, Elements::Leftmost32_8, Elements::Leftmost32_16, Elements::Leftmost64_1, Elements::Leftmost64_2, Elements::Leftmost64_4, Elements::Leftmost64_8, Elements::Leftmost64_16, Elements::Leftmost64_32, Elements::Leftmost8_1, Elements::Leftmost8_2, Elements::Leftmost8_4, Elements::Low1, Elements::Low8, Elements::Low16, Elements::Low32, Elements::Low64, Elements::Maj1, Elements::Maj8, Elements::Maj16, Elements::Maj32, Elements::Maj64, Elements::Or1, Elements::Or8, Elements::Or16, Elements::Or32, Elements::Or64, Elements::RightExtend16_32, Elements::RightExtend16_64, Elements::RightExtend32_64, Elements::RightExtend8_16, Elements::RightExtend8_32, Elements::RightExtend8_64, Elements::RightPadHigh16_32, Elements::RightPadHigh16_64, Elements::RightPadHigh1_8, Elements::RightPadHigh1_16, Elements::RightPadHigh1_32, Elements::RightPadHigh1_64, Elements::RightPadHigh32_64, Elements::RightPadHigh8_16, Elements::RightPadHigh8_32, Elements::RightPadHigh8_64, Elements::RightPadLow16_32, Elements::RightPadLow16_64, Elements::RightPadLow1_8, Elements::RightPadLow1_16, Elements::RightPadLow1_32, Elements::RightPadLow1_64, Elements::RightPadLow32_64, Elements::RightPadLow8_16, Elements::RightPadLow8_32, Elements::RightPadLow8_64, Elements::RightRotate8, Elements::RightRotate16, Elements::RightRotate32, Elements::RightRotate64, Elements::RightShift8, Elements::RightShift16, Elements::RightShift32, Elements::RightShift64, Elements::RightShiftWith8, Elements::RightShiftWith16, Elements::RightShiftWith32, Elements::RightShiftWith64, Elements::Rightmost16_1, Elements::Rightmost16_2, Elements::Rightmost16_4, Elements::Rightmost16_8, Elements::Rightmost32_1, Elements::Rightmost32_2, Elements::Rightmost32_4, Elements::Rightmost32_8, Elements::Rightmost32_16, Elements::Rightmost64_1, Elements::Rightmost64_2, Elements::Rightmost64_4, Elements::Rightmost64_8, Elements::Rightmost64_16, Elements::Rightmost64_32, Elements::Rightmost8_1, Elements::Rightmost8_2, Elements::Rightmost8_4, Elements::Some1, Elements::Some8, Elements::Some16, Elements::Some32, Elements::Some64, Elements::Xor1, Elements::Xor8, Elements::Xor16, Elements::Xor32, Elements::Xor64, Elements::XorXor1, Elements::XorXor8, Elements::XorXor16, Elements::XorXor32, Elements::XorXor64
 ];
 #[rustfmt::skip]
-const ARITHMETIC: [Elements; 92] = [
-    Elements::Add8, Elements::Add16, Elements::Add32, Elements::Add64, Elements::Decrement8, Elements::Decrement16, Elements::Decrement32, Elements::Decrement64, Elements::DivMod8, Elements::DivMod16, Elements::DivMod32, Elements::DivMod64, Elements::Divide8, Elements::Divide16, Elements::Divide32, Elements::Divide64, Elements::Divides8, Elements::Divides16, Elements::Divides32, Elements::Divides64, Elements::FullAdd8, Elements::FullAdd16, Elements::FullAdd32, Elements::FullAdd64, Elements::FullDecrement8, Elements::FullDecrement16, Elements::FullDecrement32, Elements::FullDecrement64, Elements::FullIncrement8, Elements::FullIncrement16, Elements::FullIncrement32, Elements::FullIncrement64, Elements::FullMultiply8, Elements::FullMultiply16, Elements::FullMultiply32, Elements::FullMultiply64, Elements::FullSubtract8, Elements::FullSubtract16, Elements::FullSubtract32, Elements::FullSubtract64, Elements::Increment8, Elements::Increment16, Elements::Increment32, Elements::Increment64, Elements::IsOne8, Elements::IsOne16, Elements::IsOne32, Elements::IsOne64, Elements::IsZero8, Elements::IsZero16, Elements::IsZero32, Elements::IsZero64, Elements::Le8, Elements::Le16, Elements::Le32, Elements::Le64, Elements::Lt8, Elements::Lt16, Elements::Lt32, Elements::Lt64, Elements::Max8, Elements::Max16, Elements::Max32, Elements::Max64, Elements::Median8, Elements::Median16, Elements::Median32, Elements::Median64, Elements::Min8, Elements::Min16, Elements::Min32, Elements::Min64, Elements::Modulo8, Elements::Modulo16, Elements::Modulo32, Elements::Modulo64, Elements::Multiply8, Elements::Multiply16, Elements::Multiply32, Elements::Multiply64, Elements::Negate8, Elements::Negate16, Elements::Negate32, Elements::Negate64, Elements::One8, Elements::One16, Elements::One32, Elements::One64, Elements::Subtract8, Elements::Subtract16, Elements::Subtract32, Elements::Subtract64
+const ARITHMETIC: [Elements; 93] = [
+    Elements::Add8, Elements::Add16, Elements::Add32, Elements::Add64, Elements::Decrement8, Elements::Decrement16, Elements::Decrement32, Elements::Decrement64, Elements::DivMod8, Elements::DivMod16, Elements::DivMod32, Elements::DivMod64, Elements::DivMod128_64, Elements::Divide8, Elements::Divide16, Elements::Divide32, Elements::Divide64, Elements::Divides8, Elements::Divides16, Elements::Divides32, Elements::Divides64, Elements::FullAdd8, Elements::FullAdd16, Elements::FullAdd32, Elements::FullAdd64, Elements::FullDecrement8, Elements::FullDecrement16, Elements::FullDecrement32, Elements::FullDecrement64, Elements::FullIncrement8, Elements::FullIncrement16, Elements::FullIncrement32, Elements::FullIncrement64, Elements::FullMultiply8, Elements::FullMultiply16, Elements::FullMultiply32, Elements::FullMultiply64, Elements::FullSubtract8, Elements::FullSubtract16, Elements::FullSubtract32, Elements::FullSubtract64, Elements::Increment8, Elements::Increment16, Elements::Increment32, Elements::Increment64, Elements::IsOne8, Elements::IsOne16, Elements::IsOne32, Elements::IsOne64, Elements::IsZero8, Elements::IsZero16, Elements::IsZero32, Elements::IsZero64, Elements::Le8, Elements::Le16, Elements::Le32, Elements::Le64, Elements::Lt8, Elements::Lt16, Elements::Lt32, Elements::Lt64, Elements::Max8, Elements::Max16, Elements::Max32, Elements::Max64, Elements::Median8, Elements::Median16, Elements::Median32, Elements::Median64, Elements::Min8, Elements::Min16, Elements::Min32, Elements::Min64, Elements::Modulo8, Elements::Modulo16, Elements::Modulo32, Elements::Modulo64, Elements::Multiply8, Elements::Multiply16, Elements::Multiply32, Elements::Multiply64, Elements::Negate8, Elements::Negate16, Elements::Negate32, Elements::Negate64, Elements::One8, Elements::One16, Elements::One32, Elements::One64, Elements::Subtract8, Elements::Subtract16, Elements::Subtract32, Elements::Subtract64
 ];
 #[rustfmt::skip]
 const HASH_FUNCTIONS: [Elements; 15] = [
     Elements::Sha256Block, Elements::Sha256Ctx8Add1, Elements::Sha256Ctx8Add2, Elements::Sha256Ctx8Add4, Elements::Sha256Ctx8Add8, Elements::Sha256Ctx8Add16, Elements::Sha256Ctx8Add32, Elements::Sha256Ctx8Add64, Elements::Sha256Ctx8Add128, Elements::Sha256Ctx8Add256, Elements::Sha256Ctx8Add512, Elements::Sha256Ctx8AddBuffer511, Elements::Sha256Ctx8Finalize, Elements::Sha256Ctx8Init, Elements::Sha256Iv
 ];
 #[rustfmt::skip]
-const ELLIPTIC_CURVE_FUNCTIONS: [Elements; 40] = [
-    Elements::Decompress, Elements::FeAdd, Elements::FeInvert, Elements::FeIsOdd, Elements::FeIsZero, Elements::FeMultiply, Elements::FeMultiplyBeta, Elements::FeNegate, Elements::FeNormalize, Elements::FeSquare, Elements::FeSquareRoot, Elements::GeIsOnCurve, Elements::GeNegate, Elements::GejAdd, Elements::GejDouble, Elements::GejEquiv, Elements::GejGeAdd, Elements::GejGeAddEx, Elements::GejGeEquiv, Elements::GejInfinity, Elements::GejIsInfinity, Elements::GejIsOnCurve, Elements::GejNegate, Elements::GejNormalize, Elements::GejRescale, Elements::GejXEquiv, Elements::GejYIsOdd, Elements::Generate, Elements::LinearCombination1, Elements::LinearVerify1, Elements::PointVerify1, Elements::ScalarAdd, Elements::ScalarInvert, Elements::ScalarIsZero, Elements::ScalarMultiply, Elements::ScalarMultiplyLambda, Elements::ScalarNegate, Elements::ScalarNormalize, Elements::ScalarSquare, Elements::Scale
+const ELLIPTIC_CURVE_FUNCTIONS: [Elements; 42] = [
+    Elements::Decompress, Elements::FeAdd, Elements::FeInvert, Elements::FeIsOdd, Elements::FeIsZero, Elements::FeMultiply, Elements::FeMultiplyBeta, Elements::FeNegate, Elements::FeNormalize, Elements::FeSquare, Elements::FeSquareRoot, Elements::GeIsOnCurve, Elements::GeNegate, Elements::GejAdd, Elements::GejDouble, Elements::GejEquiv, Elements::GejGeAdd, Elements::GejGeAddEx, Elements::GejGeEquiv, Elements::GejInfinity, Elements::GejIsInfinity, Elements::GejIsOnCurve, Elements::GejNegate, Elements::GejNormalize, Elements::GejRescale, Elements::GejXEquiv, Elements::GejYIsOdd, Elements::Generate, Elements::HashToCurve, Elements::LinearCombination1, Elements::LinearVerify1, Elements::PointVerify1, Elements::ScalarAdd, Elements::ScalarInvert, Elements::ScalarIsZero, Elements::ScalarMultiply, Elements::ScalarMultiplyLambda, Elements::ScalarNegate, Elements::ScalarNormalize, Elements::ScalarSquare, Elements::Scale, Elements::Swu
 ];
 #[rustfmt::skip]
 const DIGITAL_SIGNATURES: [Elements; 1] = [
@@ -890,20 +958,20 @@ const BITCOIN: [Elements; 2] = [
 ];
 // Elements
 #[rustfmt::skip]
-const SIGNATURE_HASH_MODES: [Elements; 30] = [
-    Elements::AnnexHash, Elements::AssetAmountHash, Elements::BuildTapbranch, Elements::BuildTapleafSimplicity, Elements::InputAmountsHash, Elements::InputAnnexesHash, Elements::InputOutpointsHash, Elements::InputScriptSigsHash, Elements::InputScriptsHash, Elements::InputSequencesHash, Elements::InputUtxosHash, Elements::InputsHash, Elements::IssuanceAssetAmountsHash, Elements::IssuanceBlindingEntropyHash, Elements::IssuanceRangeProofsHash, Elements::IssuanceTokenAmountsHash, Elements::IssuancesHash, Elements::NonceHash, Elements::OutpointHash, Elements::OutputAmountsHash, Elements::OutputNoncesHash, Elements::OutputRangeProofsHash, Elements::OutputScriptsHash, Elements::OutputSurjectionProofsHash, Elements::OutputsHash, Elements::SigAllHash, Elements::TapEnvHash, Elements::TapleafHash, Elements::TappathHash, Elements::TxHash
+const SIGNATURE_HASH_MODES: [Elements; 34] = [
+    Elements::AnnexHash, Elements::AssetAmountHash, Elements::BuildTapbranch, Elements::BuildTapleafSimplicity, Elements::InputAmountsHash, Elements::InputAnnexesHash, Elements::InputHash, Elements::InputOutpointsHash, Elements::InputScriptSigsHash, Elements::InputScriptsHash, Elements::InputSequencesHash, Elements::InputUtxoHash, Elements::InputUtxosHash, Elements::InputsHash, Elements::IssuanceAssetAmountsHash, Elements::IssuanceBlindingEntropyHash, Elements::IssuanceHash, Elements::IssuanceRangeProofsHash, Elements::IssuanceTokenAmountsHash, Elements::IssuancesHash, Elements::NonceHash, Elements::OutpointHash, Elements::OutputAmountsHash, Elements::OutputHash, Elements::OutputNoncesHash, Elements::OutputRangeProofsHash, Elements::OutputScriptsHash, Elements::OutputSurjectionProofsHash, Elements::OutputsHash, Elements::SigAllHash, Elements::TapEnvHash, Elements::TapleafHash, Elements::TappathHash, Elements::TxHash
 ];
 #[rustfmt::skip]
 const TIME_LOCKS: [Elements; 9] = [
     Elements::CheckLockDistance, Elements::CheckLockDuration, Elements::CheckLockHeight, Elements::CheckLockTime, Elements::TxIsFinal, Elements::TxLockDistance, Elements::TxLockDuration, Elements::TxLockHeight, Elements::TxLockTime
 ];
 #[rustfmt::skip]
-const ISSUANCE: [Elements; 8] = [
-    Elements::CalculateAsset, Elements::CalculateConfidentialToken, Elements::CalculateExplicitToken, Elements::CalculateIssuanceEntropy, Elements::Issuance, Elements::IssuanceAsset, Elements::IssuanceEntropy, Elements::IssuanceToken
+const ISSUANCE: [Elements; 9] = [
+    Elements::CalculateAsset, Elements::CalculateConfidentialToken, Elements::CalculateExplicitToken, Elements::CalculateIssuanceEntropy, Elements::Issuance, Elements::IssuanceAsset, Elements::IssuanceEntropy, Elements::IssuanceToken, Elements::LbtcAsset
 ];
 #[rustfmt::skip]
-const TRANSACTION: [Elements; 49] = [
-    Elements::CurrentAmount, Elements::CurrentAnnexHash, Elements::CurrentAsset, Elements::CurrentIndex, Elements::CurrentIssuanceAssetAmount, Elements::CurrentIssuanceAssetProof, Elements::CurrentIssuanceTokenAmount, Elements::CurrentIssuanceTokenProof, Elements::CurrentNewIssuanceContract, Elements::CurrentPegin, Elements::CurrentPrevOutpoint, Elements::CurrentReissuanceBlinding, Elements::CurrentReissuanceEntropy, Elements::CurrentScriptHash, Elements::CurrentScriptSigHash, Elements::CurrentSequence, Elements::GenesisBlockHash, Elements::InputAmount, Elements::InputAnnexHash, Elements::InputAsset, Elements::InputPegin, Elements::InputPrevOutpoint, Elements::InputScriptHash, Elements::InputScriptSigHash, Elements::InputSequence, Elements::InternalKey, Elements::IssuanceAssetAmount, Elements::IssuanceAssetProof, Elements::IssuanceTokenAmount, Elements::IssuanceTokenProof, Elements::LockTime, Elements::NewIssuanceContract, Elements::NumInputs, Elements::NumOutputs, Elements::OutputAmount, Elements::OutputAsset, Elements::OutputIsFee, Elements::OutputNonce, Elements::OutputNullDatum, Elements::OutputRangeProof, Elements::OutputScriptHash, Elements::OutputSurjectionProof, Elements::ReissuanceBlinding, Elements::ReissuanceEntropy, Elements::ScriptCMR, Elements::TapleafVersion, Elements::Tappath, Elements::TotalFee, Elements::Version
+const TRANSACTION: [Elements; 50] = [
+    Elements::CurrentAmount, Elements::CurrentAnnexHash, Elements::CurrentAsset, Elements::CurrentIndex, Elements::CurrentIssuanceAssetAmount, Elements::CurrentIssuanceAssetProof, Elements::CurrentIssuanceTokenAmount, Elements::CurrentIssuanceTokenProof, Elements::CurrentNewIssuanceContract, Elements::CurrentPegin, Elements::CurrentPrevOutpoint, Elements::CurrentReissuanceBlinding, Elements::CurrentReissuanceEntropy, Elements::CurrentScriptHash, Elements::CurrentScriptSigHash, Elements::CurrentSequence, Elements::GenesisBlockHash, Elements::InputAmount, Elements::InputAnnexHash, Elements::InputAsset, Elements::InputPegin, Elements::InputPrevOutpoint, Elements::InputScriptHash, Elements::InputScriptSigHash, Elements::InputSequence, Elements::InternalKey, Elements::IssuanceAssetAmount, Elements::IssuanceAssetProof, Elements::IssuanceTokenAmount, Elements::IssuanceTokenProof, Elements::LockTime, Elements::NewIssuanceContract, Elements::NumInputs, Elements::NumOutputs, Elements::OutputAmount, Elements::OutputAsset, Elements::OutputIsFee, Elements::OutputNonce, Elements::OutputNullDatum, Elements::OutputRangeProof, Elements::OutputScriptHash, Elements::OutputSurjectionProof, Elements::ReissuanceBlinding, Elements::ReissuanceEntropy, Elements::ScriptCMR, Elements::TapleafVersion, Elements::Tappath, Elements::TotalFee, Elements::TransactionId, Elements::Version
 ];
 
 #[cfg(test)]
@@ -911,32 +979,25 @@ mod tests {
     use super::*;
 
     #[rustfmt::skip]
-    const ALL: [Elements; 460] = [
-        Elements::Add16, Elements::Add32, Elements::Add64, Elements::Add8, Elements::All16, Elements::All32, Elements::All64, Elements::All8, Elements::And1, Elements::And16, Elements::And32, Elements::And64, Elements::And8, Elements::AnnexHash, Elements::AssetAmountHash, Elements::Bip0340Verify, Elements::BuildTapbranch, Elements::BuildTapleafSimplicity, Elements::CalculateAsset, Elements::CalculateConfidentialToken, Elements::CalculateExplicitToken, Elements::CalculateIssuanceEntropy, Elements::Ch1, Elements::Ch16, Elements::Ch32, Elements::Ch64, Elements::Ch8, Elements::CheckLockDistance, Elements::CheckLockDuration, Elements::CheckLockHeight, Elements::CheckLockTime, Elements::CheckSigVerify, Elements::Complement1, Elements::Complement16, Elements::Complement32, Elements::Complement64, Elements::Complement8, Elements::CurrentAmount, Elements::CurrentAnnexHash, Elements::CurrentAsset, Elements::CurrentIndex, Elements::CurrentIssuanceAssetAmount, Elements::CurrentIssuanceAssetProof, Elements::CurrentIssuanceTokenAmount, Elements::CurrentIssuanceTokenProof, Elements::CurrentNewIssuanceContract, Elements::CurrentPegin, Elements::CurrentPrevOutpoint, Elements::CurrentReissuanceBlinding, Elements::CurrentReissuanceEntropy, Elements::CurrentScriptHash, Elements::CurrentScriptSigHash, Elements::CurrentSequence, Elements::Decompress, Elements::Decrement16, Elements::Decrement32, Elements::Decrement64, Elements::Decrement8, Elements::DivMod16, Elements::DivMod32, Elements::DivMod64, Elements::DivMod8, Elements::Divide16, Elements::Divide32, Elements::Divide64, Elements::Divide8, Elements::Divides16, Elements::Divides32, Elements::Divides64, Elements::Divides8, Elements::Eq1, Elements::Eq16, Elements::Eq256, Elements::Eq32, Elements::Eq64, Elements::Eq8, Elements::FeAdd, Elements::FeInvert, Elements::FeIsOdd, Elements::FeIsZero, Elements::FeMultiply, Elements::FeMultiplyBeta, Elements::FeNegate, Elements::FeNormalize, Elements::FeSquare, Elements::FeSquareRoot, Elements::FullAdd16, Elements::FullAdd32, Elements::FullAdd64, Elements::FullAdd8, Elements::FullDecrement16, Elements::FullDecrement32, Elements::FullDecrement64, Elements::FullDecrement8, Elements::FullIncrement16, Elements::FullIncrement32, Elements::FullIncrement64, Elements::FullIncrement8, Elements::FullLeftShift16_1, Elements::FullLeftShift16_2, Elements::FullLeftShift16_4, Elements::FullLeftShift16_8, Elements::FullLeftShift32_1, Elements::FullLeftShift32_16, Elements::FullLeftShift32_2, Elements::FullLeftShift32_4, Elements::FullLeftShift32_8, Elements::FullLeftShift64_1, Elements::FullLeftShift64_16, Elements::FullLeftShift64_2, Elements::FullLeftShift64_32, Elements::FullLeftShift64_4, Elements::FullLeftShift64_8, Elements::FullLeftShift8_1, Elements::FullLeftShift8_2, Elements::FullLeftShift8_4, Elements::FullMultiply16, Elements::FullMultiply32, Elements::FullMultiply64, Elements::FullMultiply8, Elements::FullRightShift16_1, Elements::FullRightShift16_2, Elements::FullRightShift16_4, Elements::FullRightShift16_8, Elements::FullRightShift32_1, Elements::FullRightShift32_16, Elements::FullRightShift32_2, Elements::FullRightShift32_4, Elements::FullRightShift32_8, Elements::FullRightShift64_1, Elements::FullRightShift64_16, Elements::FullRightShift64_2, Elements::FullRightShift64_32, Elements::FullRightShift64_4, Elements::FullRightShift64_8, Elements::FullRightShift8_1, Elements::FullRightShift8_2, Elements::FullRightShift8_4, Elements::FullSubtract16, Elements::FullSubtract32, Elements::FullSubtract64, Elements::FullSubtract8, Elements::GeIsOnCurve, Elements::GeNegate, Elements::GejAdd, Elements::GejDouble, Elements::GejEquiv, Elements::GejGeAdd, Elements::GejGeAddEx, Elements::GejGeEquiv, Elements::GejInfinity, Elements::GejIsInfinity, Elements::GejIsOnCurve, Elements::GejNegate, Elements::GejNormalize, Elements::GejRescale, Elements::GejXEquiv, Elements::GejYIsOdd, Elements::Generate, Elements::GenesisBlockHash, Elements::High1, Elements::High16, Elements::High32, Elements::High64, Elements::High8, Elements::Increment16, Elements::Increment32, Elements::Increment64, Elements::Increment8, Elements::InputAmount, Elements::InputAmountsHash, Elements::InputAnnexHash, Elements::InputAnnexesHash, Elements::InputAsset, Elements::InputOutpointsHash, Elements::InputPegin, Elements::InputPrevOutpoint, Elements::InputScriptHash, Elements::InputScriptSigHash, Elements::InputScriptSigsHash, Elements::InputScriptsHash, Elements::InputSequence, Elements::InputSequencesHash, Elements::InputUtxosHash, Elements::InputsHash, Elements::InternalKey, Elements::IsOne16, Elements::IsOne32, Elements::IsOne64, Elements::IsOne8, Elements::IsZero16, Elements::IsZero32, Elements::IsZero64, Elements::IsZero8, Elements::Issuance, Elements::IssuanceAsset, Elements::IssuanceAssetAmount, Elements::IssuanceAssetAmountsHash, Elements::IssuanceAssetProof, Elements::IssuanceBlindingEntropyHash, Elements::IssuanceEntropy, Elements::IssuanceRangeProofsHash, Elements::IssuanceToken, Elements::IssuanceTokenAmount, Elements::IssuanceTokenAmountsHash, Elements::IssuanceTokenProof, Elements::IssuancesHash, Elements::Le16, Elements::Le32, Elements::Le64, Elements::Le8, Elements::LeftExtend16_32, Elements::LeftExtend16_64, Elements::LeftExtend1_16, Elements::LeftExtend1_32, Elements::LeftExtend1_64, Elements::LeftExtend1_8, Elements::LeftExtend32_64, Elements::LeftExtend8_16, Elements::LeftExtend8_32, Elements::LeftExtend8_64, Elements::LeftPadHigh16_32, Elements::LeftPadHigh16_64, Elements::LeftPadHigh1_16, Elements::LeftPadHigh1_32, Elements::LeftPadHigh1_64, Elements::LeftPadHigh1_8, Elements::LeftPadHigh32_64, Elements::LeftPadHigh8_16, Elements::LeftPadHigh8_32, Elements::LeftPadHigh8_64, Elements::LeftPadLow16_32, Elements::LeftPadLow16_64, Elements::LeftPadLow1_16, Elements::LeftPadLow1_32, Elements::LeftPadLow1_64, Elements::LeftPadLow1_8, Elements::LeftPadLow32_64, Elements::LeftPadLow8_16, Elements::LeftPadLow8_32, Elements::LeftPadLow8_64, Elements::LeftRotate16, Elements::LeftRotate32, Elements::LeftRotate64, Elements::LeftRotate8, Elements::LeftShift16, Elements::LeftShift32, Elements::LeftShift64, Elements::LeftShift8, Elements::LeftShiftWith16, Elements::LeftShiftWith32, Elements::LeftShiftWith64, Elements::LeftShiftWith8, Elements::Leftmost16_1, Elements::Leftmost16_2, Elements::Leftmost16_4, Elements::Leftmost16_8, Elements::Leftmost32_1, Elements::Leftmost32_16, Elements::Leftmost32_2, Elements::Leftmost32_4, Elements::Leftmost32_8, Elements::Leftmost64_1, Elements::Leftmost64_16, Elements::Leftmost64_2, Elements::Leftmost64_32, Elements::Leftmost64_4, Elements::Leftmost64_8, Elements::Leftmost8_1, Elements::Leftmost8_2, Elements::Leftmost8_4, Elements::LinearCombination1, Elements::LinearVerify1, Elements::LockTime, Elements::Low1, Elements::Low16, Elements::Low32, Elements::Low64, Elements::Low8, Elements::Lt16, Elements::Lt32, Elements::Lt64, Elements::Lt8, Elements::Maj1, Elements::Maj16, Elements::Maj32, Elements::Maj64, Elements::Maj8, Elements::Max16, Elements::Max32, Elements::Max64, Elements::Max8, Elements::Median16, Elements::Median32, Elements::Median64, Elements::Median8, Elements::Min16, Elements::Min32, Elements::Min64, Elements::Min8, Elements::Modulo16, Elements::Modulo32, Elements::Modulo64, Elements::Modulo8, Elements::Multiply16, Elements::Multiply32, Elements::Multiply64, Elements::Multiply8, Elements::Negate16, Elements::Negate32, Elements::Negate64, Elements::Negate8, Elements::NewIssuanceContract, Elements::NonceHash, Elements::NumInputs, Elements::NumOutputs, Elements::One16, Elements::One32, Elements::One64, Elements::One8, Elements::Or1, Elements::Or16, Elements::Or32, Elements::Or64, Elements::Or8, Elements::OutpointHash, Elements::OutputAmount, Elements::OutputAmountsHash, Elements::OutputAsset, Elements::OutputIsFee, Elements::OutputNonce, Elements::OutputNoncesHash, Elements::OutputNullDatum, Elements::OutputRangeProof, Elements::OutputRangeProofsHash, Elements::OutputScriptHash, Elements::OutputScriptsHash, Elements::OutputSurjectionProof, Elements::OutputSurjectionProofsHash, Elements::OutputsHash, Elements::ParseLock, Elements::ParseSequence, Elements::PointVerify1, Elements::ReissuanceBlinding, Elements::ReissuanceEntropy, Elements::RightExtend16_32, Elements::RightExtend16_64, Elements::RightExtend32_64, Elements::RightExtend8_16, Elements::RightExtend8_32, Elements::RightExtend8_64, Elements::RightPadHigh16_32, Elements::RightPadHigh16_64, Elements::RightPadHigh1_16, Elements::RightPadHigh1_32, Elements::RightPadHigh1_64, Elements::RightPadHigh1_8, Elements::RightPadHigh32_64, Elements::RightPadHigh8_16, Elements::RightPadHigh8_32, Elements::RightPadHigh8_64, Elements::RightPadLow16_32, Elements::RightPadLow16_64, Elements::RightPadLow1_16, Elements::RightPadLow1_32, Elements::RightPadLow1_64, Elements::RightPadLow1_8, Elements::RightPadLow32_64, Elements::RightPadLow8_16, Elements::RightPadLow8_32, Elements::RightPadLow8_64, Elements::RightRotate16, Elements::RightRotate32, Elements::RightRotate64, Elements::RightRotate8, Elements::RightShift16, Elements::RightShift32, Elements::RightShift64, Elements::RightShift8, Elements::RightShiftWith16, Elements::RightShiftWith32, Elements::RightShiftWith64, Elements::RightShiftWith8, Elements::Rightmost16_1, Elements::Rightmost16_2, Elements::Rightmost16_4, Elements::Rightmost16_8, Elements::Rightmost32_1, Elements::Rightmost32_16, Elements::Rightmost32_2, Elements::Rightmost32_4, Elements::Rightmost32_8, Elements::Rightmost64_1, Elements::Rightmost64_16, Elements::Rightmost64_2, Elements::Rightmost64_32, Elements::Rightmost64_4, Elements::Rightmost64_8, Elements::Rightmost8_1, Elements::Rightmost8_2, Elements::Rightmost8_4, Elements::ScalarAdd, Elements::ScalarInvert, Elements::ScalarIsZero, Elements::ScalarMultiply, Elements::ScalarMultiplyLambda, Elements::ScalarNegate, Elements::ScalarNormalize, Elements::ScalarSquare, Elements::Scale, Elements::ScriptCMR, Elements::Sha256Block, Elements::Sha256Ctx8Add1, Elements::Sha256Ctx8Add128, Elements::Sha256Ctx8Add16, Elements::Sha256Ctx8Add2, Elements::Sha256Ctx8Add256, Elements::Sha256Ctx8Add32, Elements::Sha256Ctx8Add4, Elements::Sha256Ctx8Add512, Elements::Sha256Ctx8Add64, Elements::Sha256Ctx8Add8, Elements::Sha256Ctx8AddBuffer511, Elements::Sha256Ctx8Finalize, Elements::Sha256Ctx8Init, Elements::Sha256Iv, Elements::SigAllHash, Elements::Some1, Elements::Some16, Elements::Some32, Elements::Some64, Elements::Some8, Elements::Subtract16, Elements::Subtract32, Elements::Subtract64, Elements::Subtract8, Elements::TapEnvHash, Elements::TapleafHash, Elements::TapleafVersion, Elements::Tappath, Elements::TappathHash, Elements::TotalFee, Elements::TxHash, Elements::TxIsFinal, Elements::TxLockDistance, Elements::TxLockDuration, Elements::TxLockHeight, Elements::TxLockTime, Elements::Verify, Elements::Version, Elements::Xor1, Elements::Xor16, Elements::Xor32, Elements::Xor64, Elements::Xor8, Elements::XorXor1, Elements::XorXor16, Elements::XorXor32, Elements::XorXor64, Elements::XorXor8
-    ];
-    #[rustfmt::skip]
     const DISABLED: [Elements; 2] = [
         Elements::CheckSigVerify, Elements::Verify
     ];
 
     #[test]
     fn correct_categorization() {
-        for jet in ALL {
+        for jet in Elements::ALL {
             match Category::ALL.iter().find(|c| c.contains(&jet)) {
                 Some(category) => {
-                    match Category::ALL
+                    if let Some(other) = Category::ALL
                         .into_iter()
                         .filter(|other| other != category)
                         .find(|other| other.contains(&jet))
                     {
-                        Some(other) => panic!(
-                            "{jet} is assigned conflicting categories {category} and {other}"
-                        ),
-                        None => {}
+                        panic!("{jet} is assigned conflicting categories {category} and {other}");
                     }
                 }
                 None => {
-                    assert!(DISABLED.contains(&jet), "{jet} is not categorized")
+                    assert!(DISABLED.contains(&jet), "{jet} is not categorized");
                 }
             }
         }

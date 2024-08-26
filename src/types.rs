@@ -934,8 +934,11 @@ impl TypeConstructible for StructuralType {
 
 impl StructuralType {
     /// Convert into an unfinalized type that can be used in Simplicity's unification algorithm.
-    pub fn to_unfinalized(&self) -> simplicity::types::Type {
-        simplicity::types::Type::from(self.0.clone())
+    pub fn to_unfinalized(
+        &self,
+        inference_context: &simplicity::types::Context,
+    ) -> simplicity::types::Type {
+        simplicity::types::Type::complete(inference_context, self.0.clone())
     }
 }
 

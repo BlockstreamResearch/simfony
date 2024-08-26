@@ -315,7 +315,11 @@ impl BasePattern {
     /// This means there are infinitely many translating expressions from `self` to `to`.
     /// For instance, `iden`, `iden & iden`, `(iden & iden) & iden`, and so on.
     /// We enforce a unique translation by banning ignore from the `to` pattern.
-    pub fn translate(&self, to: &Self) -> Option<PairBuilder<ProgNode>> {
+    pub fn translate(
+        &self,
+        ctx: &simplicity::types::Context,
+        to: &Self,
+    ) -> Option<PairBuilder<ProgNode>> {
         #[derive(Debug, Clone)]
         enum Task<'a> {
             Translate(&'a BasePattern, &'a BasePattern),
@@ -345,10 +349,10 @@ impl BasePattern {
 
                     match to {
                         BasePattern::Ignore => {
-                            output.push(SelectorBuilder::default().h());
+                            output.push(SelectorBuilder::default().h(ctx));
                         }
                         BasePattern::Identifier(to_id) => {
-                            output.push(from.get(to_id).map(SelectorBuilder::h)?);
+                            output.push(from.get(to_id).map(|selector| selector.h(ctx))?);
                         }
                         BasePattern::Product(to_left, to_right) => {
                             if to.subsumes(from) {
@@ -361,7 +365,7 @@ impl BasePattern {
                                 // the pattern `to`. Here, we optimize for the size of the
                                 // translating expression and not for the size of the translated
                                 // value.
-                                output.push(SelectorBuilder::default().h());
+                                output.push(SelectorBuilder::default().h(ctx));
                             } else if let BasePattern::Product(from_left, from_right) = from {
                                 if from_right.covers(to) {
                                     stack.push(Task::MakeDrop);
@@ -470,7 +474,8 @@ mod tests {
         ];
 
         for (target, expected_expr) in target_expr {
-            let expr = env.translate(&target).unwrap();
+            let ctx = simplicity::types::Context::new();
+            let expr = env.translate(&ctx, &target).unwrap();
             assert_eq!(expected_expr, expr.as_ref().display_expr().to_string());
         }
     }
