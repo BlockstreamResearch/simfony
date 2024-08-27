@@ -364,6 +364,16 @@ impl<P: CoreExt> SelectorBuilder<P> {
         self
     }
 
+    /// Pop the last selection.
+    ///
+    /// ## Panics
+    ///
+    /// The stack of selections is empty.
+    pub fn pop(mut self) -> Self {
+        self.selection.pop().expect("Stack is empty");
+        self
+    }
+
     /// Select the current input value.
     pub fn h(self, inference_context: &types::Context) -> PairBuilder<P> {
         let mut expr = PairBuilder::iden(inference_context);
