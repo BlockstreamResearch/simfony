@@ -112,12 +112,12 @@ pub fn to_witness_node(node: &ConstructNode, values: &WitnessValues) -> Arc<Witn
             &mut self,
             _: &PostOrderIterItem<&Node<Construct<J>>>,
             witness: &WitnessName,
-        ) -> Result<Option<Arc<simplicity::Value>>, Self::Error> {
+        ) -> Result<Option<simplicity::Value>, Self::Error> {
             let maybe_value = self
                 .values
                 .get(witness)
                 .map(StructuralValue::from)
-                .map(Arc::<simplicity::Value>::from);
+                .map(simplicity::Value::from);
             Ok(maybe_value)
         }
 
@@ -137,13 +137,13 @@ pub fn to_witness_node(node: &ConstructNode, values: &WitnessValues) -> Arc<Witn
                 &Arc<WitnessNode<J>>,
                 J,
                 &Option<Arc<WitnessNode<J>>>,
-                &Option<Arc<simplicity::Value>>,
+                &Option<simplicity::Value>,
             >,
         ) -> Result<WitnessData<J>, Self::Error> {
             let inner = inner
                 .map(Arc::as_ref)
                 .map(WitnessNode::<J>::cached_data)
-                .map_witness(Option::<Arc<simplicity::Value>>::clone);
+                .map_witness(Option::<simplicity::Value>::clone);
             Ok(WitnessData::from_inner(&self.inference_context, inner).unwrap())
         }
     }
@@ -228,7 +228,7 @@ impl<J> CoreConstructible for ConstructData<J> {
         Arrow::fail(inference_context, entropy).into()
     }
 
-    fn const_word(inference_context: &types::Context, word: Arc<simplicity::Value>) -> Self {
+    fn const_word(inference_context: &types::Context, word: simplicity::Value) -> Self {
         Arrow::const_word(inference_context, word).into()
     }
 
@@ -282,7 +282,7 @@ pub trait CoreExt: CoreConstructible + Sized {
     /// -------------------
     /// comp unit (const v) : A → B
     /// ```
-    fn unit_const_value(inference_context: &types::Context, value: Arc<simplicity::Value>) -> Self {
+    fn unit_const_value(inference_context: &types::Context, value: simplicity::Value) -> Self {
         Self::comp(
             &Self::unit(inference_context),
             &Self::const_word(inference_context, value),
@@ -586,10 +586,7 @@ impl<P: CoreExt> PairBuilder<P> {
     /// ---------------------------
     /// comp unit (const v) : A → B
     /// ```
-    pub fn unit_const_value(
-        inference_context: &types::Context,
-        value: Arc<simplicity::Value>,
-    ) -> Self {
+    pub fn unit_const_value(inference_context: &types::Context, value: simplicity::Value) -> Self {
         Self(P::unit_const_value(inference_context, value))
     }
 }

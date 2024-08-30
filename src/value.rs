@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use either::Either;
 use miniscript::iter::{Tree, TreeLike};
+use simplicity::types::Final as SimType;
 use simplicity::Value as SimValue;
 
 use crate::array::{BTreeSlice, Partition};
@@ -708,7 +709,7 @@ impl Value {
 /// Structure of a Simfony value.
 /// 1:1 isomorphism to Simplicity.
 #[derive(Clone, Eq, PartialEq, Hash)]
-pub struct StructuralValue(Arc<SimValue>);
+pub struct StructuralValue(SimValue);
 
 impl AsRef<SimValue> for StructuralValue {
     fn as_ref(&self) -> &SimValue {
@@ -716,7 +717,7 @@ impl AsRef<SimValue> for StructuralValue {
     }
 }
 
-impl From<StructuralValue> for Arc<SimValue> {
+impl From<StructuralValue> for SimValue {
     fn from(value: StructuralValue) -> Self {
         value.0
     }
@@ -724,10 +725,12 @@ impl From<StructuralValue> for Arc<SimValue> {
 
 impl TreeLike for StructuralValue {
     fn as_node(&self) -> Tree<Self> {
-        match self.as_ref() {
-            SimValue::Unit => Tree::Nullary,
-            SimValue::Left(l) | SimValue::Right(l) => Tree::Unary(Self(l.clone())),
-            SimValue::Product(l, r) => Tree::Binary(Self(l.clone()), Self(r.clone())),
+        use simplicity::dag::{Dag, DagLike};
+
+        match (&self.0).as_dag_node() {
+            Dag::Nullary => Tree::Nullary,
+            Dag::Unary(l) => Tree::Unary(Self(l.shallow_clone())),
+            Dag::Binary(l, r) => Tree::Binary(Self(l.shallow_clone()), Self(r.shallow_clone())),
         }
     }
 }
@@ -757,20 +760,20 @@ impl ValueConstructible for StructuralValue {
         Self(SimValue::product(left.0, right.0))
     }
 
-    fn left(left: Self, _right: Self::Type) -> Self {
-        Self(SimValue::left(left.0))
+    fn left(left: Self, right: Self::Type) -> Self {
+        Self(SimValue::left(left.0, right.into()))
     }
 
-    fn right(_left: Self::Type, right: Self) -> Self {
-        Self(SimValue::right(right.0))
+    fn right(left: Self::Type, right: Self) -> Self {
+        Self(SimValue::right(left.into(), right.0))
     }
 
-    fn none(_inner: Self::Type) -> Self {
-        Self(SimValue::left(SimValue::unit()))
+    fn none(inner: Self::Type) -> Self {
+        Self(SimValue::none(inner.into()))
     }
 
     fn some(inner: Self) -> Self {
-        Self(SimValue::right(inner.0))
+        Self(SimValue::some(inner.0))
     }
 
     fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
@@ -819,8 +822,8 @@ impl ValueConstructible for StructuralValue {
 impl From<bool> for StructuralValue {
     fn from(value: bool) -> Self {
         match value {
-            false => Self(SimValue::left(SimValue::unit())),
-            true => Self(SimValue::right(SimValue::unit())),
+            false => Self(SimValue::left(SimValue::unit(), SimType::unit())),
+            true => Self(SimValue::right(SimType::unit(), SimValue::unit())),
         }
     }
 }
