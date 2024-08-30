@@ -11,7 +11,7 @@ use simplicity::{types, CommitNode, FailEntropy};
 use simplicity::{Cmr, WitnessNode};
 
 use crate::str::WitnessName;
-use crate::value::{StructuralValue, TypedValue};
+use crate::value::StructuralValue;
 use crate::witness::WitnessValues;
 
 /// Marker for [`ConstructNode`].
@@ -116,7 +116,6 @@ pub fn to_witness_node(node: &ConstructNode, values: &WitnessValues) -> Arc<Witn
             let maybe_value = self
                 .values
                 .get(witness)
-                .map(TypedValue::value)
                 .map(StructuralValue::from)
                 .map(Arc::<simplicity::Value>::from);
             Ok(maybe_value)
