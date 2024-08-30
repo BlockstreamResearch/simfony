@@ -13,7 +13,7 @@ use crate::str::{Binary, Decimal, Hexadecimal};
 use crate::types::{ResolvedType, StructuralType, TypeConstructible, TypeInner, UIntType};
 
 /// Unsigned integer value.
-#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum UIntValue {
     /// 1-bit unsigned integer.
@@ -34,6 +34,12 @@ pub enum UIntValue {
     U128(u128),
     /// 256-bit unsigned integer.
     U256(U256),
+}
+
+impl fmt::Debug for UIntValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}", self, self.get_type())
+    }
 }
 
 impl fmt::Display for UIntValue {
@@ -272,7 +278,7 @@ pub trait ValueConstructible:
 }
 
 /// Simfony value.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, PartialEq, Hash)]
 pub enum Value {
     /// Left value.
     Either(Either<Arc<Self>, Arc<Self>>),
@@ -308,6 +314,12 @@ impl<'a> TreeLike for &'a Value {
                 Tree::Nary(elements.iter().collect())
             }
         }
+    }
+}
+
+impl fmt::Debug for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
     }
 }
 
@@ -758,7 +770,7 @@ impl From<UIntValue> for TypedValue {
 
 /// Structure of a Simfony value.
 /// 1:1 isomorphism to Simplicity.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, PartialEq, Hash)]
 pub struct StructuralValue(Arc<SimValue>);
 
 impl AsRef<SimValue> for StructuralValue {
@@ -780,6 +792,18 @@ impl TreeLike for StructuralValue {
             SimValue::Left(l) | SimValue::Right(l) => Tree::Unary(Self(l.clone())),
             SimValue::Product(l, r) => Tree::Binary(Self(l.clone()), Self(r.clone())),
         }
+    }
+}
+
+impl fmt::Debug for StructuralValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", &self.0)
+    }
+}
+
+impl fmt::Display for StructuralValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", &self.0)
     }
 }
 
