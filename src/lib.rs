@@ -127,7 +127,7 @@ mod tests {
 
     fn _test_progs(prog_file: &str, wit_file: &str) {
         println!("Testing {prog_file}");
-        let parent_path = PathBuf::from("./example_progs");
+        let parent_path = PathBuf::from("./examples");
         let mut prog_path = parent_path.clone();
         prog_path.push(prog_file);
         let mut wit_path = parent_path;
