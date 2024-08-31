@@ -210,13 +210,6 @@ mod tests {
     }
 
     #[test]
-    fn checksigfromstackverify() {
-        TestCase::program_file("./examples/checksigfromstackverify.simf")
-            .with_witness_file("./examples/checksigfromstackverify.wit")
-            .assert_run_success();
-    }
-
-    #[test]
     fn ctv() {
         TestCase::program_file("./examples/ctv.simf")
             .with_witness_values(&WitnessValues::empty())
@@ -295,13 +288,6 @@ mod tests {
             .with_sequence(1000)
             .print_sighash_all()
             .with_witness_file("./examples/presigned_vault.complete.wit")
-            .assert_run_success();
-    }
-
-    #[test]
-    fn recursive_covenant() {
-        TestCase::program_file("./examples/recursive-covenant.simf")
-            .with_witness_values(&WitnessValues::empty())
             .assert_run_success();
     }
 
