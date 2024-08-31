@@ -1,0 +1,50 @@
+/*
+ * PAY TO MULTISIG
+ *
+ * The coins move if 2 of 3 people agree to move them. These people provide
+ * their signatures, of which exactly 2 are required.
+ *
+ * https://docs.ivylang.org/bitcoin/language/ExampleContracts.html#lockwithmultisig
+ */
+fn not(bit: bool) -> bool {
+    <u1>::into(jet::complement_1(<bool>::into(bit)))
+}
+
+fn checksig(pk: Pubkey, sig: Signature) {
+    let msg: u256 = jet::sig_all_hash();
+    jet::bip_0340_verify((pk, msg), sig);
+}
+
+fn checksig_add(counter: u8, pk: Pubkey, maybe_sig: Option<Signature>) -> u8 {
+    match maybe_sig {
+        Some(sig: Signature) => {
+            checksig(pk, sig);
+            let (carry, new_counter): (bool, u8) = jet::increment_8(counter);
+            assert!(not(carry));
+            new_counter
+        }
+        None => counter,
+    }
+}
+
+fn check2of3multisig(pks: [Pubkey; 3], maybe_sigs: [Option<Signature>; 3]) {
+    let [pk1, pk2, pk3]: [Pubkey; 3] = pks;
+    let [sig1, sig2, sig3]: [Option<Signature>; 3] = maybe_sigs;
+
+    let counter1: u8 = checksig_add(0, pk1, sig1);
+    let counter2: u8 = checksig_add(counter1, pk2, sig2);
+    let counter3: u8 = checksig_add(counter2, pk3, sig3);
+
+    let threshold: u8 = 2;
+    assert!(jet::eq_8(counter3, threshold));
+}
+
+fn main() {
+    let pks: [Pubkey; 3] = [
+        0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798, // 1 * G
+        0xc6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5, // 2 * G
+        0xf9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9, // 3 * G
+    ];
+    let maybe_sigs: [Option<Signature>; 3] = witness("maybe_sigs");
+    check2of3multisig(pks, maybe_sigs);
+}

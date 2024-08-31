@@ -1,0 +1,28 @@
+/*
+ * REVEAL COLLISION
+ *
+ * The coins move if someone is able to provide a SHA2 collision, e.g.,
+ * two distinct byte strings that hash to the same value.
+ *
+ * We cannot test this program because no SHA2 collision is known :)
+ *
+ * https://docs.ivylang.org/bitcoin/language/ExampleContracts.html#revealcollision
+ */
+fn not(bit: bool) -> bool {
+    <u1>::into(jet::complement_1(<bool>::into(bit)))
+}
+
+fn sha2(string: u256) -> u256 {
+    let hasher: Ctx8 = jet::sha_256_ctx_8_init();
+    let hasher: Ctx8 = jet::sha_256_ctx_8_add_32(hasher, string);
+    jet::sha_256_ctx_8_finalize(hasher)
+}
+
+fn main() {
+    let string1: u256 = witness("string1");
+    let string2: u256 = witness("string2");
+    assert!(not(jet::eq_256(string1, string2)));
+    let hash1: u256 = sha2(string1);
+    let hash2: u256 = sha2(string2);
+    assert!(jet::eq_256(hash1, hash2));
+}

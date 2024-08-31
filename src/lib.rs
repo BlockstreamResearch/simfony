@@ -226,9 +226,59 @@ mod tests {
     }
 
     #[test]
+    fn escrow_with_delay_timeout() {
+        TestCase::program_file("./examples/escrow_with_delay.simf")
+            .with_sequence(1000)
+            .print_sighash_all()
+            .with_witness_file("./examples/escrow_with_delay.timeout.wit")
+            .assert_run_success();
+    }
+
+    #[test]
     fn hash_loop() {
         TestCase::program_file("./examples/hash_loop.simf")
             .with_witness_values(&WitnessValues::empty())
+            .assert_run_success();
+    }
+
+    #[test]
+    fn htlc_complete() {
+        TestCase::program_file("./examples/htlc.simf")
+            .print_sighash_all()
+            .with_witness_file("./examples/htlc.complete.wit")
+            .assert_run_success();
+    }
+
+    #[test]
+    fn p2ms() {
+        TestCase::program_file("./examples/p2ms.simf")
+            .print_sighash_all()
+            .with_witness_file("./examples/p2ms.wit")
+            .assert_run_success();
+    }
+
+    #[test]
+    fn p2pk() {
+        TestCase::program_file("./examples/p2pk.simf")
+            .print_sighash_all()
+            .with_witness_file("./examples/p2pk.wit")
+            .assert_run_success();
+    }
+
+    #[test]
+    fn p2pkh() {
+        TestCase::program_file("./examples/p2pkh.simf")
+            .print_sighash_all()
+            .with_witness_file("./examples/p2pkh.wit")
+            .assert_run_success();
+    }
+
+    #[test]
+    fn presigned_vault_complete() {
+        TestCase::program_file("./examples/presigned_vault.simf")
+            .with_sequence(1000)
+            .print_sighash_all()
+            .with_witness_file("./examples/presigned_vault.complete.wit")
             .assert_run_success();
     }
 
@@ -250,6 +300,14 @@ mod tests {
     fn sighash_none() {
         TestCase::program_file("./examples/sighash_none.simf")
             .with_witness_file("./examples/sighash_none.wit")
+            .assert_run_success();
+    }
+
+    #[test]
+    fn transfer_with_timeout_transfer() {
+        TestCase::program_file("./examples/transfer_with_timeout.simf")
+            .print_sighash_all()
+            .with_witness_file("./examples/transfer_with_timeout.transfer.wit")
             .assert_run_success();
     }
 

@@ -1,0 +1,42 @@
+/*
+ * PRESIGNED VAULT
+ *
+ * The coins move after a timeout if the hot key signs.
+ * Alternatively, the cold key can sweep the coins at any time.
+ *
+ * This contract can be used to construct a vault that works without covenants:
+ * 1) The cold key creates a presigned transaction that moves the vaulted coins
+ *    into the contract.
+ * 2) The presigned transaction is kept alongside the hot key.
+ * 3) To unvault the coins, the presigned transaction is broadcast. The coins
+ *    move into the contract. The coins cannot be moved until the timeout.
+ * 4) If the hot key is compromised, then the cold key can cancel the
+ *    unvaulting process and move the coins into a new vault.
+ * 5) After the timeout, the hot key can withdraw the coins.
+ *
+ * https://docs.ivylang.org/bitcoin/language/ExampleContracts.html#vaultspend
+ */
+fn checksig(pk: u256, sig: Signature) {
+    let msg: u256 = jet::sig_all_hash();
+    jet::bip_0340_verify((pk, msg), sig);
+}
+
+fn complete_spend(hot_sig: Signature) {
+    let timeout: Distance = 1000;
+    jet::check_lock_distance(timeout);
+    let hot_pk: u256 = 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798; // 1 * G
+    checksig(hot_pk, hot_sig);
+}
+
+fn cancel_spend(cold_sig: Signature) {
+    let cold_pk: u256 = 0xc6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5; // 2 * G
+    checksig(cold_pk, cold_sig)
+}
+
+fn main() {
+    let hot_or_cold: Either<Signature, Signature> = witness("hot_or_cold");
+    match hot_or_cold {
+        Left(hot_sig: Signature) => complete_spend(hot_sig),
+        Right(cold_sig: Signature) => cancel_spend(cold_sig),
+    }
+}
