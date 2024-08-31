@@ -2,20 +2,22 @@
 
 use std::sync::Arc;
 
-use simplicity::{
-    elements::{self, confidential, taproot::ControlBlock},
-    hashes,
-    jet::elements::{ElementsEnv, ElementsUtxo},
-    Cmr,
-};
+use elements::{confidential, taproot::ControlBlock, AssetIssuance};
+use hashes::Hash;
+use simplicity::jet::elements::{ElementsEnv, ElementsUtxo};
+use simplicity::Cmr;
+use simplicity::{elements, hashes};
 
-/// Return a dummy Elements environment
+/// Return a dummy Elements environment.
 pub fn dummy() -> ElementsEnv<Arc<elements::Transaction>> {
-    let lock_time = elements::LockTime::ZERO;
-    let sequence = elements::Sequence::MAX;
-    use elements::AssetIssuance;
-    use hashes::Hash;
+    dummy_with(elements::LockTime::ZERO, elements::Sequence::MAX)
+}
 
+/// Return a dummy Elements environment with the given locktime and input sequence.
+pub fn dummy_with(
+    lock_time: elements::LockTime,
+    sequence: elements::Sequence,
+) -> ElementsEnv<Arc<elements::Transaction>> {
     let ctrl_blk: [u8; 33] = [
         0xc0, 0xeb, 0x04, 0xb6, 0x8e, 0x9a, 0x26, 0xd1, 0x16, 0x04, 0x6c, 0x76, 0xe8, 0xff, 0x47,
         0x33, 0x2f, 0xb7, 0x1d, 0xda, 0x90, 0xff, 0x4b, 0xef, 0x53, 0x70, 0xf2, 0x52, 0x26, 0xd3,
