@@ -1,0 +1,42 @@
+/*
+ * HODL VAULT
+ *
+ * Lock your coins until the Bitcoin price exceeds a threshold.
+ *
+ * An oracle signs a message with the current block height and the current
+ * Bitcoin price. The block height is compared with a minimum height to prevent
+ * the use of old data. The transaction is timelocked to the oracle height,
+ * which means that the transaction becomes valid after the oracle height.
+ */
+fn checksig(pk: Pubkey, sig: Signature) {
+    let msg: u256 = jet::sig_all_hash();
+    jet::bip_0340_verify((pk, msg), sig);
+}
+
+fn checksigfromstack(pk: Pubkey, bytes: [u32; 2], sig: Signature) {
+    let [word1, word2]: [u32; 2] = bytes;
+    let hasher: Ctx8 = jet::sha_256_ctx_8_init();
+    let hasher: Ctx8 = jet::sha_256_ctx_8_add_4(hasher, word1);
+    let hasher: Ctx8 = jet::sha_256_ctx_8_add_4(hasher, word2);
+    let msg: u256 = jet::sha_256_ctx_8_finalize(hasher);
+    jet::bip_0340_verify((pk, msg), sig);
+}
+
+fn main() {
+    let min_height: Height = 1000;
+    let oracle_height: Height = witness("oracle_height");
+    assert!(jet::le_32(min_height, oracle_height));
+    jet::check_lock_height(oracle_height);
+
+    let target_price: u32 = 100000; // laser eyes until 100k
+    let oracle_price: u32 = witness("oracle_price");
+    assert!(jet::le_32(target_price, oracle_price));
+
+    let oracle_pk: Pubkey = 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798; // 1 * G
+    let oracle_sig: Signature = witness("oracle_sig");
+    checksigfromstack(oracle_pk, [oracle_height, oracle_price], oracle_sig);
+
+    let owner_pk: Pubkey = 0xc6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5; // 2 * G
+    let owner_sig: Signature = witness("owner_sig");
+    checksig(owner_pk, owner_sig);
+}

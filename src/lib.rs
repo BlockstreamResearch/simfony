@@ -151,7 +151,6 @@ mod tests {
     }
 
     impl<T> TestCase<T> {
-        #[allow(dead_code)]
         pub fn with_lock_time(mut self, height: u32) -> Self {
             let height = elements::locktime::Height::from_consensus(height).unwrap();
             self.lock_time = elements::LockTime::Blocks(height);
@@ -161,7 +160,6 @@ mod tests {
             self
         }
 
-        #[allow(dead_code)]
         pub fn with_sequence(mut self, distance: u16) -> Self {
             self.sequence = elements::Sequence::from_height(distance);
             self
@@ -242,10 +240,28 @@ mod tests {
     }
 
     #[test]
+    fn hodl_vault() {
+        TestCase::program_file("./examples/hodl_vault.simf")
+            .with_lock_time(1000)
+            .print_sighash_all()
+            .with_witness_file("./examples/hodl_vault.wit")
+            .assert_run_success();
+    }
+
+    #[test]
     fn htlc_complete() {
         TestCase::program_file("./examples/htlc.simf")
             .print_sighash_all()
             .with_witness_file("./examples/htlc.complete.wit")
+            .assert_run_success();
+    }
+
+    #[test]
+    fn last_will_inherit() {
+        TestCase::program_file("./examples/last_will.simf")
+            .with_sequence(25920)
+            .print_sighash_all()
+            .with_witness_file("./examples/last_will.inherit.wit")
             .assert_run_success();
     }
 
