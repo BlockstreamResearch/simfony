@@ -1,8 +1,0 @@
-fn main() {
-    let a: u32 = 2;
-    let b: u32 = 3;
-    let (carry, res): (bool, u32) = jet::add_32(a, b);
-    let add_res: (bool, u32) = jet::add_32(10, 20);
-    let (carry2, res3): (bool, u32) = add_res;
-    assert!(jet::eq_32(res3, 30));
-}
