@@ -89,39 +89,26 @@ impl fmt::Display for Pattern {
             match data.node {
                 Pattern::Identifier(i) => write!(f, "{i}")?,
                 Pattern::Ignore => write!(f, "_")?,
-                Pattern::Tuple(elements) => match data.n_children_yielded {
-                    0 => {
-                        f.write_str("(")?;
-                        if 0 == elements.len() {
-                            f.write_str(")")?;
-                        }
+                Pattern::Tuple(tuple) => {
+                    if data.n_children_yielded == 0 {
+                        write!(f, "(")?;
+                    } else if !data.is_complete || tuple.len() == 1 {
+                        write!(f, ", ")?;
                     }
-                    n if n == elements.len() => {
-                        if n == 1 {
-                            f.write_str(",")?;
-                        }
-                        f.write_str(")")?;
+                    if data.is_complete {
+                        write!(f, ")")?;
                     }
-                    n => {
-                        debug_assert!(n < elements.len());
-                        f.write_str(", ")?
+                }
+                Pattern::Array(..) => {
+                    if data.n_children_yielded == 0 {
+                        write!(f, "[")?;
+                    } else if !data.is_complete {
+                        write!(f, ", ")?;
                     }
-                },
-                Pattern::Array(elements) => match data.n_children_yielded {
-                    0 => {
-                        f.write_str("[")?;
-                        if 0 == elements.len() {
-                            f.write_str("]")?;
-                        }
+                    if data.is_complete {
+                        write!(f, "]")?;
                     }
-                    n if n == elements.len() => {
-                        f.write_str("]")?;
-                    }
-                    n => {
-                        debug_assert!(n < elements.len());
-                        f.write_str(", ")?;
-                    }
-                },
+                }
             }
         }
 

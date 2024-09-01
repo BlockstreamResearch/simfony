@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use either::Either;
 use miniscript::iter::{Tree, TreeLike};
+use simplicity::types::Final as SimType;
 use simplicity::Value as SimValue;
 
 use crate::array::{BTreeSlice, Partition};
@@ -10,10 +11,12 @@ use crate::error::Error;
 use crate::num::{NonZeroPow2Usize, Pow2Usize, U256};
 use crate::parse;
 use crate::str::{Binary, Decimal, Hexadecimal};
-use crate::types::{ResolvedType, StructuralType, TypeConstructible, TypeInner, UIntType};
+use crate::types::{
+    ResolvedType, StructuralType, TypeConstructible, TypeDeconstructible, TypeInner, UIntType,
+};
 
 /// Unsigned integer value.
-#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum UIntValue {
     /// 1-bit unsigned integer.
@@ -34,6 +37,12 @@ pub enum UIntValue {
     U128(u128),
     /// 256-bit unsigned integer.
     U256(U256),
+}
+
+impl fmt::Debug for UIntValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}", self, self.get_type())
+    }
 }
 
 impl fmt::Display for UIntValue {
@@ -236,14 +245,9 @@ impl TryFrom<&[u8]> for UIntValue {
 }
 
 /// Various value constructors.
-pub trait ValueConstructible:
-    Sized + From<Option<Self>> + From<Either<Self, Self>> + From<bool> + From<UIntValue>
-{
-    /// Create a tuple from the given `elements`.
-    ///
-    /// The empty tuple is the unit value.
-    /// A tuple of two values is a product.
-    fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self;
+pub trait ValueConstructible: Sized + From<bool> + From<UIntValue> {
+    /// The type of the constructed value.
+    type Type;
 
     /// Create the unit value.
     fn unit() -> Self {
@@ -255,29 +259,66 @@ pub trait ValueConstructible:
         Self::tuple([left, right])
     }
 
+    /// Create the left value `Left(left)`.
+    ///
+    /// The type of the value is `Either<type_of<left>, right>`.
+    fn left(left: Self, right: Self::Type) -> Self;
+
+    /// Create the right value `Right(right)`.
+    ///
+    /// The type of the value is `Either<left, type_of<right>>`.
+    fn right(left: Self::Type, right: Self) -> Self;
+
+    /// Create the empty value `None`.
+    ///
+    /// The type of the value is `Option<inner>`.
+    fn none(inner: Self::Type) -> Self;
+
+    /// Create the nonempty value `Some(inner)`.
+    fn some(inner: Self) -> Self;
+
+    /// Create a tuple from the given `elements`.
+    ///
+    /// The empty tuple is the unit value.
+    /// A tuple of two values is a product.
+    fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self;
+
     /// Create an array from the given `elements`.
-    fn array<I: IntoIterator<Item = Self>>(elements: I) -> Self;
+    ///
+    /// The type of the value is `[ty; elements.len()]`.
+    ///
+    /// ## Panics
+    ///
+    /// The given `elements` are not of the given type.
+    fn array<I: IntoIterator<Item = Self>>(elements: I, ty: Self::Type) -> Self;
 
     /// Create `bound`ed list from the given `elements`.
+    ///
+    /// The type of the value is `List<ty, bound>`.
     ///
     /// ## Boundedness
     ///
     /// There must be fewer `elements` than the given `bound`.
     /// The `bound` is an exclusive upper bound on the number of `elements`.
     ///
-    /// ## Errors
+    /// ## Panics
     ///
-    /// Returns [`None`] if there are too many elements.
-    fn list<I: IntoIterator<Item = Self>>(elements: I, bound: NonZeroPow2Usize) -> Option<Self>;
+    /// - There are too many `elements`.
+    /// - The given `elements` are not of the given type.
+    fn list<I: IntoIterator<Item = Self>>(
+        elements: I,
+        ty: Self::Type,
+        bound: NonZeroPow2Usize,
+    ) -> Self;
 }
 
-/// Simfony value.
+/// The structure of a Simfony value.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum Value {
+pub enum ValueInner {
     /// Left value.
-    Either(Either<Arc<Self>, Arc<Self>>),
+    Either(Either<Arc<Value>, Arc<Value>>),
     /// Option value.
-    Option(Option<Arc<Self>>),
+    Option(Option<Arc<Value>>),
     /// Boolean value.
     Boolean(bool),
     /// Unsigned integer.
@@ -285,37 +326,52 @@ pub enum Value {
     /// Tuple of values.
     ///
     /// Each component may have a different type.
-    Tuple(Arc<[Self]>),
+    Tuple(Arc<[Value]>),
     /// Array of values.
     ///
     /// Each element must have the same type.
-    Array(Arc<[Self]>),
+    Array(Arc<[Value]>),
     /// Bounded list of values.
     ///
     /// Each element must have the same type.
     // FIXME: Prevent construction of invalid lists (that run out of bounds)
-    List(Arc<[Self]>, NonZeroPow2Usize),
+    List(Arc<[Value]>, NonZeroPow2Usize),
+}
+
+/// A Simfony value.
+#[derive(Clone, Eq, PartialEq, Hash)]
+pub struct Value {
+    inner: ValueInner,
+    ty: ResolvedType,
 }
 
 impl<'a> TreeLike for &'a Value {
     fn as_node(&self) -> Tree<Self> {
-        match self {
-            Value::Option(None) | Value::Boolean(_) | Value::UInt(_) => Tree::Nullary,
-            Value::Either(Either::Left(l))
-            | Value::Either(Either::Right(l))
-            | Value::Option(Some(l)) => Tree::Unary(l),
-            Value::Tuple(elements) | Value::Array(elements) | Value::List(elements, _) => {
-                Tree::Nary(elements.iter().collect())
+        match &self.inner {
+            ValueInner::Option(None) | ValueInner::Boolean(_) | ValueInner::UInt(_) => {
+                Tree::Nullary
             }
+            ValueInner::Either(Either::Left(l))
+            | ValueInner::Either(Either::Right(l))
+            | ValueInner::Option(Some(l)) => Tree::Unary(l),
+            ValueInner::Tuple(elements)
+            | ValueInner::Array(elements)
+            | ValueInner::List(elements, _) => Tree::Nary(elements.iter().collect()),
         }
+    }
+}
+
+impl fmt::Debug for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self, self.ty())
     }
 }
 
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for data in self.verbose_pre_order_iter() {
-            match &data.node {
-                Value::Either(either) => match data.n_children_yielded {
+            match &data.node.inner {
+                ValueInner::Either(either) => match data.n_children_yielded {
                     0 => match either {
                         Either::Left(..) => f.write_str("Left(")?,
                         Either::Right(..) => f.write_str("Right(")?,
@@ -325,7 +381,7 @@ impl fmt::Display for Value {
                         f.write_str(")")?;
                     }
                 },
-                Value::Option(option) => match data.n_children_yielded {
+                ValueInner::Option(option) => match data.n_children_yielded {
                     0 => match option {
                         None => f.write_str("None")?,
                         Some(..) => f.write_str("Some(")?,
@@ -335,9 +391,9 @@ impl fmt::Display for Value {
                         f.write_str(")")?;
                     }
                 },
-                Value::Boolean(bit) => write!(f, "{bit}")?,
-                Value::UInt(integer) => write!(f, "{integer}")?,
-                Value::Tuple(tuple) => {
+                ValueInner::Boolean(bit) => write!(f, "{bit}")?,
+                ValueInner::UInt(integer) => write!(f, "{integer}")?,
+                ValueInner::Tuple(tuple) => {
                     if data.n_children_yielded == 0 {
                         write!(f, "(")?;
                     } else if !data.is_complete || tuple.len() == 1 {
@@ -347,7 +403,7 @@ impl fmt::Display for Value {
                         write!(f, ")")?;
                     }
                 }
-                Value::Array(..) => {
+                ValueInner::Array(..) => {
                     if data.n_children_yielded == 0 {
                         write!(f, "[")?;
                     } else if !data.is_complete {
@@ -357,7 +413,7 @@ impl fmt::Display for Value {
                         write!(f, "]")?;
                     }
                 }
-                Value::List(..) => {
+                ValueInner::List(..) => {
                     if data.n_children_yielded == 0 {
                         write!(f, "list![")?;
                     } else if !data.is_complete {
@@ -375,190 +431,115 @@ impl fmt::Display for Value {
 }
 
 impl ValueConstructible for Value {
-    fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
-        Self::Tuple(elements.into_iter().collect())
-    }
+    type Type = ResolvedType;
 
-    fn array<I: IntoIterator<Item = Self>>(elements: I) -> Self {
-        Self::Array(elements.into_iter().collect())
-    }
-
-    fn list<I: IntoIterator<Item = Self>>(elements: I, bound: NonZeroPow2Usize) -> Option<Self> {
-        let elements: Arc<[Self]> = elements.into_iter().collect();
-        match elements.len() < bound.get() {
-            true => Some(Self::List(elements, bound)),
-            false => None,
+    fn left(left: Self, right: Self::Type) -> Self {
+        Self {
+            ty: ResolvedType::either(left.ty().clone(), right),
+            inner: ValueInner::Either(Either::Left(Arc::new(left))),
         }
     }
-}
 
-impl From<Option<Self>> for Value {
-    fn from(value: Option<Self>) -> Self {
-        Self::Option(value.map(Arc::new))
+    fn right(left: Self::Type, right: Self) -> Self {
+        Self {
+            ty: ResolvedType::either(left, right.ty().clone()),
+            inner: ValueInner::Either(Either::Right(Arc::new(right))),
+        }
     }
-}
 
-impl From<Either<Self, Self>> for Value {
-    fn from(value: Either<Self, Self>) -> Self {
-        Self::Either(value.map(Arc::new))
+    fn none(inner: Self::Type) -> Self {
+        Self {
+            inner: ValueInner::Option(None),
+            ty: ResolvedType::option(inner),
+        }
+    }
+
+    fn some(inner: Self) -> Self {
+        Self {
+            ty: ResolvedType::option(inner.ty().clone()),
+            inner: ValueInner::Option(Some(Arc::new(inner))),
+        }
+    }
+
+    fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
+        let values: Arc<[Self]> = elements.into_iter().collect();
+        let ty = ResolvedType::tuple(values.iter().map(Value::ty).map(ResolvedType::clone));
+        Self {
+            inner: ValueInner::Tuple(values),
+            ty,
+        }
+    }
+
+    fn array<I: IntoIterator<Item = Self>>(elements: I, ty: Self::Type) -> Self {
+        let values: Arc<[Self]> = elements.into_iter().collect();
+        for value in values.iter() {
+            assert!(
+                value.is_of_type(&ty),
+                "Element {value} is not of expected type {ty}"
+            );
+        }
+        Self {
+            ty: ResolvedType::array(ty, values.len()),
+            inner: ValueInner::Array(values),
+        }
+    }
+
+    fn list<I: IntoIterator<Item = Self>>(
+        elements: I,
+        ty: Self::Type,
+        bound: NonZeroPow2Usize,
+    ) -> Self {
+        let elements: Arc<[Self]> = elements.into_iter().collect();
+        assert!(elements.len() < bound.get(), "Too many elements");
+        for element in elements.iter() {
+            assert!(
+                element.is_of_type(&ty),
+                "Element {element} is not of expected type {ty}"
+            );
+        }
+        Self {
+            inner: ValueInner::List(elements, bound),
+            ty: ResolvedType::list(ty, bound),
+        }
     }
 }
 
 impl From<bool> for Value {
     fn from(value: bool) -> Self {
-        Self::Boolean(value)
+        Self {
+            inner: ValueInner::Boolean(value),
+            ty: ResolvedType::boolean(),
+        }
     }
 }
 
 impl From<UIntValue> for Value {
     fn from(value: UIntValue) -> Self {
-        Self::UInt(value)
+        Self {
+            ty: value.get_type().into(),
+            inner: ValueInner::UInt(value),
+        }
     }
 }
 
 impl Value {
-    /// Check if the value is of the given type.
-    ///
-    /// ## Errors
-    ///
-    /// A subvalue and the corresponding subtype didn't match.
-    /// The method returns this mismatching value-type pair.
-    pub fn is_of_type<'a>(
-        &'a self,
-        ty: &'a ResolvedType,
-    ) -> Result<(), (&'a Value, &'a ResolvedType)> {
-        let mut stack = vec![(self, ty)];
-        while let Some((value, ty)) = stack.pop() {
-            match (value, ty.as_inner()) {
-                (Value::Boolean(_), TypeInner::Boolean)
-                | (Value::UInt(_), TypeInner::UInt(_))
-                | (Value::Option(None), TypeInner::Option(_)) => {}
-                (Value::Either(Either::Left(val_l)), TypeInner::Either(ty_l, _))
-                | (Value::Either(Either::Right(val_l)), TypeInner::Either(_, ty_l))
-                | (Value::Option(Some(val_l)), TypeInner::Option(ty_l)) => {
-                    stack.push((val_l, ty_l))
-                }
-                (Value::Tuple(val_el), TypeInner::Tuple(ty_el)) if val_el.len() == ty_el.len() => {
-                    stack.extend(val_el.iter().zip(ty_el.iter().map(Arc::as_ref)));
-                }
-                (Value::Array(val_el), TypeInner::Array(ty_el, size)) if val_el.len() == *size => {
-                    stack.extend(val_el.iter().zip(std::iter::repeat(ty_el.as_ref())));
-                }
-                (Value::List(val_el, val_bound), TypeInner::List(ty_el, ty_bound))
-                    if val_bound == ty_bound =>
-                {
-                    stack.extend(val_el.iter().zip(std::iter::repeat(ty_el.as_ref())));
-                }
-                _ => return Err((value, ty)),
-            }
-        }
-
-        Ok(())
-    }
-}
-
-#[cfg(feature = "arbitrary")]
-impl crate::ArbitraryRec for Value {
-    fn arbitrary_rec(u: &mut arbitrary::Unstructured, budget: usize) -> arbitrary::Result<Self> {
-        use arbitrary::Arbitrary;
-
-        match budget.checked_sub(1) {
-            None => match u.int_in_range(0..=2)? {
-                0 => bool::arbitrary(u).map(Self::Boolean),
-                1 => UIntValue::arbitrary(u).map(Self::UInt),
-                2 => Ok(Self::Option(None)),
-                _ => unreachable!(),
-            },
-            Some(new_budget) => match u.int_in_range(0..=8)? {
-                0 => bool::arbitrary(u).map(Self::Boolean),
-                1 => UIntValue::arbitrary(u).map(Self::UInt),
-                2 => Ok(Self::Option(None)),
-                3 => Self::arbitrary_rec(u, new_budget)
-                    .map(Arc::new)
-                    .map(Some)
-                    .map(Self::Option),
-                4 => Self::arbitrary_rec(u, new_budget)
-                    .map(Arc::new)
-                    .map(Either::Left)
-                    .map(Self::Either),
-                5 => Self::arbitrary_rec(u, new_budget)
-                    .map(Arc::new)
-                    .map(Either::Right)
-                    .map(Self::Either),
-                6 => {
-                    let len = u.int_in_range(0..=3)?;
-                    (0..len)
-                        .map(|_| Self::arbitrary_rec(u, new_budget))
-                        .collect::<arbitrary::Result<Arc<[Self]>>>()
-                        .map(Self::Tuple)
-                }
-                7 => {
-                    let len = u.int_in_range(0..=3)?;
-                    (0..len)
-                        .map(|_| Self::arbitrary_rec(u, new_budget))
-                        .collect::<arbitrary::Result<Arc<[Self]>>>()
-                        .map(Self::Array)
-                }
-                8 => {
-                    let len = u.int_in_range(0..=3)?;
-                    let elements = (0..len)
-                        .map(|_| Self::arbitrary_rec(u, new_budget))
-                        .collect::<arbitrary::Result<Arc<[Self]>>>()?;
-                    let bound = NonZeroPow2Usize::arbitrary(u)?;
-                    Ok(Self::List(elements, bound))
-                }
-                _ => unreachable!(),
-            },
-        }
-    }
-}
-
-#[cfg(feature = "arbitrary")]
-impl<'a> arbitrary::Arbitrary<'a> for Value {
-    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
-        <Self as crate::ArbitraryRec>::arbitrary_rec(u, 3)
-    }
-}
-
-/// Typed Simfony value.
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct TypedValue {
-    value: Value,
-    ty: ResolvedType,
-}
-
-impl TypedValue {
-    /// Create a `value` of the given type.
-    ///
-    /// ## Errors
-    ///
-    /// The `value` is not of the given type.
-    pub fn new(value: Value, ty: ResolvedType) -> Result<Self, Error> {
-        match value.is_of_type(&ty) {
-            Ok(()) => Ok(Self { value, ty }),
-            // TODO: Include local value-type mismatch in Error::TypeValueMismatch
-            Err(..) => Err(Error::TypeValueMismatch(ty)),
-        }
+    /// Access the inner structure of the value.
+    pub fn inner(&self) -> &ValueInner {
+        &self.inner
     }
 
-    /// Access the value.
-    pub const fn value(&self) -> &Value {
-        &self.value
-    }
-
-    /// Access the type.
-    pub const fn ty(&self) -> &ResolvedType {
+    /// Access the type of the value.
+    pub fn ty(&self) -> &ResolvedType {
         &self.ty
     }
 
-    /// Create the unit value.
-    pub fn unit() -> Self {
-        Self {
-            value: Value::unit(),
-            ty: ResolvedType::unit(),
-        }
+    /// Check if the value is of the given type.
+    pub fn is_of_type(&self, ty: &ResolvedType) -> bool {
+        self.ty() == ty
     }
+}
 
+impl Value {
     /// Create a typed value from a constant expression.
     ///
     /// ## Errors
@@ -574,12 +555,12 @@ impl TypedValue {
         #[derive(Debug)]
         enum Task<'a> {
             ConvertAs(&'a parse::Expression, &'a ResolvedType),
-            MakeLeft,
-            MakeRight,
+            MakeLeft(ResolvedType),
+            MakeRight(ResolvedType),
             MakeSome,
             MakeTuple(usize),
-            MakeArray(usize),
-            MakeList(usize, NonZeroPow2Usize),
+            MakeArray(usize, ResolvedType),
+            MakeList(usize, ResolvedType, NonZeroPow2Usize),
         }
 
         impl<'a> Task<'a> {
@@ -620,20 +601,20 @@ impl TypedValue {
                         }
                         (
                             SingleExpressionInner::Either(Either::Left(expr_l)),
-                            TypeInner::Either(ty_l, _),
+                            TypeInner::Either(ty_l, ty_r),
                         ) => {
-                            stack.push(Task::MakeLeft);
+                            stack.push(Task::MakeLeft(ty_r.as_ref().clone()));
                             stack.push(Task::ConvertAs(expr_l, ty_l))
                         }
                         (
                             SingleExpressionInner::Either(Either::Right(expr_r)),
-                            TypeInner::Either(_, ty_r),
+                            TypeInner::Either(ty_l, ty_r),
                         ) => {
-                            stack.push(Task::MakeRight);
+                            stack.push(Task::MakeRight(ty_l.as_ref().clone()));
                             stack.push(Task::ConvertAs(expr_r, ty_r))
                         }
-                        (SingleExpressionInner::Option(None), TypeInner::Option(_)) => {
-                            output.push(Value::from(None))
+                        (SingleExpressionInner::Option(None), TypeInner::Option(ty_r)) => {
+                            output.push(Value::none(ty_r.as_ref().clone()))
                         }
                         (SingleExpressionInner::Option(Some(expr_r)), TypeInner::Option(ty_r)) => {
                             stack.push(Task::MakeSome);
@@ -654,7 +635,7 @@ impl TypedValue {
                         (SingleExpressionInner::Array(exprs), TypeInner::Array(ty, size))
                             if exprs.len() == *size =>
                         {
-                            stack.push(Task::MakeArray(exprs.len()));
+                            stack.push(Task::MakeArray(exprs.len(), ty.as_ref().clone()));
                             stack.extend(
                                 exprs
                                     .iter()
@@ -666,7 +647,7 @@ impl TypedValue {
                         (SingleExpressionInner::List(exprs), TypeInner::List(ty, bound))
                             if exprs.len() < bound.get() =>
                         {
-                            stack.push(Task::MakeList(exprs.len(), *bound));
+                            stack.push(Task::MakeList(exprs.len(), ty.as_ref().clone(), *bound));
                             stack.extend(
                                 exprs
                                     .iter()
@@ -690,76 +671,45 @@ impl TypedValue {
                         _ => return Err(Error::TypeValueMismatch(ty.clone())),
                     }
                 }
-                Task::MakeLeft => {
-                    let inner = output.pop().unwrap();
-                    output.push(Value::from(Either::Left(inner)));
+                Task::MakeLeft(right) => {
+                    let left = output.pop().unwrap();
+                    output.push(Value::left(left, right));
                 }
-                Task::MakeRight => {
-                    let inner = output.pop().unwrap();
-                    output.push(Value::from(Either::Right(inner)));
+                Task::MakeRight(left) => {
+                    let right = output.pop().unwrap();
+                    output.push(Value::right(left, right));
                 }
                 Task::MakeSome => {
                     let inner = output.pop().unwrap();
-                    output.push(Value::from(Some(inner)));
+                    output.push(Value::some(inner));
                 }
                 Task::MakeTuple(size) => {
                     let components = output.split_off(output.len() - size);
                     debug_assert_eq!(components.len(), size);
                     output.push(Value::tuple(components));
                 }
-                Task::MakeArray(size) => {
+                Task::MakeArray(size, ty) => {
                     let elements = output.split_off(output.len() - size);
                     debug_assert_eq!(elements.len(), size);
-                    output.push(Value::array(elements));
+                    output.push(Value::array(elements, ty));
                 }
-                Task::MakeList(size, bound) => {
+                Task::MakeList(size, ty, bound) => {
                     let elements = output.split_off(output.len() - size);
                     debug_assert_eq!(elements.len(), size);
-                    output.push(Value::list(elements, bound).unwrap());
+                    output.push(Value::list(elements, ty, bound));
                 }
             }
         }
 
         debug_assert_eq!(output.len(), 1);
-        let value = output.pop().unwrap();
-        Ok(Self::new(value, ty.clone()).expect("Value is type-checked during its construction"))
-    }
-}
-
-impl From<TypedValue> for Value {
-    fn from(value: TypedValue) -> Self {
-        value.value
-    }
-}
-
-impl From<TypedValue> for ResolvedType {
-    fn from(value: TypedValue) -> Self {
-        value.ty
-    }
-}
-
-impl From<bool> for TypedValue {
-    fn from(value: bool) -> Self {
-        Self {
-            value: Value::from(value),
-            ty: ResolvedType::boolean(),
-        }
-    }
-}
-
-impl From<UIntValue> for TypedValue {
-    fn from(value: UIntValue) -> Self {
-        Self {
-            value: Value::from(value),
-            ty: value.get_type().into(),
-        }
+        Ok(output.pop().unwrap())
     }
 }
 
 /// Structure of a Simfony value.
 /// 1:1 isomorphism to Simplicity.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct StructuralValue(Arc<SimValue>);
+#[derive(Clone, Eq, PartialEq, Hash)]
+pub struct StructuralValue(SimValue);
 
 impl AsRef<SimValue> for StructuralValue {
     fn as_ref(&self) -> &SimValue {
@@ -767,7 +717,7 @@ impl AsRef<SimValue> for StructuralValue {
     }
 }
 
-impl From<StructuralValue> for Arc<SimValue> {
+impl From<StructuralValue> for SimValue {
     fn from(value: StructuralValue) -> Self {
         value.0
     }
@@ -775,20 +725,30 @@ impl From<StructuralValue> for Arc<SimValue> {
 
 impl TreeLike for StructuralValue {
     fn as_node(&self) -> Tree<Self> {
-        match self.as_ref() {
-            SimValue::Unit => Tree::Nullary,
-            SimValue::Left(l) | SimValue::Right(l) => Tree::Unary(Self(l.clone())),
-            SimValue::Product(l, r) => Tree::Binary(Self(l.clone()), Self(r.clone())),
+        use simplicity::dag::{Dag, DagLike};
+
+        match (&self.0).as_dag_node() {
+            Dag::Nullary => Tree::Nullary,
+            Dag::Unary(l) => Tree::Unary(Self(l.shallow_clone())),
+            Dag::Binary(l, r) => Tree::Binary(Self(l.shallow_clone()), Self(r.shallow_clone())),
         }
     }
 }
 
-impl ValueConstructible for StructuralValue {
-    fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
-        let elements: Vec<Self> = elements.into_iter().collect();
-        let tree = BTreeSlice::from_slice(&elements);
-        tree.fold(Self::product).unwrap_or_else(Self::unit)
+impl fmt::Debug for StructuralValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", &self.0)
     }
+}
+
+impl fmt::Display for StructuralValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", &self.0)
+    }
+}
+
+impl ValueConstructible for StructuralValue {
+    type Type = StructuralType;
 
     // Keep this implementation to prevent an infinite loop in <Self as ValueConstructible>::tuple
     fn unit() -> Self {
@@ -800,50 +760,70 @@ impl ValueConstructible for StructuralValue {
         Self(SimValue::product(left.0, right.0))
     }
 
-    fn array<I: IntoIterator<Item = Self>>(elements: I) -> Self {
+    fn left(left: Self, right: Self::Type) -> Self {
+        Self(SimValue::left(left.0, right.into()))
+    }
+
+    fn right(left: Self::Type, right: Self) -> Self {
+        Self(SimValue::right(left.into(), right.0))
+    }
+
+    fn none(inner: Self::Type) -> Self {
+        Self(SimValue::none(inner.into()))
+    }
+
+    fn some(inner: Self) -> Self {
+        Self(SimValue::some(inner.0))
+    }
+
+    fn tuple<I: IntoIterator<Item = Self>>(elements: I) -> Self {
         let elements: Vec<Self> = elements.into_iter().collect();
         let tree = BTreeSlice::from_slice(&elements);
         tree.fold(Self::product).unwrap_or_else(Self::unit)
     }
 
-    fn list<I: IntoIterator<Item = Self>>(elements: I, bound: NonZeroPow2Usize) -> Option<Self> {
+    fn array<I: IntoIterator<Item = Self>>(elements: I, ty: Self::Type) -> Self {
         let elements: Vec<Self> = elements.into_iter().collect();
-        if bound.get() <= elements.len() {
-            return None;
+        for element in elements.iter() {
+            assert!(
+                element.is_of_type(&ty),
+                "Element {element} is not of expected type {ty}"
+            );
+        }
+        let tree = BTreeSlice::from_slice(&elements);
+        tree.fold(Self::product).unwrap_or_else(Self::unit)
+    }
+
+    fn list<I: IntoIterator<Item = Self>>(
+        elements: I,
+        ty: Self::Type,
+        bound: NonZeroPow2Usize,
+    ) -> Self {
+        let elements: Vec<Self> = elements.into_iter().collect();
+        assert!(bound.get() <= elements.len(), "Too many elements");
+        for element in elements.iter() {
+            assert!(
+                element.is_of_type(&ty),
+                "Element {element} is not of expected type {ty}"
+            );
         }
         let partition = Partition::from_slice(&elements, bound.get() / 2);
         let process = |block: &[Self]| -> Self {
             let tree = BTreeSlice::from_slice(block);
-            let maybe_array = tree.fold(Self::product);
-            Self::from(maybe_array)
+            match tree.fold(Self::product) {
+                Some(array) => Self::some(array),
+                None => Self::none(StructuralType::array(ty.clone(), block.len())),
+            }
         };
-        Some(partition.fold(process, Self::product))
-    }
-}
-
-impl From<Option<Self>> for StructuralValue {
-    fn from(value: Option<Self>) -> Self {
-        match value {
-            None => Self(SimValue::left(SimValue::unit())),
-            Some(inner) => Self(SimValue::right(inner.0)),
-        }
-    }
-}
-
-impl From<Either<Self, Self>> for StructuralValue {
-    fn from(value: Either<Self, Self>) -> Self {
-        match value {
-            Either::Left(left) => Self(SimValue::left(left.0)),
-            Either::Right(right) => Self(SimValue::right(right.0)),
-        }
+        partition.fold(process, Self::product)
     }
 }
 
 impl From<bool> for StructuralValue {
     fn from(value: bool) -> Self {
         match value {
-            false => Self(SimValue::left(SimValue::unit())),
-            true => Self(SimValue::right(SimValue::unit())),
+            false => Self(SimValue::left(SimValue::unit(), SimType::unit())),
+            true => Self(SimValue::right(SimType::unit(), SimValue::unit())),
         }
     }
 }
@@ -868,39 +848,46 @@ impl<'a> From<&'a Value> for StructuralValue {
     fn from(value: &Value) -> Self {
         let mut output = vec![];
         for data in value.post_order_iter() {
-            match &data.node {
-                Value::Either(Either::Left(_)) => {
-                    let inner = output.pop().unwrap();
-                    output.push(Self::from(Either::Left(inner)));
+            match &data.node.inner {
+                ValueInner::Either(Either::Left(_)) => {
+                    let left = output.pop().unwrap();
+                    let right = data.node.ty().as_either().expect("value is type-checked").1;
+                    output.push(Self::left(left, right.into()));
                 }
-                Value::Either(Either::Right(_)) => {
-                    let inner = output.pop().unwrap();
-                    output.push(Self::from(Either::Right(inner)));
+                ValueInner::Either(Either::Right(_)) => {
+                    let left = data.node.ty().as_either().expect("value is type-checked").0;
+                    let right = output.pop().unwrap();
+                    output.push(Self::right(left.into(), right));
                 }
-                Value::Option(None) => output.push(Self::from(None)),
-                Value::Option(Some(_)) => {
-                    let inner = output.pop().unwrap();
-                    output.push(Self::from(Some(inner)));
+                ValueInner::Option(None) => {
+                    let inner = data.node.ty().as_option().expect("value is type-checked");
+                    output.push(Self::none(inner.into()))
                 }
-                Value::Boolean(bit) => output.push(Self::from(*bit)),
-                Value::UInt(integer) => output.push(Self::from(*integer)),
-                Value::Tuple(_) => {
+                ValueInner::Option(Some(_)) => {
+                    let inner = output.pop().unwrap();
+                    output.push(Self::some(inner));
+                }
+                ValueInner::Boolean(bit) => output.push(Self::from(*bit)),
+                ValueInner::UInt(integer) => output.push(Self::from(*integer)),
+                ValueInner::Tuple(_) => {
                     let size = data.node.n_children();
                     let elements = output.split_off(output.len() - size);
                     debug_assert_eq!(elements.len(), size);
                     output.push(Self::tuple(elements));
                 }
-                Value::Array(_) => {
+                ValueInner::Array(_) => {
                     let size = data.node.n_children();
                     let elements = output.split_off(output.len() - size);
                     debug_assert_eq!(elements.len(), size);
-                    output.push(Self::array(elements));
+                    let ty = data.node.ty().as_array().expect("value is type-checked").0;
+                    output.push(Self::array(elements, ty.into()));
                 }
-                Value::List(_, bound) => {
+                ValueInner::List(_, bound) => {
                     let size = data.node.n_children();
                     let elements = output.split_off(output.len() - size);
                     debug_assert!(elements.len() < bound.get());
-                    output.push(Self::list(elements, *bound).unwrap());
+                    let ty = data.node.ty().as_list().expect("value is type-checked").0;
+                    output.push(Self::list(elements, ty.into(), *bound));
                 }
             }
         }
@@ -939,11 +926,14 @@ mod tests {
             Value::from(UIntValue::U16(1337)),
         ]);
         assert_eq!("(1, 42, 1337)", &triple.to_string());
-        let empty_array = Value::array([]);
+        let empty_array = Value::array([], ResolvedType::unit());
         assert_eq!("[]", &empty_array.to_string());
-        let array = Value::array([Value::unit(), Value::unit(), Value::unit()]);
+        let array = Value::array(
+            [Value::unit(), Value::unit(), Value::unit()],
+            ResolvedType::unit(),
+        );
         assert_eq!("[(), (), ()]", &array.to_string());
-        let list = Value::list([Value::unit()], NonZeroPow2Usize::TWO).unwrap();
+        let list = Value::list([Value::unit()], ResolvedType::unit(), NonZeroPow2Usize::TWO);
         assert_eq!("list![()]", &list.to_string());
     }
 
@@ -956,8 +946,8 @@ mod tests {
             StructuralType::from(&actual_boolean),
             StructuralType::from(&structural_boolean)
         );
-        assert!(bit.is_of_type(&actual_boolean).is_ok());
-        assert!(bit.is_of_type(&structural_boolean).is_err());
+        assert!(bit.is_of_type(&actual_boolean));
+        assert!(!bit.is_of_type(&structural_boolean));
     }
 
     #[test]
@@ -973,12 +963,12 @@ mod tests {
             (
                 "Left(false)",
                 ResolvedType::either(ResolvedType::boolean(), ResolvedType::unit()),
-                Value::from(Either::Left(false.into())),
+                Value::left(false.into(), ResolvedType::unit()),
             ),
             (
                 "Some(false)",
                 ResolvedType::option(ResolvedType::boolean()),
-                Value::from(Some(false.into())),
+                Value::some(false.into()),
             ),
             (
                 "(1, 2, 3)",
@@ -996,11 +986,14 @@ mod tests {
             (
                 "[1, 2, 3]",
                 ResolvedType::array(UIntType::U4.into(), 3),
-                Value::array([
-                    UIntValue::U4(1).into(),
-                    UIntValue::U4(2).into(),
-                    UIntValue::U4(3).into(),
-                ]),
+                Value::array(
+                    [
+                        UIntValue::U4(1).into(),
+                        UIntValue::U4(2).into(),
+                        UIntValue::U4(3).into(),
+                    ],
+                    UIntType::U4.into(),
+                ),
             ),
             (
                 "list![1, 2, 3]",
@@ -1011,17 +1004,17 @@ mod tests {
                         UIntValue::U4(2).into(),
                         UIntValue::U4(3).into(),
                     ],
+                    UIntType::U4.into(),
                     bound4,
-                )
-                .unwrap(),
+                ),
             ),
         ];
 
-        for (string, ty, value) in string_ty_value {
+        for (string, ty, expected_value) in string_ty_value {
             let expr = parse::Expression::parse_from_str(string).unwrap();
-            let typed_value = TypedValue::from_const_expr(&expr, &ty).unwrap();
-            assert_eq!(typed_value.value(), &value);
-            assert_eq!(typed_value.ty(), &ty);
+            let parsed_value = Value::from_const_expr(&expr, &ty).unwrap();
+            assert_eq!(parsed_value, expected_value);
+            assert!(parsed_value.is_of_type(&ty));
         }
     }
 }

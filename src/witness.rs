@@ -8,12 +8,12 @@ use crate::error::{Error, RichError, WithFile, WithSpan};
 use crate::parse::ParseFromStr;
 use crate::str::WitnessName;
 use crate::types::{AliasedType, ResolvedType};
-use crate::value::TypedValue;
+use crate::value::Value;
 use crate::{ast, parse};
 
 /// Mapping of witness names to their assigned values.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct WitnessValues(HashMap<WitnessName, TypedValue>);
+pub struct WitnessValues(HashMap<WitnessName, Value>);
 
 impl WitnessValues {
     /// Return the empty witness map.
@@ -22,7 +22,7 @@ impl WitnessValues {
     }
 
     /// Get the value that is assigned to the given name.
-    pub fn get(&self, name: &WitnessName) -> Option<&TypedValue> {
+    pub fn get(&self, name: &WitnessName) -> Option<&Value> {
         self.0.get(name)
     }
 
@@ -31,7 +31,7 @@ impl WitnessValues {
     /// ## Errors
     ///
     /// There is already a value assigned to this `name`.
-    pub fn insert(&mut self, name: WitnessName, value: TypedValue) -> Result<(), Error> {
+    pub fn insert(&mut self, name: WitnessName, value: Value) -> Result<(), Error> {
         match self.0.entry(name.clone()) {
             Entry::Occupied(_) => Err(Error::WitnessReassigned(name)),
             Entry::Vacant(entry) => {
@@ -116,7 +116,7 @@ impl<'de> Deserialize<'de> for WitnessValues {
 struct ValueMapVisitor;
 
 impl<'de> de::Visitor<'de> for ValueMapVisitor {
-    type Value = TypedValue;
+    type Value = Value;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("a map with \"value\" and \"type\" fields")
@@ -158,11 +158,11 @@ impl<'de> de::Visitor<'de> for ValueMapVisitor {
             None => return Err(de::Error::missing_field("value")),
         };
 
-        TypedValue::from_const_expr(&expression, &ty).map_err(de::Error::custom)
+        Value::from_const_expr(&expression, &ty).map_err(de::Error::custom)
     }
 }
 
-impl<'de> Deserialize<'de> for TypedValue {
+impl<'de> Deserialize<'de> for Value {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -226,9 +226,7 @@ mod tests {
 
         let mut witness = WitnessValues::empty();
         let a = WitnessName::parse_from_str("a").unwrap();
-        witness
-            .insert(a, TypedValue::from(UIntValue::U16(42)))
-            .unwrap();
+        witness.insert(a, Value::from(UIntValue::U16(42))).unwrap();
 
         match crate::satisfy(s, &witness) {
             Ok(_) => panic!("Ill-typed witness assignment was falsely accepted"),
@@ -244,9 +242,9 @@ mod tests {
         let mut witness = WitnessValues::empty();
         let a = WitnessName::parse_from_str("a").unwrap();
         witness
-            .insert(a.clone(), TypedValue::from(UIntValue::U32(42)))
+            .insert(a.clone(), Value::from(UIntValue::U32(42)))
             .unwrap();
-        match witness.insert(a, TypedValue::from(UIntValue::U32(43))) {
+        match witness.insert(a, Value::from(UIntValue::U32(43))) {
             Ok(_) => panic!("Duplicate witness assignment was falsely accepted"),
             Err(Error::WitnessReassigned(..)) => {}
             Err(error) => panic!("Unexpected error: {error}"),

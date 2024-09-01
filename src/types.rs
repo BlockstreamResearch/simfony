@@ -90,7 +90,7 @@ impl<A> TypeInner<A> {
 }
 
 /// Unsigned integer type.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum UIntType {
     /// 1-bit unsigned integer
@@ -161,6 +161,12 @@ impl UIntType {
             256 => Some(UIntType::U256),
             _ => None,
         }
+    }
+}
+
+impl fmt::Debug for UIntType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
     }
 }
 
@@ -277,7 +283,7 @@ pub trait TypeDeconstructible: Sized {
 }
 
 /// Simfony type without type aliases.
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(PartialEq, Eq, Hash, Clone)]
 pub struct ResolvedType(TypeInner<Arc<Self>>);
 
 impl ResolvedType {
@@ -374,6 +380,12 @@ impl<'a> TreeLike for &'a ResolvedType {
     }
 }
 
+impl fmt::Debug for ResolvedType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
 impl fmt::Display for ResolvedType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for data in self.verbose_pre_order_iter() {
@@ -390,7 +402,7 @@ impl From<UIntType> for ResolvedType {
 }
 
 /// Simfony type with type aliases.
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(PartialEq, Eq, Hash, Clone)]
 pub struct AliasedType(AliasedInner);
 
 /// Type alias or primitive.
@@ -407,7 +419,7 @@ enum AliasedInner {
 }
 
 /// Type alias with predefined definition.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum BuiltinAlias {
     Ctx8,
@@ -621,6 +633,12 @@ impl<'a> TreeLike for &'a AliasedType {
     }
 }
 
+impl fmt::Debug for AliasedType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
 impl fmt::Display for AliasedType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for data in self.verbose_pre_order_iter() {
@@ -739,6 +757,12 @@ impl BuiltinAlias {
     }
 }
 
+impl fmt::Debug for BuiltinAlias {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
 impl fmt::Display for BuiltinAlias {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -806,12 +830,18 @@ impl FromStr for BuiltinAlias {
 
 /// Internal structure of a Simfony type.
 /// 1:1 isomorphism to Simplicity.
-#[derive(Clone, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct StructuralType(Arc<Final>);
 
 impl AsRef<Final> for StructuralType {
     fn as_ref(&self) -> &Final {
         &self.0
+    }
+}
+
+impl From<StructuralType> for Arc<Final> {
+    fn from(value: StructuralType) -> Self {
+        value.0
     }
 }
 
@@ -823,6 +853,18 @@ impl TreeLike for StructuralType {
                 Tree::Binary(Self(l.clone()), Self(r.clone()))
             }
         }
+    }
+}
+
+impl fmt::Debug for StructuralType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", &self.0)
+    }
+}
+
+impl fmt::Display for StructuralType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", &self.0)
     }
 }
 
