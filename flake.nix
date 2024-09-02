@@ -30,23 +30,28 @@
         inherit extensions;
       };
       defaultRust = mkRust "stable" "latest" "default" ["rust-src"];
+      elementsd-simplicity = pkgs.callPackage ./bitcoind-tests/elementsd-simplicity.nix {};
       CC_wasm32_unknown_unknown = "${pkgs.llvmPackages_16.clang-unwrapped}/bin/clang-16";
       AR_wasm32_unknown_unknown = "${pkgs.llvmPackages_16.libllvm}/bin/llvm-ar";
       CFLAGS_wasm32_unknown_unknown = "-I ${pkgs.llvmPackages_16.libclang.lib}/lib/clang/16/include/";
-    in
-    {
-      devShells = {
-        default = pkgs.mkShell {
+      default_shell = with_elements: pkgs.mkShell {
           buildInputs = [
             defaultRust
             pkgs.just
             pkgs.gdb
-          ];
+          ] ++ (
+            if with_elements then [ elementsd-simplicity ] else []
+          );
           # Constants for IDE
           RUST_TOOLCHAIN = "${defaultRust}/bin";
           RUST_STDLIB = "${defaultRust}/lib/rustlib/src/rust";
           DEBUGGER = "${pkgs.gdb}";
-        };
+      };
+    in
+    {
+      devShells = {
+        default = default_shell false;
+        elements = default_shell true;
         # Temporary shells until CI has its nix derivations
         ci = pkgs.mkShell {
           buildInputs = [
