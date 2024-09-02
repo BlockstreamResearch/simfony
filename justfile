@@ -32,6 +32,10 @@ check_fuzz:
     just fuzz compile_text
     just fuzz compile_parse_tree
 
+# Build integration tests
+build_integration:
+    cargo test --no-run --manifest-path ./bitcoind-tests/Cargo.toml
+
 # Remove all temporary files
 clean:
     rm -rf target

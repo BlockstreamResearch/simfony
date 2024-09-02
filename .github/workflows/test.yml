@@ -78,3 +78,23 @@ jobs:
     - name: Run each fuzzer for 30s
       run: |
         nix develop .#fuzz --command bash -c "just check_fuzz"
+
+  build-integration:
+    name: Build - integration tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Install nix
+      uses: cachix/install-nix-action@v24
+      with:
+        github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Enable Rust cache
+      uses: Swatinem/rust-cache@v2
+
+    - name: Build each integration test
+      run: |
+        nix develop .#ci --command bash -c "just build_integration"
