@@ -99,99 +99,218 @@ trait ArbitraryRec: Sized {
 mod tests {
     use base64::display::Base64Display;
     use base64::engine::general_purpose::STANDARD;
-    use simplicity::{encode, BitMachine, BitWriter};
-    use std::path::PathBuf;
+    use simplicity::BitMachine;
+    use std::borrow::Cow;
+    use std::path::Path;
 
     use crate::*;
 
+    struct Simfony<'a>(Cow<'a, str>);
+    struct Compiled(Arc<RedeemNode<Elements>>);
+
+    struct TestCase<T> {
+        program: T,
+        lock_time: elements::LockTime,
+        sequence: elements::Sequence,
+    }
+
+    impl<'a> TestCase<Simfony<'a>> {
+        pub fn program_file<P: AsRef<Path>>(program_file_path: P) -> Self {
+            let program_text = std::fs::read_to_string(program_file_path).unwrap();
+            Self::program_text(Cow::Owned(program_text))
+        }
+
+        pub fn program_text(program_text: Cow<'a, str>) -> TestCase<Simfony<'a>> {
+            Self {
+                program: Simfony(program_text),
+                lock_time: elements::LockTime::ZERO,
+                sequence: elements::Sequence::MAX,
+            }
+        }
+
+        pub fn with_witness_file<P: AsRef<Path>>(self, witness_file_path: P) -> TestCase<Compiled> {
+            let witness_text = std::fs::read_to_string(witness_file_path).unwrap();
+            let witness_values = match serde_json::from_str::<WitnessValues>(&witness_text) {
+                Ok(x) => x,
+                Err(error) => panic!("{error}"),
+            };
+            self.with_witness_values(&witness_values)
+        }
+
+        pub fn with_witness_values(self, witness_values: &WitnessValues) -> TestCase<Compiled> {
+            let redeem_program = match satisfy(self.program.0.as_ref(), witness_values) {
+                Ok(x) => x,
+                Err(error) => panic!("{error}"),
+            };
+            TestCase {
+                program: Compiled(redeem_program),
+                lock_time: self.lock_time,
+                sequence: self.sequence,
+            }
+        }
+    }
+
+    impl<T> TestCase<T> {
+        pub fn with_lock_time(mut self, height: u32) -> Self {
+            let height = elements::locktime::Height::from_consensus(height).unwrap();
+            self.lock_time = elements::LockTime::Blocks(height);
+            if self.sequence.is_final() {
+                self.sequence = elements::Sequence::ENABLE_LOCKTIME_NO_RBF;
+            }
+            self
+        }
+
+        pub fn with_sequence(mut self, distance: u16) -> Self {
+            self.sequence = elements::Sequence::from_height(distance);
+            self
+        }
+
+        #[allow(dead_code)]
+        pub fn print_sighash_all(self) -> Self {
+            let env = dummy_env::dummy_with(self.lock_time, self.sequence);
+            dbg!(env.c_tx_env().sighash_all());
+            self
+        }
+    }
+
+    impl TestCase<Compiled> {
+        #[allow(dead_code)]
+        pub fn print_encoding(self) -> Self {
+            let (program_bytes, witness_bytes) = self.program.0.encode_to_vec();
+            println!(
+                "Program:\n{}",
+                Base64Display::new(&program_bytes, &STANDARD)
+            );
+            println!(
+                "Witness:\n{}",
+                Base64Display::new(&witness_bytes, &STANDARD)
+            );
+            self
+        }
+
+        fn run(self) -> Result<(), simplicity::bit_machine::ExecutionError> {
+            let mut mac = BitMachine::for_program(&self.program.0);
+            let env = dummy_env::dummy_with(self.lock_time, self.sequence);
+            mac.exec(&self.program.0, &env).map(|_| ())
+        }
+
+        pub fn assert_run_success(self) {
+            match self.run() {
+                Ok(_) => {}
+                Err(error) => panic!("Unexpected error: {error}"),
+            }
+        }
+    }
+
     #[test]
-    fn test_progs() {
-        for (prog_file, wit_file) in [
-            ("add.simf", "empty.wit"),
-            ("array.simf", "empty.wit"),
-            ("cat.simf", "empty.wit"),
-            (
-                "checksigfromstackverify.simf",
-                "checksigfromstackverify.wit",
-            ),
-            ("ctv.simf", "empty.wit"),
-            ("function.simf", "empty.wit"),
-            ("hash_loop.simf", "empty.wit"),
-            ("list.simf", "empty.wit"),
-            ("match.simf", "empty.wit"),
-            ("nesting.simf", "empty.wit"),
-            ("option.simf", "empty.wit"),
-            ("panic.simf", "empty.wit"),
-            ("recursive-covenant.simf", "empty.wit"),
-            ("scopes.simf", "empty.wit"),
-            ("sighash_all.simf", "empty.wit"),
-            (
-                "sighash_all_anyprevoutanyscript.simf",
-                "sighash_all_anyprevoutanyscript.wit",
-            ),
-            ("sighash_none.simf", "sighash_none.wit"),
-            ("tuple.simf", "empty.wit"),
-            ("unwrap.simf", "empty.wit"),
-        ] {
-            _test_progs(prog_file, wit_file)
-        }
+    fn cat() {
+        TestCase::program_file("./examples/cat.simf")
+            .with_witness_values(&WitnessValues::empty())
+            .assert_run_success();
     }
 
-    fn _test_progs(prog_file: &str, wit_file: &str) {
-        println!("Testing {prog_file}");
-        let parent_path = PathBuf::from("./example_progs");
-        let mut prog_path = parent_path.clone();
-        prog_path.push(prog_file);
-        let mut wit_path = parent_path;
-        wit_path.push(wit_file);
-
-        let prog_text = std::fs::read_to_string(prog_path).unwrap();
-        let wit_text = std::fs::read_to_string(wit_path).unwrap();
-        let witness = match serde_json::from_str::<WitnessValues>(&wit_text) {
-            Ok(x) => x,
-            Err(error) => {
-                panic!("{error}")
-            }
-        };
-
-        assert_success(&prog_text, &witness);
+    #[test]
+    fn ctv() {
+        TestCase::program_file("./examples/ctv.simf")
+            .with_witness_values(&WitnessValues::empty())
+            .assert_run_success();
     }
 
-    fn assert_success(prog_text: &str, witness: &WitnessValues) {
-        let redeem_prog = match satisfy(prog_text, witness) {
-            Ok(x) => x,
-            Err(error) => {
-                panic!("{error}");
-            }
-        };
-
-        let mut vec = Vec::new();
-        let mut writer = BitWriter::new(&mut vec);
-        let _encoded = encode::encode_program(&redeem_prog, &mut writer).unwrap();
-        dbg!(&redeem_prog);
-        println!("{}", Base64Display::new(&vec, &STANDARD));
-
-        let mut mac = BitMachine::for_program(&redeem_prog);
-        let env = dummy_env::dummy();
-        mac.exec(&redeem_prog, &env)
-            .expect("Machine execution failure");
+    #[test]
+    fn escrow_with_delay_timeout() {
+        TestCase::program_file("./examples/escrow_with_delay.simf")
+            .with_sequence(1000)
+            .print_sighash_all()
+            .with_witness_file("./examples/escrow_with_delay.timeout.wit")
+            .assert_run_success();
     }
 
-    fn assert_success_empty_witness(prog_text: &str) {
-        let witness = WitnessValues::empty();
-        assert_success(prog_text, &witness)
+    #[test]
+    fn hash_loop() {
+        TestCase::program_file("./examples/hash_loop.simf")
+            .with_witness_values(&WitnessValues::empty())
+            .assert_run_success();
     }
 
-    fn assert_satisfy_error_empty_witness(prog_text: &str, expected_error: &str) {
-        let witness = WitnessValues::empty();
-        match satisfy(prog_text, &witness) {
-            Ok(_) => panic!("Accepted faulty program"),
-            Err(error) => {
-                if !error.contains(expected_error) {
-                    panic!("Unexpected error: {error}")
-                }
-            }
-        }
+    #[test]
+    fn hodl_vault() {
+        TestCase::program_file("./examples/hodl_vault.simf")
+            .with_lock_time(1000)
+            .print_sighash_all()
+            .with_witness_file("./examples/hodl_vault.wit")
+            .assert_run_success();
+    }
+
+    #[test]
+    fn htlc_complete() {
+        TestCase::program_file("./examples/htlc.simf")
+            .print_sighash_all()
+            .with_witness_file("./examples/htlc.complete.wit")
+            .assert_run_success();
+    }
+
+    #[test]
+    fn last_will_inherit() {
+        TestCase::program_file("./examples/last_will.simf")
+            .with_sequence(25920)
+            .print_sighash_all()
+            .with_witness_file("./examples/last_will.inherit.wit")
+            .assert_run_success();
+    }
+
+    #[test]
+    fn p2ms() {
+        TestCase::program_file("./examples/p2ms.simf")
+            .print_sighash_all()
+            .with_witness_file("./examples/p2ms.wit")
+            .assert_run_success();
+    }
+
+    #[test]
+    fn p2pk() {
+        TestCase::program_file("./examples/p2pk.simf")
+            .print_sighash_all()
+            .with_witness_file("./examples/p2pk.wit")
+            .assert_run_success();
+    }
+
+    #[test]
+    fn p2pkh() {
+        TestCase::program_file("./examples/p2pkh.simf")
+            .print_sighash_all()
+            .with_witness_file("./examples/p2pkh.wit")
+            .assert_run_success();
+    }
+
+    #[test]
+    fn presigned_vault_complete() {
+        TestCase::program_file("./examples/presigned_vault.simf")
+            .with_sequence(1000)
+            .print_sighash_all()
+            .with_witness_file("./examples/presigned_vault.complete.wit")
+            .assert_run_success();
+    }
+
+    #[test]
+    fn sighash_all_anyprevoutanyscript() {
+        TestCase::program_file("./examples/sighash_all_anyprevoutanyscript.simf")
+            .with_witness_file("./examples/sighash_all_anyprevoutanyscript.wit")
+            .assert_run_success();
+    }
+
+    #[test]
+    fn sighash_none() {
+        TestCase::program_file("./examples/sighash_none.simf")
+            .with_witness_file("./examples/sighash_none.wit")
+            .assert_run_success();
+    }
+
+    #[test]
+    fn transfer_with_timeout_transfer() {
+        TestCase::program_file("./examples/transfer_with_timeout.simf")
+            .print_sighash_all()
+            .with_witness_file("./examples/transfer_with_timeout.transfer.wit")
+            .assert_run_success();
     }
 
     #[test]
@@ -201,7 +320,9 @@ mod tests {
     let beefbabe: u32 = <(u16, u16)>::into(beefbabe);
 }
 "#;
-        assert_success_empty_witness(prog_text);
+        TestCase::program_text(Cow::Borrowed(prog_text))
+            .with_witness_values(&WitnessValues::empty())
+            .assert_run_success();
     }
 
     #[test]
@@ -214,10 +335,14 @@ fn main() {
     jet_verify(my_true());
 }
 "#;
-        assert_satisfy_error_empty_witness(
-            prog_text,
-            "Expected expression of type `bool`, found type `()`",
-        );
+        match satisfy(prog_text, &WitnessValues::empty()) {
+            Ok(_) => panic!("Accepted faulty program"),
+            Err(error) => {
+                if !error.contains("Expected expression of type `bool`, found type `()`") {
+                    panic!("Unexpected error: {error}")
+                }
+            }
+        }
     }
 
     #[test]

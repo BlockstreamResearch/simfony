@@ -16,7 +16,7 @@ let b = {
 assert!(jet::eq_32(b, 7));
 ```
 
-Take a look at the [example programs](https://github.com/BlockstreamResearch/simfony/tree/master/example_progs).
+Take a look at the [example programs](https://github.com/BlockstreamResearch/simfony/tree/master/examples).
 
 ## MSRV
 

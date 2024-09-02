@@ -1,0 +1,24 @@
+/*
+ * PAY TO PUBLIC KEY HASH
+ *
+ * The coins move if the person with the public key that matches the given hash
+ * signs the transaction.
+ *
+ * https://docs.ivylang.org/bitcoin/language/ExampleContracts.html#lockwithpublickeyhash
+ */
+fn sha2(string: u256) -> u256 {
+    let hasher: Ctx8 = jet::sha_256_ctx_8_init();
+    let hasher: Ctx8 = jet::sha_256_ctx_8_add_32(hasher, string);
+    jet::sha_256_ctx_8_finalize(hasher)
+}
+
+fn main() {
+    let pk: u256 = witness("pk");
+    let expected_pk_hash: u256 = 0x132f39a98c31baaddba6525f5d43f2954472097fa15265f45130bfdb70e51def; // sha2(1 * G)
+    let pk_hash: u256 = sha2(pk);
+    assert!(jet::eq_256(pk_hash, expected_pk_hash));
+
+    let msg: u256 = jet::sig_all_hash();
+    let sig: [u8; 64] = witness("sig");
+    jet::bip_0340_verify((pk, msg), sig)
+}

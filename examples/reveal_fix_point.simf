@@ -1,0 +1,21 @@
+/*
+ * REVEAL FIX POINT
+ *
+ * The coins move if someone is able to provide a SHA2 fix point, e.g.,
+ * a byte string that hashes to itself.
+ *
+ * We cannot test this program because no SHA2 fix point is known :)
+ *
+ * https://docs.ivylang.org/bitcoin/language/ExampleContracts.html#revealfixedpoint
+ */
+fn sha2(string: u256) -> u256 {
+    let hasher: Ctx8 = jet::sha_256_ctx_8_init();
+    let hasher: Ctx8 = jet::sha_256_ctx_8_add_32(hasher, string);
+    jet::sha_256_ctx_8_finalize(hasher)
+}
+
+fn main() {
+    let string: u256 = witness("string");
+    let hash: u256 = sha2(string);
+    assert!(jet::eq_256(string, hash));
+}

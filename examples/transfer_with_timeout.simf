@@ -1,0 +1,41 @@
+/*
+ * TRANSFER WITH TIMEOUT
+ *
+ * The coins move if the sender and recipient agree to move them.
+ * If the recipient fails to cooperate, then the sender can recover
+ * the coins unilaterally after a timeout.
+ *
+ * This contract can be used to construct a one-way payment channel:
+ * The sender keeps increasing the amount of coins to the recipient,
+ * signing updated transactions with each channel update. The recipient
+ * broadcasts the transaction on the blockchain when they are ready.
+ *
+ * https://docs.ivylang.org/bitcoin/language/ExampleContracts.html#transferwithtimeout
+ */
+fn checksig(pk: Pubkey, sig: Signature) {
+    let msg: u256 = jet::sig_all_hash();
+    jet::bip_0340_verify((pk, msg), sig);
+}
+
+fn transfer_spend(sender_sig: Signature, recipient_sig: Signature) {
+    let sender_pk: Pubkey = 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798; // 1 * G
+    checksig(sender_pk, sender_sig);
+    let recipient_pk: Pubkey = 0xc6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5; // 2 * G
+    checksig(recipient_pk, recipient_sig);
+}
+
+fn timeout_spend(sender_sig: Signature) {
+     let sender_pk: Pubkey = 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798; // 1 * G
+     checksig(sender_pk, sender_sig);
+     let timeout: Height = 1000;
+     jet::check_lock_height(timeout);
+}
+
+fn main() {
+    let sender_sig: Signature = witness("sender_sig");
+    let transfer_or_timeout: Option<Signature> = witness("transfer_or_timeout");
+    match transfer_or_timeout {
+        Some(recipient_sig: Signature) => transfer_spend(sender_sig, recipient_sig),
+        None => timeout_spend(sender_sig),
+    }
+}
