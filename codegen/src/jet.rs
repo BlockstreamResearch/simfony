@@ -372,7 +372,7 @@ Return `(u64::MAX, u64::MAX)` when the preconditions are not satisfied."#,
         Elements::GejXEquiv => "Check if the point represents an affine point with the given x-coordinate.",
         Elements::GejYIsOdd => "Check if the point represents an affine point with odd y-coordinate.",
         Elements::Generate => "Multiply the generator point with the given scalar.",
-        Elements::LinearCombination1 => "Compute the the linear combination `b * a + c * g` for point `b` and scalars `a` and `c`, where `g` is the generator point.",
+        Elements::LinearCombination1 => "Compute the linear combination `b * a + c * g` for point `b` and scalars `a` and `c`, where `g` is the generator point.",
         Elements::LinearVerify1 => r#"Assert that a point `b` is equal to the linear combination `a.0 * a.1 + a.2 * g`, where `g` is the generator point.
 
 ## Panics
@@ -391,14 +391,14 @@ The assertion fails."#,
         Elements::ScalarNormalize => "Return the canonical representation of the scalar.",
         Elements::ScalarSquare => "Square a scalar.",
         Elements::Scale => "Multiply a point by a scalar.",
-        Elements::HashToCurve => r#" A cryptographic hash function that results in a point on the secp256k1 curve.
+        Elements::HashToCurve => r#"A cryptographic hash function that results in a point on the secp256k1 curve.
 
 This matches the hash function used to map asset IDs to asset commitments."#,
         Elements::Swu => r#"Algebraically distribute a field element over the secp256k1 curve as defined in
 ["Indifferentiable Hashing to Barreto-Naehrig Curves" by Pierre-Alain Fouque, Mehdi Tibouchi](https://inria.hal.science/hal-01094321/file/FT12.pdf).
 
-While this by iteslf is not a cryptographic hash function, it can be used as a subrotuine
-in a [`hash_to_curve`] function. However the distribution only apporaches uniform when it is called twice."#,
+While this by itself is not a cryptographic hash function, it can be used as a subroutine
+in a [`hash_to_curve`] function. However, the distribution only approaches uniformity when it is called twice."#,
         // Digital Signatures
         Elements::Bip0340Verify => r#"Assert that a Schnorr signature matches a public key and message.
 
@@ -688,7 +688,7 @@ Use [`tx_lock_distance`] to obtain a relative block height, or [`tx_lock_duratio
         Elements::GenesisBlockHash => "Return the SHA256 hash of the genesis block.",
         Elements::InputAmount => r#"Return the asset id and the asset amount at the given input index.
 
-Return `None` is the input does not exist."#,
+Return `None` if the input does not exist."#,
         Elements::InputAnnexHash => r#"Return the SHA256 hash of the annex at the given input:
 - Return `Some(Some(x))` if the input has an annex that hashes to `x`.
 - Return `Some(None`) if the input has no annex.
