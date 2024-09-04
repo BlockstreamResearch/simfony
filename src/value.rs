@@ -982,7 +982,7 @@ mod tests {
         let bound4 = NonZeroPow2Usize::new(4).unwrap();
         let string_ty_value = [
             ("false", ResolvedType::boolean(), Value::from(false)),
-            ("42", ResolvedType::from(UIntType::U8), Value::u8(42)),
+            ("42", ResolvedType::u8(), Value::u8(42)),
             (
                 "Left(false)",
                 ResolvedType::either(ResolvedType::boolean(), ResolvedType::unit()),
