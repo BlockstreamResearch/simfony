@@ -244,6 +244,30 @@ impl TryFrom<&[u8]> for UIntValue {
     }
 }
 
+macro_rules! construct_int_fallible {
+    ($name: ident, $ty: ty, $text: expr) => {
+        #[doc = "Create"]
+        #[doc = $text]
+        #[doc = "integer.\n\n"]
+        #[doc = "## Panics\n"]
+        #[doc = "The value is ouf of range."]
+        fn $name(value: $ty) -> Self {
+            Self::from(UIntValue::$name(value).expect("The value is out of range"))
+        }
+    };
+}
+
+macro_rules! construct_int {
+    ($name: ident, $ty: ty, $text: expr) => {
+        #[doc = "Create"]
+        #[doc = $text]
+        #[doc = "integer."]
+        fn $name(value: $ty) -> Self {
+            Self::from(UIntValue::from(value))
+        }
+    };
+}
+
 /// Various value constructors.
 pub trait ValueConstructible: Sized + From<bool> + From<UIntValue> {
     /// The type of the constructed value.
@@ -310,6 +334,16 @@ pub trait ValueConstructible: Sized + From<bool> + From<UIntValue> {
         ty: Self::Type,
         bound: NonZeroPow2Usize,
     ) -> Self;
+
+    construct_int_fallible!(u1, u8, "a 1-bit");
+    construct_int_fallible!(u2, u8, "a 2-bit");
+    construct_int_fallible!(u4, u8, "a 4-bit");
+    construct_int!(u8, u8, "an 8-bit");
+    construct_int!(u16, u16, "a 16-bit");
+    construct_int!(u32, u32, "a 32-bit");
+    construct_int!(u64, u64, "a 64-bit");
+    construct_int!(u128, u128, "a 128-bit");
+    construct_int!(u256, U256, "a 256-bit");
 }
 
 /// The structure of a Simfony value.
@@ -913,18 +947,11 @@ mod tests {
     fn display_value() {
         let unit = Value::unit();
         assert_eq!("()", &unit.to_string());
-        let singleton = Value::tuple([Value::from(UIntValue::U1(1))]);
+        let singleton = Value::tuple([Value::u1(1)]);
         assert_eq!("(1, )", &singleton.to_string());
-        let pair = Value::tuple([
-            Value::from(UIntValue::U1(1)),
-            Value::from(UIntValue::U8(42)),
-        ]);
+        let pair = Value::tuple([Value::u8(1), Value::u8(42)]);
         assert_eq!("(1, 42)", &pair.to_string());
-        let triple = Value::tuple([
-            Value::from(UIntValue::U1(1)),
-            Value::from(UIntValue::U8(42)),
-            Value::from(UIntValue::U16(1337)),
-        ]);
+        let triple = Value::tuple([Value::u1(1), Value::u8(42), Value::u16(1337)]);
         assert_eq!("(1, 42, 1337)", &triple.to_string());
         let empty_array = Value::array([], ResolvedType::unit());
         assert_eq!("[]", &empty_array.to_string());
@@ -955,11 +982,7 @@ mod tests {
         let bound4 = NonZeroPow2Usize::new(4).unwrap();
         let string_ty_value = [
             ("false", ResolvedType::boolean(), Value::from(false)),
-            (
-                "42",
-                ResolvedType::from(UIntType::U8),
-                Value::from(UIntValue::U8(42)),
-            ),
+            ("42", ResolvedType::from(UIntType::U8), Value::u8(42)),
             (
                 "Left(false)",
                 ResolvedType::either(ResolvedType::boolean(), ResolvedType::unit()),
@@ -977,21 +1000,13 @@ mod tests {
                     UIntType::U2.into(),
                     UIntType::U4.into(),
                 ]),
-                Value::tuple([
-                    UIntValue::U1(1).into(),
-                    UIntValue::U2(2).into(),
-                    UIntValue::U4(3).into(),
-                ]),
+                Value::tuple([Value::u1(1), Value::u2(2), Value::u4(3)]),
             ),
             (
                 "[1, 2, 3]",
                 ResolvedType::array(UIntType::U4.into(), 3),
                 Value::array(
-                    [
-                        UIntValue::U4(1).into(),
-                        UIntValue::U4(2).into(),
-                        UIntValue::U4(3).into(),
-                    ],
+                    [Value::u4(1), Value::u4(2), Value::u4(3)],
                     UIntType::U4.into(),
                 ),
             ),
@@ -999,11 +1014,7 @@ mod tests {
                 "list![1, 2, 3]",
                 ResolvedType::list(UIntType::U4.into(), bound4),
                 Value::list(
-                    [
-                        UIntValue::U4(1).into(),
-                        UIntValue::U4(2).into(),
-                        UIntValue::U4(3).into(),
-                    ],
+                    [Value::u4(1), Value::u4(2), Value::u4(3)],
                     UIntType::U4.into(),
                     bound4,
                 ),
