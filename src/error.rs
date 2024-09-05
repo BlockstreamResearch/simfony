@@ -259,7 +259,7 @@ impl From<pest::error::Error<Rule>> for RichError {
 pub enum Error {
     ListBoundPow2(usize),
     BitStringPow2(usize),
-    HexStringPow2(usize),
+    HexStringLen(usize),
     ForWhileWidthPow2(usize),
     CannotParse(String),
     Grammar(String),
@@ -303,9 +303,9 @@ impl fmt::Display for Error {
                 f,
                 "Expected a valid bit string length (1, 2, 4, 8, 16, 32, 64, 128, 256), found {len}"
             ),
-            Error::HexStringPow2(len) => write!(
+            Error::HexStringLen(len) => write!(
                 f,
-                "Expected a valid hex string length (2, 4, 8, 16, 32, 64), found {len}"
+                "Expected an even hex string length (0, 2, 4, 6, 8, ...), found {len}"
             ),
             Error::ForWhileWidthPow2(bit_width) => write!(
                 f,

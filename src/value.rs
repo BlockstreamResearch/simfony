@@ -174,22 +174,6 @@ impl UIntValue {
             _ => Ok(Self::try_from(bytes.as_ref()).expect("Enough bytes")),
         }
     }
-
-    /// Create an integer from a `hexadecimal` string and type.
-    pub fn parse_hexadecimal(hexadecimal: &Hexadecimal, ty: UIntType) -> Result<Self, Error> {
-        use simplicity::elements::hex::FromHex;
-
-        let s = hexadecimal.as_inner();
-        let nibble_len = Pow2Usize::new(s.len()).ok_or(Error::HexStringPow2(s.len()))?;
-        let bit_len = nibble_len.mul2().mul2();
-        let byte_ty = UIntType::from_bit_width(bit_len).ok_or(Error::HexStringPow2(s.len()))?;
-        if ty != byte_ty {
-            return Err(Error::ExpressionTypeMismatch(ty.into(), byte_ty.into()));
-        }
-
-        let bytes = Vec::<u8>::from_hex(s).map_err(Error::from)?;
-        Ok(Self::try_from(bytes.as_ref()).expect("Enough bytes"))
-    }
 }
 
 impl From<u8> for UIntValue {
@@ -577,6 +561,30 @@ impl Value {
     pub fn is_of_type(&self, ty: &ResolvedType) -> bool {
         self.ty() == ty
     }
+
+    /// Create a value from the given `hexadecimal` string and type.
+    pub fn parse_hexadecimal(hexadecimal: &Hexadecimal, ty: &ResolvedType) -> Result<Self, Error> {
+        use hex_conservative::FromHex;
+
+        let expected_byte_len = match ty.as_inner() {
+            TypeInner::UInt(int) => int.byte_width(),
+            TypeInner::Array(inner, len) if inner.as_integer() == Some(UIntType::U8) => *len,
+            _ => return Err(Error::TypeValueMismatch(ty.clone())),
+        };
+        let s = hexadecimal.as_inner();
+        if s.len() % 2 != 0 || s.len() != expected_byte_len * 2 {
+            return Err(Error::TypeValueMismatch(ty.clone()));
+        }
+        let bytes = Vec::<u8>::from_hex(s).expect("valid chars and valid length");
+        let ret = match ty.as_inner() {
+            TypeInner::UInt(..) => {
+                Self::from(UIntValue::try_from(bytes.as_ref()).expect("valid length"))
+            }
+            TypeInner::Array(..) => Self::byte_array(bytes),
+            _ => unreachable!(),
+        };
+        Ok(ret)
+    }
 }
 
 impl Value {
@@ -635,9 +643,9 @@ impl Value {
                             let value = UIntValue::parse_binary(binary, *ty)?;
                             output.push(Value::from(value));
                         }
-                        (SingleExpressionInner::Hexadecimal(hexadecimal), TypeInner::UInt(ty)) => {
-                            let value = UIntValue::parse_hexadecimal(hexadecimal, *ty)?;
-                            output.push(Value::from(value));
+                        (SingleExpressionInner::Hexadecimal(hexadecimal), _) => {
+                            let value = Value::parse_hexadecimal(hexadecimal, ty)?;
+                            output.push(value);
                         }
                         (
                             SingleExpressionInner::Either(Either::Left(expr_l)),

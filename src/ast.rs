@@ -757,12 +757,8 @@ impl AbstractSyntaxTree for SingleExpression {
                 SingleExpressionInner::Constant(Value::from(value))
             }
             parse::SingleExpressionInner::Hexadecimal(bytes) => {
-                let ty = ty
-                    .as_integer()
-                    .ok_or(Error::TypeValueMismatch(ty.clone()))
-                    .with_span(from)?;
-                let value = UIntValue::parse_hexadecimal(bytes, ty).with_span(from)?;
-                SingleExpressionInner::Constant(Value::from(value))
+                let value = Value::parse_hexadecimal(bytes, ty).with_span(from)?;
+                SingleExpressionInner::Constant(value)
             }
             parse::SingleExpressionInner::Witness(name) => {
                 scope

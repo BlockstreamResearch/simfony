@@ -162,6 +162,13 @@ impl UIntType {
             _ => None,
         }
     }
+
+    /// Return the byte width of values of this type.
+    ///
+    /// Return 0 for types that take less than an entire byte: `u1`, `u2`, `u4`.
+    pub const fn byte_width(self) -> usize {
+        self.bit_width().get() / 8
+    }
 }
 
 impl fmt::Debug for UIntType {
