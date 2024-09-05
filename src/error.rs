@@ -269,7 +269,6 @@ pub enum Error {
     // The compiler can only be this precise if it knows a type system at least as expressive as Simplicity's
     CannotCompile(String),
     JetDoesNotExist(JetName),
-    TypeValueMismatch(ResolvedType),
     InvalidCast(ResolvedType, ResolvedType),
     MainNoInputs,
     MainNoOutput,
@@ -279,6 +278,7 @@ pub enum Error {
     InvalidNumberOfArguments(usize, usize),
     FunctionNotFoldable(FunctionName),
     FunctionNotLoopable(FunctionName),
+    ExpressionUnexpectedType(ResolvedType),
     ExpressionTypeMismatch(ResolvedType, ResolvedType),
     ExpressionNotConstant,
     IntegerOutOfBounds(UIntType),
@@ -331,10 +331,6 @@ impl fmt::Display for Error {
                 f,
                 "Jet `{name}` does not exist"
             ),
-            Error::TypeValueMismatch(ty) => write!(
-                f,
-                "Value does not match the assigned type `{ty}`"
-            ),
             Error::InvalidCast(source, target) => write!(
                 f,
                 "Cannot cast values of type `{source}` as values of type `{target}`"
@@ -370,6 +366,10 @@ impl fmt::Display for Error {
             Error::FunctionNotLoopable(name) => write!(
                 f,
                 "Expected a signature like `fn {name}(accumulator: A, context: C, counter u{{1,2,4,8,16}}) -> Either<B, A>` for a for-while loop"
+            ),
+            Error::ExpressionUnexpectedType(ty) => write!(
+                f,
+                "Expected expression of type `{ty}`; found something else"
             ),
             Error::ExpressionTypeMismatch(expected, found) => write!(
                 f,

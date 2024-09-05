@@ -65,7 +65,7 @@ impl Pattern {
                 (Pattern::Array(pats), TypeInner::Array(ty, size)) if pats.len() == *size => {
                     stack.extend(pats.iter().zip(std::iter::repeat(ty.as_ref())));
                 }
-                _ => return Err(Error::TypeValueMismatch(ty.clone())),
+                _ => return Err(Error::ExpressionUnexpectedType(ty.clone())),
             }
         }
         Ok(output)

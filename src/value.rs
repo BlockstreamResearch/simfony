@@ -569,11 +569,11 @@ impl Value {
         let expected_byte_len = match ty.as_inner() {
             TypeInner::UInt(int) => int.byte_width(),
             TypeInner::Array(inner, len) if inner.as_integer() == Some(UIntType::U8) => *len,
-            _ => return Err(Error::TypeValueMismatch(ty.clone())),
+            _ => return Err(Error::ExpressionUnexpectedType(ty.clone())),
         };
         let s = hexadecimal.as_inner();
         if s.len() % 2 != 0 || s.len() != expected_byte_len * 2 {
-            return Err(Error::TypeValueMismatch(ty.clone()));
+            return Err(Error::ExpressionUnexpectedType(ty.clone()));
         }
         let bytes = Vec::<u8>::from_hex(s).expect("valid chars and valid length");
         let ret = match ty.as_inner() {
@@ -716,7 +716,7 @@ impl Value {
                         ) => {
                             return Err(Error::ExpressionNotConstant);
                         }
-                        _ => return Err(Error::TypeValueMismatch(ty.clone())),
+                        _ => return Err(Error::ExpressionUnexpectedType(ty.clone())),
                     }
                 }
                 Task::MakeLeft(right) => {

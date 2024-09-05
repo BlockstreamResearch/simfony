@@ -741,7 +741,7 @@ impl AbstractSyntaxTree for SingleExpression {
             parse::SingleExpressionInner::Decimal(decimal) => {
                 let ty = ty
                     .as_integer()
-                    .ok_or(Error::TypeValueMismatch(ty.clone()))
+                    .ok_or(Error::ExpressionUnexpectedType(ty.clone()))
                     .with_span(from)?;
                 UIntValue::parse_decimal(decimal, ty)
                     .with_span(from)
@@ -751,7 +751,7 @@ impl AbstractSyntaxTree for SingleExpression {
             parse::SingleExpressionInner::Binary(bits) => {
                 let ty = ty
                     .as_integer()
-                    .ok_or(Error::TypeValueMismatch(ty.clone()))
+                    .ok_or(Error::ExpressionUnexpectedType(ty.clone()))
                     .with_span(from)?;
                 let value = UIntValue::parse_binary(bits, ty).with_span(from)?;
                 SingleExpressionInner::Constant(Value::from(value))
@@ -786,10 +786,10 @@ impl AbstractSyntaxTree for SingleExpression {
             parse::SingleExpressionInner::Tuple(tuple) => {
                 let types = ty
                     .as_tuple()
-                    .ok_or(Error::TypeValueMismatch(ty.clone()))
+                    .ok_or(Error::ExpressionUnexpectedType(ty.clone()))
                     .with_span(from)?;
                 if tuple.len() != types.len() {
-                    return Err(Error::TypeValueMismatch(ty.clone())).with_span(from);
+                    return Err(Error::ExpressionUnexpectedType(ty.clone())).with_span(from);
                 }
                 tuple
                     .iter()
@@ -801,10 +801,10 @@ impl AbstractSyntaxTree for SingleExpression {
             parse::SingleExpressionInner::Array(array) => {
                 let (el_ty, size) = ty
                     .as_array()
-                    .ok_or(Error::TypeValueMismatch(ty.clone()))
+                    .ok_or(Error::ExpressionUnexpectedType(ty.clone()))
                     .with_span(from)?;
                 if array.len() != size {
-                    return Err(Error::TypeValueMismatch(ty.clone())).with_span(from);
+                    return Err(Error::ExpressionUnexpectedType(ty.clone())).with_span(from);
                 }
                 array
                     .iter()
@@ -815,10 +815,10 @@ impl AbstractSyntaxTree for SingleExpression {
             parse::SingleExpressionInner::List(list) => {
                 let (el_ty, bound) = ty
                     .as_list()
-                    .ok_or(Error::TypeValueMismatch(ty.clone()))
+                    .ok_or(Error::ExpressionUnexpectedType(ty.clone()))
                     .with_span(from)?;
                 if bound.get() <= list.len() {
-                    return Err(Error::TypeValueMismatch(ty.clone())).with_span(from);
+                    return Err(Error::ExpressionUnexpectedType(ty.clone())).with_span(from);
                 }
                 list.iter()
                     .map(|e| Expression::analyze(e, el_ty, scope))
@@ -828,7 +828,7 @@ impl AbstractSyntaxTree for SingleExpression {
             parse::SingleExpressionInner::Either(either) => {
                 let (ty_l, ty_r) = ty
                     .as_either()
-                    .ok_or(Error::TypeValueMismatch(ty.clone()))
+                    .ok_or(Error::ExpressionUnexpectedType(ty.clone()))
                     .with_span(from)?;
                 match either {
                     Either::Left(parse_l) => Expression::analyze(parse_l, ty_l, scope)
@@ -843,7 +843,7 @@ impl AbstractSyntaxTree for SingleExpression {
             parse::SingleExpressionInner::Option(maybe_parse) => {
                 let ty = ty
                     .as_option()
-                    .ok_or(Error::TypeValueMismatch(ty.clone()))
+                    .ok_or(Error::ExpressionUnexpectedType(ty.clone()))
                     .with_span(from)?;
                 match maybe_parse {
                     Some(parse) => {
