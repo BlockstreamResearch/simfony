@@ -271,7 +271,7 @@ macro_rules! construct_int {
 /// Various value constructors.
 pub trait ValueConstructible: Sized + From<bool> + From<UIntValue> {
     /// The type of the constructed value.
-    type Type;
+    type Type: TypeConstructible;
 
     /// Create the unit value.
     fn unit() -> Self {
@@ -315,6 +315,12 @@ pub trait ValueConstructible: Sized + From<bool> + From<UIntValue> {
     ///
     /// The given `elements` are not of the given type.
     fn array<I: IntoIterator<Item = Self>>(elements: I, ty: Self::Type) -> Self;
+
+    /// Create an array from the given `bytes`.
+    fn byte_array<I: IntoIterator<Item = u8>>(bytes: I) -> Self {
+        let converted = bytes.into_iter().map(UIntValue::U8).map(Self::from);
+        Self::array(converted, Self::Type::u8())
+    }
 
     /// Create `bound`ed list from the given `elements`.
     ///
