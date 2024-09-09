@@ -1,6 +1,6 @@
 {
     "sig": {
         "value": "0xc939e32344642e3c228b0162041824afe194297477188255d2637908a0d00d1fdf59214a304ddf180b1a07019a60d808d18170fb77fd3b00eca76667d7aa268e",
-        "type": "[u8; 64]"
+        "type": "Signature"
     }
 }

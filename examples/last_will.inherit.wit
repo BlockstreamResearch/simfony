@@ -1,6 +1,6 @@
 {
     "inherit_or_not": {
         "value": "Left(0x755201bb62b0a8b8d18fd12fc02951ea3998ba42bfc6664daaf8a0d2298cad43cdc21358c7c82f37654275dc2fea8c858adbe97bac92828b498a5a237004db6f)",
-        "type": "Either<[u8; 64], Either<[u8; 64], [u8; 64]>>"
+        "type": "Either<Signature, Either<Signature, Signature>>"
     }
 }

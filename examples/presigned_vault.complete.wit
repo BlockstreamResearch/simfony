@@ -1,6 +1,6 @@
 {
     "hot_or_cold": {
         "value": "Left(0xedb6865094260f8558728233aae017dd0969a2afe5f08c282e1ab659bf2462684c99a64a2a57246358a0d632671778d016e6df7381293dd5bb9f0999d38640d4)",
-        "type": "Either<[u8; 64], [u8; 64]>"
+        "type": "Either<Signature, Signature>"
     }
 }
