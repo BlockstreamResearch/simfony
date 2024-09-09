@@ -16,7 +16,7 @@
  *
  * https://docs.ivylang.org/bitcoin/language/ExampleContracts.html#vaultspend
  */
-fn checksig(pk: u256, sig: Signature) {
+fn checksig(pk: Pubkey, sig: Signature) {
     let msg: u256 = jet::sig_all_hash();
     jet::bip_0340_verify((pk, msg), sig);
 }
@@ -24,12 +24,12 @@ fn checksig(pk: u256, sig: Signature) {
 fn complete_spend(hot_sig: Signature) {
     let timeout: Distance = 1000;
     jet::check_lock_distance(timeout);
-    let hot_pk: u256 = 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798; // 1 * G
+    let hot_pk: Pubkey = 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798; // 1 * G
     checksig(hot_pk, hot_sig);
 }
 
 fn cancel_spend(cold_sig: Signature) {
-    let cold_pk: u256 = 0xc6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5; // 2 * G
+    let cold_pk: Pubkey = 0xc6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5; // 2 * G
     checksig(cold_pk, cold_sig)
 }
 
