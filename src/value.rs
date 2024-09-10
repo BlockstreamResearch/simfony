@@ -514,7 +514,10 @@ impl ValueConstructible for Value {
         bound: NonZeroPow2Usize,
     ) -> Self {
         let elements: Arc<[Self]> = elements.into_iter().collect();
-        assert!(elements.len() < bound.get(), "Too many elements");
+        assert!(
+            elements.len() < bound.get(),
+            "There must be fewer list elements than the bound {bound}"
+        );
         for element in elements.iter() {
             assert!(
                 element.is_of_type(&ty),
@@ -848,7 +851,10 @@ impl ValueConstructible for StructuralValue {
         bound: NonZeroPow2Usize,
     ) -> Self {
         let elements: Vec<Self> = elements.into_iter().collect();
-        assert!(bound.get() <= elements.len(), "Too many elements");
+        assert!(
+            elements.len() < bound.get(),
+            "There must be fewer list elements than the bound {bound}"
+        );
         for element in elements.iter() {
             assert!(
                 element.is_of_type(&ty),
