@@ -861,15 +861,17 @@ impl ValueConstructible for StructuralValue {
                 "Element {element} is not of expected type {ty}"
             );
         }
-        let partition = Partition::from_slice(&elements, bound.get() / 2);
-        let process = |block: &[Self]| -> Self {
+        let partition = Partition::from_slice(&elements, bound);
+        let process = |block: &[Self], size: usize| -> Self {
             let tree = BTreeSlice::from_slice(block);
             match tree.fold(Self::product) {
                 Some(array) => Self::some(array),
-                None => Self::none(StructuralType::array(ty.clone(), block.len())),
+                None => Self::none(StructuralType::array(ty.clone(), size)),
             }
         };
-        partition.fold(process, Self::product)
+        let ret = partition.fold(process, Self::product);
+        debug_assert!(ret.is_of_type(&StructuralType::list(ty, bound)));
+        ret
     }
 }
 

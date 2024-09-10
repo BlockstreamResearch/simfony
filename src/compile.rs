@@ -245,9 +245,9 @@ impl SingleExpression {
                     .map(|e| e.compile(scope))
                     .collect::<Result<Vec<PairBuilder<ProgNode>>, RichError>>()?;
                 let bound = self.ty().as_list().unwrap().1;
-                let partition = Partition::from_slice(&compiled, bound.get() / 2);
+                let partition = Partition::from_slice(&compiled, bound);
                 partition.fold(
-                    |block| {
+                    |block, _size: usize| {
                         let tree = BTreeSlice::from_slice(block);
                         match tree.fold(PairBuilder::pair) {
                             None => PairBuilder::unit(scope.ctx()).injl(),

@@ -989,10 +989,10 @@ impl TypeConstructible for StructuralType {
     fn list(element: Self, bound: NonZeroPow2Usize) -> Self {
         // Cheap clone because Arc<Final> consists of Arcs
         let el_vector = vec![element.0; bound.get() - 1];
-        let partition = Partition::from_slice(&el_vector, bound.get() / 2);
+        let partition = Partition::from_slice(&el_vector, bound);
         debug_assert!(partition.is_complete());
-        let process = |block: &[Arc<Final>]| -> Arc<Final> {
-            debug_assert!(!block.is_empty());
+        let process = |block: &[Arc<Final>], size: usize| -> Arc<Final> {
+            debug_assert_eq!(block.len(), size);
             let tree = BTreeSlice::from_slice(block);
             let array = tree.fold(Final::product).unwrap();
             Final::sum(Final::unit(), array)
