@@ -33,3 +33,10 @@ path = "fuzz_targets/display_parse_tree.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "reconstruct_value"
+path = "fuzz_targets/reconstruct_value.rs"
+test = false
+doc = false
+bench = false
