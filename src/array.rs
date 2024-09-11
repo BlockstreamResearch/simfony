@@ -24,6 +24,10 @@ impl<'a, A: Clone> BTreeSlice<'a, A> {
     /// Fold the tree in post order, using the binary function `f`.
     ///
     /// Returns `None` if the tree is empty.
+    ///
+    /// ## See
+    ///
+    /// Opposite of [`Unfolder::unfold`].
     pub fn fold<F>(self, f: F) -> Option<A>
     where
         F: Fn(A, A) -> A,
@@ -67,6 +71,56 @@ impl<'a, A: Clone> TreeLike for BTreeSlice<'a, A> {
                 Tree::Binary(left, right)
             }
         }
+    }
+}
+
+/// Helper struct to unfold a tree into a list of leaves.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct Unfolder<A> {
+    tree: A,
+    n: usize,
+}
+
+impl<A: Clone> Unfolder<A> {
+    /// Create an unfolder to yield `n` leaves of the given `tree`.
+    pub fn new(tree: A, n: usize) -> Self {
+        Self { tree, n }
+    }
+
+    /// Unfold the tree into `n` leaves using function `f`.
+    ///
+    /// Function `f` tries to split a tree node into two children.
+    /// `f` returns `None` when it is called on a leaf node.
+    ///
+    /// The unfold function returns `None` if any tree node could not be split.
+    /// This means that the tree had fewer than `n` leaves.
+    ///
+    /// ## See
+    ///
+    /// Opposite of [`BTreeSlice::fold`].
+    pub fn unfold<F>(self, f: F) -> Option<Vec<A>>
+    where
+        F: Fn(A) -> Option<(A, A)>,
+    {
+        let n = self.n;
+        let mut stack = vec![self];
+        let mut output = Vec::with_capacity(n);
+        while let Some(top) = stack.pop() {
+            match top.n {
+                0 => continue,
+                1 => output.push(top.tree),
+                _ => {
+                    let (left, right) = f(top.tree.clone())?;
+                    let next_pow2 = top.n.next_power_of_two();
+                    let half = top.n - next_pow2 / 2;
+                    stack.push(Self::new(right, top.n.saturating_sub(half)));
+                    stack.push(Self::new(left, half));
+                }
+            }
+        }
+
+        debug_assert_eq!(output.len(), n);
+        Some(output)
     }
 }
 
@@ -184,11 +238,98 @@ impl<'a, A: Clone> TreeLike for Partition<'a, A> {
     }
 }
 
+/// Helper struct to combine elements of a partition.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct Combiner<A> {
+    partition: A,
+    bound: NonZeroPow2Usize,
+}
+
+impl<A: Clone> Combiner<A> {
+    /// Create a combiner for the given `partition` of less than `bound` many elements.
+    pub fn new(partition: A, bound: NonZeroPow2Usize) -> Self {
+        Self { partition, bound }
+    }
+
+    /// Unfold the partition into a list of its elements.
+    ///
+    /// Function `f` takes a block and its size and tries extract the block's elements.
+    /// `f` returns `None` if the input is not a block.
+    ///
+    /// Function `g` splits a partition into a block (left child)
+    /// and a smaller partition (right child).
+    /// `g` returns `None` if the partition cannot be split.
+    ///
+    /// The combine function returns `None` if the input was not a partition with the given bound.
+    ///
+    /// ## See
+    ///
+    /// Opposite of [`Partition::fold`].
+    pub fn unfold<F, G, B>(self, f: F, g: G) -> Option<Vec<B>>
+    where
+        F: Fn(A, usize) -> Option<Vec<B>>,
+        G: Fn(A) -> Option<(A, A)>,
+    {
+        let mut next = Some(self);
+        let mut output = vec![];
+
+        while let Some(top) = next.take() {
+            match top.bound.checked_div2() {
+                Some(smaller_bound) => {
+                    let (block, partition) = g(top.partition)?;
+                    let elements = f(block, smaller_bound.get())?;
+                    debug_assert!(elements.is_empty() || elements.len() == smaller_bound.get());
+                    output.extend(elements);
+                    next = Some(Combiner::new(partition, smaller_bound));
+                }
+                None => {
+                    let elements = f(top.partition, 1)?;
+                    debug_assert!(elements.is_empty() || elements.len() == 1);
+                    output.extend(elements);
+                }
+            }
+        }
+
+        Some(output)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::pattern::{BasePattern, Pattern};
     use crate::str::Identifier;
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    enum Tree {
+        Leaf(u16),
+        Product(Box<Self>, Box<Self>),
+        Array(Box<[Self]>),
+    }
+
+    impl Tree {
+        fn product(left: Self, right: Self) -> Self {
+            Self::Product(Box::new(left), Box::new(right))
+        }
+
+        fn array<I: IntoIterator<Item = Self>>(iter: I) -> Self {
+            Self::Array(iter.into_iter().collect())
+        }
+
+        fn as_product(&self) -> Option<(&Self, &Self)> {
+            match self {
+                Self::Product(left, right) => Some((left, right)),
+                _ => None,
+            }
+        }
+
+        fn as_array(&self) -> Option<&[Self]> {
+            match self {
+                Self::Array(elements) => Some(elements.as_ref()),
+                _ => None,
+            }
+        }
+    }
 
     #[test]
     #[rustfmt::skip]
@@ -211,6 +352,23 @@ mod tests {
             let tree = BTreeSlice::from_slice(&vector);
             let output = tree.fold(concat).unwrap_or_default();
             assert_eq!(&output, expected_output);
+        }
+    }
+
+    #[test]
+    fn unfold_btree_slice() {
+        let elements = (0..255).map(Tree::Leaf).collect::<Vec<Tree>>();
+
+        for n in 0..255 {
+            let slice = &elements[0..n];
+            let folded = BTreeSlice::from_slice(slice)
+                .fold(Tree::product)
+                .unwrap_or(Tree::Leaf(1337));
+            let unfolded = Unfolder::new(&folded, n).unfold(Tree::as_product).unwrap();
+            assert_eq!(unfolded.len(), n);
+            for i in 0..n {
+                assert_eq!(&slice[i], unfolded[i]);
+            }
         }
     }
 
@@ -241,6 +399,26 @@ mod tests {
             let partition = Partition::from_slice(&vector, NonZeroPow2Usize::new_unchecked(bound));
             let output = partition.fold(process, join);
             assert_eq!(&output, expected_output);
+        }
+    }
+
+    #[test]
+    fn unfold_partition() {
+        let elements = (0..255).map(Tree::Leaf).collect::<Vec<Tree>>();
+        let bound = NonZeroPow2Usize::new_unchecked(256);
+        let pack_block = |block: &[Tree], _size: usize| Tree::array(block.iter().cloned());
+        let unpack_block = |block: &Tree, _size: usize| block.as_array().map(<[Tree]>::to_vec);
+
+        for n in 0..255 {
+            let slice = &elements[0..n];
+            let folded = Partition::from_slice(slice, bound).fold(pack_block, Tree::product);
+            let unfolded = Combiner::new(&folded, bound)
+                .unfold(unpack_block, Tree::as_product)
+                .unwrap();
+            assert_eq!(unfolded.len(), n);
+            for i in 0..n {
+                assert_eq!(slice[i], unfolded[i]);
+            }
         }
     }
 
