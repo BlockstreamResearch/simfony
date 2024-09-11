@@ -72,18 +72,19 @@ impl<'a, A: Clone> TreeLike for BTreeSlice<'a, A> {
 
 /// Partition of a slice into blocks of (lengths of) powers of two.
 ///
-/// The blocks start at (length) `N` and decrease to one in order.
-/// Depending on the (length of the) slice, some blocks might be empty.
+/// ## Partition of less than 2^(n + 1) elements
 ///
-/// A partition forms a binary tree:
+/// ```text
+///               .
+///              / \
+/// [block of 2^n] [partition of <2^n]
+/// ```
 ///
-/// 1. A slice of length `l = 1` is a leaf
-/// 2. A slice of length `l ≥ N` is a parent:
-///     1. Left child: The block of the first `N` elements
-///     2. Right child: The partition of the remaining `l - N` elements
-/// 3. A slice of length `1 < l < N` is a parent:
-///     1. Left child: The empty block
-///     2. Right child: The partition of the remaining `l` elements
+/// ## Partition of less than 2^1 elements
+///
+/// ```text
+/// [block of 2^0]
+/// ```
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum Partition<'a, A> {
     Leaf {
@@ -97,7 +98,7 @@ pub enum Partition<'a, A> {
 }
 
 impl<'a, A> Partition<'a, A> {
-    /// Partition a `slice` of less than `bound` many elements into blocks.
+    /// Partition a `slice` of less than `bound` many elements.
     ///
     /// ## Panics
     ///
@@ -127,11 +128,12 @@ impl<'a, A: Clone> Partition<'a, A> {
 
     /// Fold the tree of blocks in post-order.
     ///
-    /// There are two steps:
-    /// 1. Function `f` converts each block (leaf node) into an output value.
-    /// 2. Function `g` joins the outputs of each leaf in post-order.
+    /// Function `f` converts a slice of elements into a block of the given size.
+    /// `f` produces a filled block if the slice has block-size many elements.
+    /// `f` produces an empty block if the slice is empty. Other cases are impossible.
     ///
-    /// Function `f` must handle empty blocks if the partition is not complete.
+    /// Function `g` combines a block (left child) and a partition (right child)
+    /// into a larger partition.
     pub fn fold<B, F, G>(self, f: F, g: G) -> B
     where
         F: Fn(&[A], usize) -> B,
