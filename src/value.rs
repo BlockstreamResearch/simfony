@@ -176,6 +176,30 @@ impl UIntValue {
     }
 }
 
+#[cfg(feature = "arbitrary")]
+impl crate::ArbitraryOfType for UIntValue {
+    type Type = UIntType;
+
+    fn arbitrary_of_type(
+        u: &mut arbitrary::Unstructured,
+        ty: &Self::Type,
+    ) -> arbitrary::Result<Self> {
+        use arbitrary::Arbitrary;
+
+        match ty {
+            UIntType::U1 => u.int_in_range(0..=1).map(Self::U1),
+            UIntType::U2 => u.int_in_range(0..=3).map(Self::U2),
+            UIntType::U4 => u.int_in_range(0..=15).map(Self::U4),
+            UIntType::U8 => u8::arbitrary(u).map(Self::U8),
+            UIntType::U16 => u16::arbitrary(u).map(Self::U16),
+            UIntType::U32 => u32::arbitrary(u).map(Self::U32),
+            UIntType::U64 => u64::arbitrary(u).map(Self::U64),
+            UIntType::U128 => u128::arbitrary(u).map(Self::U128),
+            UIntType::U256 => U256::arbitrary(u).map(Self::U256),
+        }
+    }
+}
+
 impl From<u8> for UIntValue {
     fn from(value: u8) -> Self {
         Self::U8(value)
@@ -719,6 +743,65 @@ impl Value {
         }
         debug_assert_eq!(output.len(), 1);
         output.pop()
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl crate::ArbitraryOfType for Value {
+    type Type = ResolvedType;
+
+    fn arbitrary_of_type(
+        u: &mut arbitrary::Unstructured,
+        ty: &Self::Type,
+    ) -> arbitrary::Result<Self> {
+        use arbitrary::Arbitrary;
+
+        match ty.as_inner() {
+            TypeInner::Boolean => bool::arbitrary(u).map(Self::from),
+            TypeInner::UInt(ty_int) => UIntValue::arbitrary_of_type(u, ty_int).map(Self::from),
+            TypeInner::Either(ty_l, ty_r) => match u.int_in_range(0..=1)? {
+                0 => Self::arbitrary_of_type(u, ty_l)
+                    .map(|val_l| Self::left(val_l, ty_r.as_ref().clone())),
+                1 => Self::arbitrary_of_type(u, ty_r)
+                    .map(|val_r| Self::right(ty_l.as_ref().clone(), val_r)),
+                _ => unreachable!(),
+            },
+            TypeInner::Option(ty_r) => match u.int_in_range(0..=1)? {
+                0 => Ok(Self::none(ty_r.as_ref().clone())),
+                1 => Self::arbitrary_of_type(u, ty_r).map(Self::some),
+                _ => unreachable!(),
+            },
+            TypeInner::Tuple(tys) => {
+                let components = tys
+                    .iter()
+                    .map(|ty| Self::arbitrary_of_type(u, ty))
+                    .collect::<arbitrary::Result<Vec<Self>>>()?;
+                Ok(Self::tuple(components))
+            }
+            TypeInner::Array(ty, size) => {
+                let elements = (0..*size)
+                    .map(|_| Self::arbitrary_of_type(u, ty))
+                    .collect::<arbitrary::Result<Vec<Self>>>()?;
+                Ok(Self::array(elements, ty.as_ref().clone()))
+            }
+            TypeInner::List(ty, bound) => {
+                let size = u.int_in_range(0..=bound.get().saturating_sub(1))?;
+                let elements = (0..size)
+                    .map(|_| Self::arbitrary_of_type(u, ty))
+                    .collect::<arbitrary::Result<Vec<Self>>>()?;
+                Ok(Self::list(elements, ty.as_ref().clone(), *bound))
+            }
+        }
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for Value {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        use crate::ArbitraryOfType;
+
+        let ty = ResolvedType::arbitrary(u)?;
+        Self::arbitrary_of_type(u, &ty)
     }
 }
 
