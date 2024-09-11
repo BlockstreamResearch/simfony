@@ -13,12 +13,12 @@ fn sha2(string: u256) -> u256 {
 }
 
 fn main() {
-    let pk: u256 = witness("pk");
+    let pk: Pubkey = witness("pk");
     let expected_pk_hash: u256 = 0x132f39a98c31baaddba6525f5d43f2954472097fa15265f45130bfdb70e51def; // sha2(1 * G)
     let pk_hash: u256 = sha2(pk);
     assert!(jet::eq_256(pk_hash, expected_pk_hash));
 
     let msg: u256 = jet::sig_all_hash();
-    let sig: [u8; 64] = witness("sig");
+    let sig: Signature = witness("sig");
     jet::bip_0340_verify((pk, msg), sig)
 }

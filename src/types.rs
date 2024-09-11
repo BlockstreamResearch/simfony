@@ -162,6 +162,13 @@ impl UIntType {
             _ => None,
         }
     }
+
+    /// Return the byte width of values of this type.
+    ///
+    /// Return 0 for types that take less than an entire byte: `u1`, `u2`, `u4`.
+    pub const fn byte_width(self) -> usize {
+        self.bit_width().get() / 8
+    }
 }
 
 impl fmt::Debug for UIntType {
@@ -216,6 +223,17 @@ impl<'a> TryFrom<&'a ResolvedType> for UIntType {
     }
 }
 
+macro_rules! construct_int {
+    ($name: ident, $ty: ident, $text: expr) => {
+        #[doc = "Create the type of"]
+        #[doc = $text]
+        #[doc = "integers."]
+        fn $name() -> Self {
+            Self::from(UIntType::$ty)
+        }
+    };
+}
+
 /// Various type constructors.
 pub trait TypeConstructible: Sized + From<UIntType> {
     /// Create a sum of the given `left` and `right` types.
@@ -248,6 +266,16 @@ pub trait TypeConstructible: Sized + From<UIntType> {
 
     /// Create a list with less than `bound` many values of the `element` type.
     fn list(element: Self, bound: NonZeroPow2Usize) -> Self;
+
+    construct_int!(u1, U1, "1-bit");
+    construct_int!(u2, U2, "2-bit");
+    construct_int!(u4, U4, "4-bit");
+    construct_int!(u8, U8, "8-bit");
+    construct_int!(u16, U16, "16-bit");
+    construct_int!(u32, U32, "32-bit");
+    construct_int!(u64, U64, "64-bit");
+    construct_int!(u128, U128, "128-bit");
+    construct_int!(u256, U256, "256-bit");
 }
 
 /// Various type destructors for types that maintain the structure in which they were created.
@@ -992,18 +1020,12 @@ mod tests {
     fn display_type() {
         let unit = ResolvedType::unit();
         assert_eq!("()", &unit.to_string());
-        let singleton = ResolvedType::tuple([ResolvedType::from(UIntType::U1)]);
+        let singleton = ResolvedType::tuple([ResolvedType::u1()]);
         assert_eq!("(u1,)", &singleton.to_string());
-        let pair = ResolvedType::tuple([
-            ResolvedType::from(UIntType::U1),
-            ResolvedType::from(UIntType::U8),
-        ]);
+        let pair = ResolvedType::tuple([ResolvedType::u1(), ResolvedType::u8()]);
         assert_eq!("(u1, u8)", &pair.to_string());
-        let triple = ResolvedType::tuple([
-            ResolvedType::from(UIntType::U1),
-            ResolvedType::from(UIntType::U8),
-            ResolvedType::from(UIntType::U16),
-        ]);
+        let triple =
+            ResolvedType::tuple([ResolvedType::u1(), ResolvedType::u8(), ResolvedType::u16()]);
         assert_eq!("(u1, u8, u16)", &triple.to_string());
         let empty_array = ResolvedType::array(ResolvedType::unit(), 0);
         assert_eq!("[(); 0]", &empty_array.to_string());

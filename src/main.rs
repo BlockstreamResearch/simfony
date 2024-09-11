@@ -19,9 +19,11 @@ fn run() -> Result<(), String> {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {
-        println!("Usage: {} <prog.simpl> [sig.wit (optional)]", args[0]);
-        println!("If no witness file is provided, the program will be compiled and printed.");
-        println!("If a witness file is provided, the program will be satisfied and printed.");
+        println!("Usage: {} PROGRAM_FILE [WITNESS_FILE]", args[0]);
+        println!(
+            "Compile the given Simfony program and print the resulting Simplicity base64 string."
+        );
+        println!("If a Simfony witness is provided, then use it to satisfy the program.");
         return Ok(());
     }
 

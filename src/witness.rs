@@ -200,7 +200,7 @@ impl<'de> Deserialize<'de> for WitnessName {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::value::UIntValue;
+    use crate::value::ValueConstructible;
 
     #[test]
     fn witness_reuse() {
@@ -226,7 +226,7 @@ mod tests {
 
         let mut witness = WitnessValues::empty();
         let a = WitnessName::parse_from_str("a").unwrap();
-        witness.insert(a, Value::from(UIntValue::U16(42))).unwrap();
+        witness.insert(a, Value::u16(42)).unwrap();
 
         match crate::satisfy(s, &witness) {
             Ok(_) => panic!("Ill-typed witness assignment was falsely accepted"),
@@ -241,10 +241,8 @@ mod tests {
     fn witness_duplicate_assignment() {
         let mut witness = WitnessValues::empty();
         let a = WitnessName::parse_from_str("a").unwrap();
-        witness
-            .insert(a.clone(), Value::from(UIntValue::U32(42)))
-            .unwrap();
-        match witness.insert(a, Value::from(UIntValue::U32(43))) {
+        witness.insert(a.clone(), Value::u32(42)).unwrap();
+        match witness.insert(a, Value::u32(43)) {
             Ok(_) => panic!("Duplicate witness assignment was falsely accepted"),
             Err(Error::WitnessReassigned(..)) => {}
             Err(error) => panic!("Unexpected error: {error}"),

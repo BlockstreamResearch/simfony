@@ -174,22 +174,6 @@ impl UIntValue {
             _ => Ok(Self::try_from(bytes.as_ref()).expect("Enough bytes")),
         }
     }
-
-    /// Create an integer from a `hexadecimal` string and type.
-    pub fn parse_hexadecimal(hexadecimal: &Hexadecimal, ty: UIntType) -> Result<Self, Error> {
-        use simplicity::elements::hex::FromHex;
-
-        let s = hexadecimal.as_inner();
-        let nibble_len = Pow2Usize::new(s.len()).ok_or(Error::HexStringPow2(s.len()))?;
-        let bit_len = nibble_len.mul2().mul2();
-        let byte_ty = UIntType::from_bit_width(bit_len).ok_or(Error::HexStringPow2(s.len()))?;
-        if ty != byte_ty {
-            return Err(Error::ExpressionTypeMismatch(ty.into(), byte_ty.into()));
-        }
-
-        let bytes = Vec::<u8>::from_hex(s).map_err(Error::from)?;
-        Ok(Self::try_from(bytes.as_ref()).expect("Enough bytes"))
-    }
 }
 
 impl From<u8> for UIntValue {
@@ -244,10 +228,34 @@ impl TryFrom<&[u8]> for UIntValue {
     }
 }
 
+macro_rules! construct_int_fallible {
+    ($name: ident, $ty: ty, $text: expr) => {
+        #[doc = "Create"]
+        #[doc = $text]
+        #[doc = "integer.\n\n"]
+        #[doc = "## Panics\n"]
+        #[doc = "The value is ouf of range."]
+        fn $name(value: $ty) -> Self {
+            Self::from(UIntValue::$name(value).expect("The value is out of range"))
+        }
+    };
+}
+
+macro_rules! construct_int {
+    ($name: ident, $ty: ty, $text: expr) => {
+        #[doc = "Create"]
+        #[doc = $text]
+        #[doc = "integer."]
+        fn $name(value: $ty) -> Self {
+            Self::from(UIntValue::from(value))
+        }
+    };
+}
+
 /// Various value constructors.
 pub trait ValueConstructible: Sized + From<bool> + From<UIntValue> {
     /// The type of the constructed value.
-    type Type;
+    type Type: TypeConstructible;
 
     /// Create the unit value.
     fn unit() -> Self {
@@ -292,6 +300,12 @@ pub trait ValueConstructible: Sized + From<bool> + From<UIntValue> {
     /// The given `elements` are not of the given type.
     fn array<I: IntoIterator<Item = Self>>(elements: I, ty: Self::Type) -> Self;
 
+    /// Create an array from the given `bytes`.
+    fn byte_array<I: IntoIterator<Item = u8>>(bytes: I) -> Self {
+        let converted = bytes.into_iter().map(UIntValue::U8).map(Self::from);
+        Self::array(converted, Self::Type::u8())
+    }
+
     /// Create `bound`ed list from the given `elements`.
     ///
     /// The type of the value is `List<ty, bound>`.
@@ -310,6 +324,16 @@ pub trait ValueConstructible: Sized + From<bool> + From<UIntValue> {
         ty: Self::Type,
         bound: NonZeroPow2Usize,
     ) -> Self;
+
+    construct_int_fallible!(u1, u8, "a 1-bit");
+    construct_int_fallible!(u2, u8, "a 2-bit");
+    construct_int_fallible!(u4, u8, "a 4-bit");
+    construct_int!(u8, u8, "an 8-bit");
+    construct_int!(u16, u16, "a 16-bit");
+    construct_int!(u32, u32, "a 32-bit");
+    construct_int!(u64, u64, "a 64-bit");
+    construct_int!(u128, u128, "a 128-bit");
+    construct_int!(u256, U256, "a 256-bit");
 }
 
 /// The structure of a Simfony value.
@@ -537,6 +561,30 @@ impl Value {
     pub fn is_of_type(&self, ty: &ResolvedType) -> bool {
         self.ty() == ty
     }
+
+    /// Create a value from the given `hexadecimal` string and type.
+    pub fn parse_hexadecimal(hexadecimal: &Hexadecimal, ty: &ResolvedType) -> Result<Self, Error> {
+        use hex_conservative::FromHex;
+
+        let expected_byte_len = match ty.as_inner() {
+            TypeInner::UInt(int) => int.byte_width(),
+            TypeInner::Array(inner, len) if inner.as_integer() == Some(UIntType::U8) => *len,
+            _ => return Err(Error::ExpressionUnexpectedType(ty.clone())),
+        };
+        let s = hexadecimal.as_inner();
+        if s.len() % 2 != 0 || s.len() != expected_byte_len * 2 {
+            return Err(Error::ExpressionUnexpectedType(ty.clone()));
+        }
+        let bytes = Vec::<u8>::from_hex(s).expect("valid chars and valid length");
+        let ret = match ty.as_inner() {
+            TypeInner::UInt(..) => {
+                Self::from(UIntValue::try_from(bytes.as_ref()).expect("valid length"))
+            }
+            TypeInner::Array(..) => Self::byte_array(bytes),
+            _ => unreachable!(),
+        };
+        Ok(ret)
+    }
 }
 
 impl Value {
@@ -595,9 +643,9 @@ impl Value {
                             let value = UIntValue::parse_binary(binary, *ty)?;
                             output.push(Value::from(value));
                         }
-                        (SingleExpressionInner::Hexadecimal(hexadecimal), TypeInner::UInt(ty)) => {
-                            let value = UIntValue::parse_hexadecimal(hexadecimal, *ty)?;
-                            output.push(Value::from(value));
+                        (SingleExpressionInner::Hexadecimal(hexadecimal), _) => {
+                            let value = Value::parse_hexadecimal(hexadecimal, ty)?;
+                            output.push(value);
                         }
                         (
                             SingleExpressionInner::Either(Either::Left(expr_l)),
@@ -668,7 +716,7 @@ impl Value {
                         ) => {
                             return Err(Error::ExpressionNotConstant);
                         }
-                        _ => return Err(Error::TypeValueMismatch(ty.clone())),
+                        _ => return Err(Error::ExpressionUnexpectedType(ty.clone())),
                     }
                 }
                 Task::MakeLeft(right) => {
@@ -913,18 +961,11 @@ mod tests {
     fn display_value() {
         let unit = Value::unit();
         assert_eq!("()", &unit.to_string());
-        let singleton = Value::tuple([Value::from(UIntValue::U1(1))]);
+        let singleton = Value::tuple([Value::u1(1)]);
         assert_eq!("(1, )", &singleton.to_string());
-        let pair = Value::tuple([
-            Value::from(UIntValue::U1(1)),
-            Value::from(UIntValue::U8(42)),
-        ]);
+        let pair = Value::tuple([Value::u8(1), Value::u8(42)]);
         assert_eq!("(1, 42)", &pair.to_string());
-        let triple = Value::tuple([
-            Value::from(UIntValue::U1(1)),
-            Value::from(UIntValue::U8(42)),
-            Value::from(UIntValue::U16(1337)),
-        ]);
+        let triple = Value::tuple([Value::u1(1), Value::u8(42), Value::u16(1337)]);
         assert_eq!("(1, 42, 1337)", &triple.to_string());
         let empty_array = Value::array([], ResolvedType::unit());
         assert_eq!("[]", &empty_array.to_string());
@@ -955,11 +996,7 @@ mod tests {
         let bound4 = NonZeroPow2Usize::new(4).unwrap();
         let string_ty_value = [
             ("false", ResolvedType::boolean(), Value::from(false)),
-            (
-                "42",
-                ResolvedType::from(UIntType::U8),
-                Value::from(UIntValue::U8(42)),
-            ),
+            ("42", ResolvedType::u8(), Value::u8(42)),
             (
                 "Left(false)",
                 ResolvedType::either(ResolvedType::boolean(), ResolvedType::unit()),
@@ -977,21 +1014,13 @@ mod tests {
                     UIntType::U2.into(),
                     UIntType::U4.into(),
                 ]),
-                Value::tuple([
-                    UIntValue::U1(1).into(),
-                    UIntValue::U2(2).into(),
-                    UIntValue::U4(3).into(),
-                ]),
+                Value::tuple([Value::u1(1), Value::u2(2), Value::u4(3)]),
             ),
             (
                 "[1, 2, 3]",
                 ResolvedType::array(UIntType::U4.into(), 3),
                 Value::array(
-                    [
-                        UIntValue::U4(1).into(),
-                        UIntValue::U4(2).into(),
-                        UIntValue::U4(3).into(),
-                    ],
+                    [Value::u4(1), Value::u4(2), Value::u4(3)],
                     UIntType::U4.into(),
                 ),
             ),
@@ -999,11 +1028,7 @@ mod tests {
                 "list![1, 2, 3]",
                 ResolvedType::list(UIntType::U4.into(), bound4),
                 Value::list(
-                    [
-                        UIntValue::U4(1).into(),
-                        UIntValue::U4(2).into(),
-                        UIntValue::U4(3).into(),
-                    ],
+                    [Value::u4(1), Value::u4(2), Value::u4(3)],
                     UIntType::U4.into(),
                     bound4,
                 ),

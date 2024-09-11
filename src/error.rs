@@ -259,7 +259,7 @@ impl From<pest::error::Error<Rule>> for RichError {
 pub enum Error {
     ListBoundPow2(usize),
     BitStringPow2(usize),
-    HexStringPow2(usize),
+    HexStringLen(usize),
     ForWhileWidthPow2(usize),
     CannotParse(String),
     Grammar(String),
@@ -269,7 +269,6 @@ pub enum Error {
     // The compiler can only be this precise if it knows a type system at least as expressive as Simplicity's
     CannotCompile(String),
     JetDoesNotExist(JetName),
-    TypeValueMismatch(ResolvedType),
     InvalidCast(ResolvedType, ResolvedType),
     MainNoInputs,
     MainNoOutput,
@@ -279,6 +278,7 @@ pub enum Error {
     InvalidNumberOfArguments(usize, usize),
     FunctionNotFoldable(FunctionName),
     FunctionNotLoopable(FunctionName),
+    ExpressionUnexpectedType(ResolvedType),
     ExpressionTypeMismatch(ResolvedType, ResolvedType),
     ExpressionNotConstant,
     IntegerOutOfBounds(UIntType),
@@ -303,9 +303,9 @@ impl fmt::Display for Error {
                 f,
                 "Expected a valid bit string length (1, 2, 4, 8, 16, 32, 64, 128, 256), found {len}"
             ),
-            Error::HexStringPow2(len) => write!(
+            Error::HexStringLen(len) => write!(
                 f,
-                "Expected a valid hex string length (2, 4, 8, 16, 32, 64), found {len}"
+                "Expected an even hex string length (0, 2, 4, 6, 8, ...), found {len}"
             ),
             Error::ForWhileWidthPow2(bit_width) => write!(
                 f,
@@ -330,10 +330,6 @@ impl fmt::Display for Error {
             Error::JetDoesNotExist(name) => write!(
                 f,
                 "Jet `{name}` does not exist"
-            ),
-            Error::TypeValueMismatch(ty) => write!(
-                f,
-                "Value does not match the assigned type `{ty}`"
             ),
             Error::InvalidCast(source, target) => write!(
                 f,
@@ -370,6 +366,10 @@ impl fmt::Display for Error {
             Error::FunctionNotLoopable(name) => write!(
                 f,
                 "Expected a signature like `fn {name}(accumulator: A, context: C, counter u{{1,2,4,8,16}}) -> Either<B, A>` for a for-while loop"
+            ),
+            Error::ExpressionUnexpectedType(ty) => write!(
+                f,
+                "Expected expression of type `{ty}`; found something else"
             ),
             Error::ExpressionTypeMismatch(expected, found) => write!(
                 f,
