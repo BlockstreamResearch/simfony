@@ -4,6 +4,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use either::Either;
+use miniscript::iter::{Tree, TreeLike};
 use simplicity::jet::Elements;
 
 use crate::error::{Error, RichError, Span, WithSpan};
@@ -360,6 +361,62 @@ impl MatchArm {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum ExprTree<'a> {
+    Expression(&'a Expression),
+    Block(&'a [Statement], &'a Option<Arc<Expression>>),
+    Statement(&'a Statement),
+    Assignment(&'a Assignment),
+    Single(&'a SingleExpression),
+    Call(&'a Call),
+    Match(&'a Match),
+}
+
+impl<'a> TreeLike for ExprTree<'a> {
+    fn as_node(&self) -> Tree<Self> {
+        use SingleExpressionInner as S;
+
+        match self {
+            Self::Expression(expr) => match expr.inner() {
+                ExpressionInner::Block(statements, maybe_expr) => {
+                    Tree::Unary(Self::Block(statements, maybe_expr))
+                }
+                ExpressionInner::Single(single) => Tree::Unary(Self::Single(single)),
+            },
+            Self::Block(statements, maybe_expr) => Tree::Nary(
+                statements
+                    .iter()
+                    .map(Self::Statement)
+                    .chain(maybe_expr.iter().map(Arc::as_ref).map(Self::Expression))
+                    .collect(),
+            ),
+            Self::Statement(statement) => match statement {
+                Statement::Assignment(assignment) => Tree::Unary(Self::Assignment(assignment)),
+                Statement::Expression(expression) => Tree::Unary(Self::Expression(expression)),
+            },
+            Self::Assignment(assignment) => Tree::Unary(Self::Expression(assignment.expression())),
+            Self::Single(single) => match single.inner() {
+                S::Constant(_) | S::Witness(_) | S::Variable(_) | S::Option(None) => Tree::Nullary,
+                S::Expression(l)
+                | S::Either(Either::Left(l))
+                | S::Either(Either::Right(l))
+                | S::Option(Some(l)) => Tree::Unary(Self::Expression(l)),
+                S::Tuple(elements) | S::Array(elements) | S::List(elements) => {
+                    Tree::Nary(elements.iter().map(Self::Expression).collect())
+                }
+                S::Call(call) => Tree::Unary(Self::Call(call)),
+                S::Match(match_) => Tree::Unary(Self::Match(match_)),
+            },
+            Self::Call(call) => Tree::Nary(call.args().iter().map(Self::Expression).collect()),
+            Self::Match(match_) => Tree::Nary(Arc::new([
+                Self::Expression(match_.scrutinee()),
+                Self::Expression(match_.left().expression()),
+                Self::Expression(match_.right().expression()),
+            ])),
+        }
+    }
+}
+
 /// Scope for generating the abstract syntax tree.
 ///
 /// The scope is used for:
@@ -678,6 +735,21 @@ impl AbstractSyntaxTree for Assignment {
             expression,
             span: *from.as_ref(),
         })
+    }
+}
+
+impl Expression {
+    /// Analyze an expression from the parse tree in a const context without predefined variables.
+    ///
+    /// Check if the expression is of the given type.
+    ///
+    /// ## Const evaluation
+    ///
+    /// The returned expression might not be evaluable at compile time.
+    /// The details depend on the current state of the Simfony compiler.
+    pub fn analyze_const(from: &parse::Expression, ty: &ResolvedType) -> Result<Self, RichError> {
+        let mut empty_scope = Scope::default();
+        Self::analyze(from, ty, &mut empty_scope)
     }
 }
 
