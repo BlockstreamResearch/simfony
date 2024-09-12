@@ -945,193 +945,164 @@ impl AbstractSyntaxTree for Call {
     type From = parse::Call;
 
     fn analyze(from: &Self::From, ty: &ResolvedType, scope: &mut Scope) -> Result<Self, RichError> {
-        let name = CallName::analyze(from, ty, scope)?;
+        fn check_argument_types(
+            parse_args: &[parse::Expression],
+            expected_tys: &[ResolvedType],
+        ) -> Result<(), Error> {
+            if parse_args.len() != expected_tys.len() {
+                Err(Error::InvalidNumberOfArguments(
+                    expected_tys.len(),
+                    parse_args.len(),
+                ))
+            } else {
+                Ok(())
+            }
+        }
 
+        fn check_output_type(
+            observed_ty: &ResolvedType,
+            expected_ty: &ResolvedType,
+        ) -> Result<(), Error> {
+            if observed_ty != expected_ty {
+                Err(Error::ExpressionTypeMismatch(
+                    expected_ty.clone(),
+                    observed_ty.clone(),
+                ))
+            } else {
+                Ok(())
+            }
+        }
+
+        fn analyze_arguments(
+            parse_args: &[parse::Expression],
+            args_tys: &[ResolvedType],
+            scope: &mut Scope,
+        ) -> Result<Arc<[Expression]>, RichError> {
+            let args = parse_args
+                .iter()
+                .zip(args_tys.iter())
+                .map(|(arg_parse, arg_ty)| Expression::analyze(arg_parse, arg_ty, scope))
+                .collect::<Result<Arc<[Expression]>, RichError>>()?;
+            Ok(args)
+        }
+
+        let name = CallName::analyze(from, ty, scope)?;
         let args = match name.clone() {
             CallName::Jet(jet) => {
-                let args_ty = crate::jet::source_type(jet)
+                let args_tys = crate::jet::source_type(jet)
                     .iter()
                     .map(AliasedType::resolve_builtin)
                     .collect::<Result<Vec<ResolvedType>, Identifier>>()
                     .map_err(Error::UndefinedAlias)
                     .with_span(from)?;
-                if from.args().len() != args_ty.len() {
-                    return Err(Error::InvalidNumberOfArguments(
-                        args_ty.len(),
-                        from.args().len(),
-                    ))
-                    .with_span(from);
-                }
+                check_argument_types(from.args(), &args_tys).with_span(from)?;
                 let out_ty = crate::jet::target_type(jet)
                     .resolve_builtin()
                     .map_err(Error::UndefinedAlias)
                     .with_span(from)?;
-                if ty != &out_ty {
-                    return Err(Error::ExpressionTypeMismatch(ty.clone(), out_ty)).with_span(from);
-                }
-                from.args()
-                    .iter()
-                    .zip(args_ty.iter())
-                    .map(|(arg_parse, arg_ty)| Expression::analyze(arg_parse, arg_ty, scope))
-                    .collect::<Result<Arc<[Expression]>, RichError>>()?
+                check_output_type(&out_ty, ty).with_span(from)?;
+                analyze_arguments(from.args(), &args_tys, scope)?
             }
             CallName::UnwrapLeft(right_ty) => {
-                let args_ty = ResolvedType::either(ty.clone(), right_ty);
-                if from.args().len() != 1 {
-                    return Err(Error::InvalidNumberOfArguments(1, from.args().len()))
-                        .with_span(from);
-                }
-                Arc::from([Expression::analyze(
-                    from.args().first().unwrap(),
-                    &args_ty,
-                    scope,
-                )?])
+                let args_tys = [ResolvedType::either(ty.clone(), right_ty)];
+                check_argument_types(from.args(), &args_tys).with_span(from)?;
+                analyze_arguments(from.args(), &args_tys, scope)?
             }
             CallName::UnwrapRight(left_ty) => {
-                let args_ty = ResolvedType::either(left_ty, ty.clone());
-                if from.args().len() != 1 {
-                    return Err(Error::InvalidNumberOfArguments(1, from.args().len()))
-                        .with_span(from);
-                }
-                Arc::from([Expression::analyze(
-                    from.args().first().unwrap(),
-                    &args_ty,
-                    scope,
-                )?])
+                let args_tys = [ResolvedType::either(left_ty, ty.clone())];
+                check_argument_types(from.args(), &args_tys).with_span(from)?;
+                analyze_arguments(from.args(), &args_tys, scope)?
             }
             CallName::IsNone(some_ty) => {
-                if from.args().len() != 1 {
-                    return Err(Error::InvalidNumberOfArguments(1, from.args().len()))
-                        .with_span(from);
-                }
+                let args_tys = [ResolvedType::option(some_ty)];
+                check_argument_types(from.args(), &args_tys).with_span(from)?;
                 let out_ty = ResolvedType::boolean();
-                if ty != &out_ty {
-                    return Err(Error::ExpressionTypeMismatch(ty.clone(), out_ty)).with_span(from);
-                }
-                let arg_ty = ResolvedType::option(some_ty);
-                Arc::from([Expression::analyze(
-                    from.args().first().unwrap(),
-                    &arg_ty,
-                    scope,
-                )?])
+                check_output_type(&out_ty, ty).with_span(from)?;
+                analyze_arguments(from.args(), &args_tys, scope)?
             }
             CallName::Unwrap => {
-                let args_ty = ResolvedType::option(ty.clone());
-                if from.args().len() != 1 {
-                    return Err(Error::InvalidNumberOfArguments(1, from.args().len()))
-                        .with_span(from);
-                }
-                Arc::from([Expression::analyze(
-                    from.args().first().unwrap(),
-                    &args_ty,
-                    scope,
-                )?])
+                let args_tys = [ResolvedType::option(ty.clone())];
+                check_argument_types(from.args(), &args_tys).with_span(from)?;
+                analyze_arguments(from.args(), &args_tys, scope)?
             }
             CallName::Assert => {
-                if from.args().len() != 1 {
-                    return Err(Error::InvalidNumberOfArguments(1, from.args().len()))
-                        .with_span(from);
-                }
-                if !ty.is_unit() {
-                    return Err(Error::ExpressionTypeMismatch(
-                        ty.clone(),
-                        ResolvedType::unit(),
-                    ))
-                    .with_span(from);
-                }
-                let arg_type = ResolvedType::boolean();
-                Arc::from([Expression::analyze(
-                    from.args().first().unwrap(),
-                    &arg_type,
-                    scope,
-                )?])
+                let args_tys = [ResolvedType::boolean()];
+                check_argument_types(from.args(), &args_tys).with_span(from)?;
+                let out_ty = ResolvedType::unit();
+                check_output_type(&out_ty, ty).with_span(from)?;
+                analyze_arguments(from.args(), &args_tys, scope)?
             }
             CallName::Panic => {
-                if !from.args().is_empty() {
-                    return Err(Error::InvalidNumberOfArguments(0, from.args().len()))
-                        .with_span(from);
-                }
+                let args_tys = [];
+                check_argument_types(from.args(), &args_tys).with_span(from)?;
                 // panic! allows every output type because it will never return anything
-                Arc::from([])
+                analyze_arguments(from.args(), &args_tys, scope)?
             }
             CallName::TypeCast(source) => {
-                if from.args().len() != 1 {
-                    return Err(Error::InvalidNumberOfArguments(1, from.args().len()))
-                        .with_span(from);
-                }
                 if StructuralType::from(&source) != StructuralType::from(ty) {
                     return Err(Error::InvalidCast(source, ty.clone())).with_span(from);
                 }
-                Arc::from([Expression::analyze(
-                    from.args().first().unwrap(),
-                    &source,
-                    scope,
-                )?])
+
+                let args_tys = [source];
+                check_argument_types(from.args(), &args_tys).with_span(from)?;
+                analyze_arguments(from.args(), &args_tys, scope)?
             }
             CallName::Custom(function) => {
-                if from.args().len() != function.params().len() {
-                    return Err(Error::InvalidNumberOfArguments(
-                        function.params().len(),
-                        from.args().len(),
-                    ))
-                    .with_span(from);
-                }
-                let out_ty = function.body().ty();
-                if ty != out_ty {
-                    return Err(Error::ExpressionTypeMismatch(ty.clone(), out_ty.clone()))
-                        .with_span(from);
-                }
-                from.args()
+                let args_ty = function
+                    .params()
                     .iter()
-                    .zip(function.params.iter().map(FunctionParam::ty))
-                    .map(|(arg_parse, arg_ty)| Expression::analyze(arg_parse, arg_ty, scope))
-                    .collect::<Result<Arc<[Expression]>, RichError>>()?
+                    .map(FunctionParam::ty)
+                    .cloned()
+                    .collect::<Vec<ResolvedType>>();
+                check_argument_types(from.args(), &args_ty).with_span(from)?;
+                let out_ty = function.body().ty();
+                check_output_type(out_ty, ty).with_span(from)?;
+                analyze_arguments(from.args(), &args_ty, scope)?
             }
             CallName::Fold(function, bound) => {
-                if from.args().len() != 2 {
-                    return Err(Error::InvalidNumberOfArguments(2, from.args().len()))
-                        .with_span(from);
-                }
-                let out_ty = function.body().ty();
-                if ty != out_ty {
-                    return Err(Error::ExpressionTypeMismatch(ty.clone(), out_ty.clone()))
-                        .with_span(from);
-                }
                 // A list fold has the signature:
                 //   fold::<f, N>(list: List<E, N>, initial_accumulator: A) -> A
                 // where
                 //   fn f(element: E, accumulator: A) -> A
                 let element_ty = function.params().first().expect("foldable function").ty();
                 let list_ty = ResolvedType::list(element_ty.clone(), bound);
-                let accumulator_ty = function.params().get(1).expect("foldable function").ty();
-                from.args()
-                    .iter()
-                    .zip([&list_ty, accumulator_ty])
-                    .map(|(arg_parse, arg_ty)| Expression::analyze(arg_parse, arg_ty, scope))
-                    .collect::<Result<Arc<[Expression]>, RichError>>()?
+                let accumulator_ty = function
+                    .params()
+                    .get(1)
+                    .expect("foldable function")
+                    .ty()
+                    .clone();
+                let args_ty = [list_ty, accumulator_ty];
+
+                check_argument_types(from.args(), &args_ty).with_span(from)?;
+                let out_ty = function.body().ty();
+                check_output_type(out_ty, ty).with_span(from)?;
+                analyze_arguments(from.args(), &args_ty, scope)?
             }
             CallName::ForWhile(function, _bit_width) => {
-                if from.args().len() != 2 {
-                    return Err(Error::InvalidNumberOfArguments(2, from.args().len()))
-                        .with_span(from);
-                }
-                let out_ty = function.body().ty();
-                if ty != out_ty {
-                    return Err(Error::ExpressionTypeMismatch(ty.clone(), out_ty.clone()))
-                        .with_span(from);
-                }
                 // A for-while loop has the signature:
                 //   for_while::<f>(initial_accumulator: A, readonly_context: C) -> Either<B, A>
                 // where
                 //   fn f(accumulator: A, readonly_context: C, counter: u{N}) -> Either<B, A>
                 //   N is a power of two
-                let accumulator_ty = function.params().first().expect("loopable function").ty();
-                let context_ty = function.params().get(1).expect("loopable function").ty();
-                from.args()
-                    .iter()
-                    .zip([accumulator_ty, context_ty])
-                    .map(|(arg_parse, arg_ty)| Expression::analyze(arg_parse, arg_ty, scope))
-                    .collect::<Result<Arc<[Expression]>, RichError>>()?
+                let accumulator_ty = function
+                    .params()
+                    .first()
+                    .expect("loopable function")
+                    .ty()
+                    .clone();
+                let context_ty = function
+                    .params()
+                    .get(1)
+                    .expect("loopable function")
+                    .ty()
+                    .clone();
+                let args_ty = [accumulator_ty, context_ty];
+
+                check_argument_types(from.args(), &args_ty).with_span(from)?;
+                let out_ty = function.body().ty();
+                check_output_type(out_ty, ty).with_span(from)?;
+                analyze_arguments(from.args(), &args_ty, scope)?
             }
         };
 
