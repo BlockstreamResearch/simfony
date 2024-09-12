@@ -591,7 +591,7 @@ impl Value {
 }
 
 impl Value {
-    /// Create a typed value from a constant expression.
+    /// Create value from a constant expression.
     ///
     /// ## Errors
     ///
