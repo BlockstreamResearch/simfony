@@ -923,6 +923,12 @@ impl From<StructuralType> for Arc<Final> {
     }
 }
 
+impl From<Arc<Final>> for StructuralType {
+    fn from(value: Arc<Final>) -> Self {
+        Self(value)
+    }
+}
+
 impl TreeLike for StructuralType {
     fn as_node(&self) -> Tree<Self> {
         match self.0.bound() {

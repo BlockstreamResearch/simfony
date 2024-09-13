@@ -824,6 +824,12 @@ impl From<StructuralValue> for SimValue {
     }
 }
 
+impl From<SimValue> for StructuralValue {
+    fn from(value: SimValue) -> Self {
+        Self(value)
+    }
+}
+
 impl TreeLike for StructuralValue {
     fn as_node(&self) -> Tree<Self> {
         use simplicity::dag::{Dag, DagLike};
