@@ -454,7 +454,7 @@ impl fmt::Display for FunctionParam {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-enum ExprTree<'a> {
+pub enum ExprTree<'a> {
     Expression(&'a Expression),
     Block(&'a [Statement], &'a Option<Arc<Expression>>),
     Statement(&'a Statement),
@@ -471,24 +471,22 @@ impl<'a> TreeLike for ExprTree<'a> {
         match self {
             Self::Expression(expr) => match expr.inner() {
                 ExpressionInner::Block(statements, maybe_expr) => {
-                    Tree::Unary(ExprTree::Block(statements, maybe_expr))
+                    Tree::Unary(Self::Block(statements, maybe_expr))
                 }
-                ExpressionInner::Single(single) => Tree::Unary(ExprTree::Single(single)),
+                ExpressionInner::Single(single) => Tree::Unary(Self::Single(single)),
             },
             Self::Block(statements, maybe_expr) => Tree::Nary(
                 statements
                     .iter()
-                    .map(ExprTree::Statement)
-                    .chain(maybe_expr.iter().map(Arc::as_ref).map(ExprTree::Expression))
+                    .map(Self::Statement)
+                    .chain(maybe_expr.iter().map(Arc::as_ref).map(Self::Expression))
                     .collect(),
             ),
             Self::Statement(statement) => match statement {
-                Statement::Assignment(assignment) => Tree::Unary(ExprTree::Assignment(assignment)),
-                Statement::Expression(expression) => Tree::Unary(ExprTree::Expression(expression)),
+                Statement::Assignment(assignment) => Tree::Unary(Self::Assignment(assignment)),
+                Statement::Expression(expression) => Tree::Unary(Self::Expression(expression)),
             },
-            Self::Assignment(assignment) => {
-                Tree::Unary(ExprTree::Expression(assignment.expression()))
-            }
+            Self::Assignment(assignment) => Tree::Unary(Self::Expression(assignment.expression())),
             Self::Single(single) => match single.inner() {
                 S::Boolean(_)
                 | S::Binary(_)
@@ -503,9 +501,9 @@ impl<'a> TreeLike for ExprTree<'a> {
                 | S::Expression(l) => Tree::Unary(Self::Expression(l)),
                 S::Call(call) => Tree::Unary(Self::Call(call)),
                 S::Match(match_) => Tree::Unary(Self::Match(match_)),
-                S::Tuple(tuple) => Tree::Nary(tuple.iter().map(Self::Expression).collect()),
-                S::Array(array) => Tree::Nary(array.iter().map(Self::Expression).collect()),
-                S::List(list) => Tree::Nary(list.iter().map(Self::Expression).collect()),
+                S::Tuple(elements) | S::Array(elements) | S::List(elements) => {
+                    Tree::Nary(elements.iter().map(Self::Expression).collect())
+                }
             },
             Self::Call(call) => Tree::Nary(call.args().iter().map(Self::Expression).collect()),
             Self::Match(match_) => Tree::Nary(Arc::new([

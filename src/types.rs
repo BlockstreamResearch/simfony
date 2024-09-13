@@ -429,6 +429,56 @@ impl From<UIntType> for ResolvedType {
     }
 }
 
+#[cfg(feature = "arbitrary")]
+impl crate::ArbitraryRec for ResolvedType {
+    fn arbitrary_rec(u: &mut arbitrary::Unstructured, budget: usize) -> arbitrary::Result<Self> {
+        use arbitrary::Arbitrary;
+
+        match budget.checked_sub(1) {
+            None => match u.int_in_range(0..=1)? {
+                0 => Ok(Self::boolean()),
+                1 => UIntType::arbitrary(u).map(Self::from),
+                _ => unreachable!(),
+            },
+            Some(new_budget) => match u.int_in_range(0..=6)? {
+                0 => Ok(Self::boolean()),
+                1 => UIntType::arbitrary(u).map(Self::from),
+                2 => Self::arbitrary_rec(u, new_budget).map(Self::option),
+                3 => {
+                    let left = Self::arbitrary_rec(u, new_budget)?;
+                    let right = Self::arbitrary_rec(u, new_budget)?;
+                    Ok(Self::either(left, right))
+                }
+                4 => {
+                    let len = u.int_in_range(0..=3)?;
+                    (0..len)
+                        .map(|_| Self::arbitrary_rec(u, new_budget))
+                        .collect::<arbitrary::Result<Vec<Self>>>()
+                        .map(Self::tuple)
+                }
+                5 => {
+                    let element = Self::arbitrary_rec(u, new_budget)?;
+                    let size = u.int_in_range(0..=3)?;
+                    Ok(Self::array(element, size))
+                }
+                6 => {
+                    let element = Self::arbitrary_rec(u, new_budget)?;
+                    let bound = NonZeroPow2Usize::arbitrary(u)?;
+                    Ok(Self::list(element, bound))
+                }
+                _ => unreachable!(),
+            },
+        }
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for ResolvedType {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        <Self as crate::ArbitraryRec>::arbitrary_rec(u, 3)
+    }
+}
+
 /// Simfony type with type aliases.
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub struct AliasedType(AliasedInner);
@@ -989,10 +1039,10 @@ impl TypeConstructible for StructuralType {
     fn list(element: Self, bound: NonZeroPow2Usize) -> Self {
         // Cheap clone because Arc<Final> consists of Arcs
         let el_vector = vec![element.0; bound.get() - 1];
-        let partition = Partition::from_slice(&el_vector, bound.get() / 2);
+        let partition = Partition::from_slice(&el_vector, bound);
         debug_assert!(partition.is_complete());
-        let process = |block: &[Arc<Final>]| -> Arc<Final> {
-            debug_assert!(!block.is_empty());
+        let process = |block: &[Arc<Final>], size: usize| -> Arc<Final> {
+            debug_assert_eq!(block.len(), size);
             let tree = BTreeSlice::from_slice(block);
             let array = tree.fold(Final::product).unwrap();
             Final::sum(Final::unit(), array)

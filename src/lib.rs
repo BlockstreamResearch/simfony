@@ -2,7 +2,7 @@
 
 pub type ProgNode = Arc<named::ConstructNode>;
 
-mod array;
+pub mod array;
 pub mod ast;
 pub mod compile;
 pub mod dummy_env;
@@ -93,6 +93,26 @@ trait ArbitraryRec: Sized {
     ///
     /// Recursive calls of [`arbitrary_rec`] must decrease the budget by one.
     fn arbitrary_rec(u: &mut arbitrary::Unstructured, budget: usize) -> arbitrary::Result<Self>;
+}
+
+/// Helper trait for implementing [`arbitrary::Arbitrary`] for typed structures.
+///
+/// [`arbitrary::Arbitrary`] is intended to produce well-formed values.
+/// Structures with an internal type should be generated in a well-typed fashion.
+///
+/// [`arbitrary::Arbitrary`] can be implemented for a typed structure as follows:
+/// 1. Generate the type via [`arbitrary::Arbitrary`].
+/// 2. Generate the structure via [`ArbitraryOfType::arbitrary_of_type`].
+#[cfg(feature = "arbitrary")]
+trait ArbitraryOfType: Sized {
+    /// Internal type of the structure.
+    type Type;
+
+    /// Generate a structure of the given type.
+    fn arbitrary_of_type(
+        u: &mut arbitrary::Unstructured,
+        ty: &Self::Type,
+    ) -> arbitrary::Result<Self>;
 }
 
 #[cfg(test)]

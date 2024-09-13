@@ -4,12 +4,12 @@ use std::sync::Arc;
 use either::Either;
 use miniscript::iter::{Tree, TreeLike};
 use simplicity::types::Final as SimType;
-use simplicity::Value as SimValue;
+use simplicity::{BitCollector, Value as SimValue};
 
-use crate::array::{BTreeSlice, Partition};
+use crate::array::{BTreeSlice, Combiner, Partition, Unfolder};
+use crate::ast;
 use crate::error::Error;
 use crate::num::{NonZeroPow2Usize, Pow2Usize, U256};
-use crate::parse;
 use crate::str::{Binary, Decimal, Hexadecimal};
 use crate::types::{
     ResolvedType, StructuralType, TypeConstructible, TypeDeconstructible, TypeInner, UIntType,
@@ -172,6 +172,30 @@ impl UIntValue {
                 Ok(Self::U4(bytes[0]))
             }
             _ => Ok(Self::try_from(bytes.as_ref()).expect("Enough bytes")),
+        }
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl crate::ArbitraryOfType for UIntValue {
+    type Type = UIntType;
+
+    fn arbitrary_of_type(
+        u: &mut arbitrary::Unstructured,
+        ty: &Self::Type,
+    ) -> arbitrary::Result<Self> {
+        use arbitrary::Arbitrary;
+
+        match ty {
+            UIntType::U1 => u.int_in_range(0..=1).map(Self::U1),
+            UIntType::U2 => u.int_in_range(0..=3).map(Self::U2),
+            UIntType::U4 => u.int_in_range(0..=15).map(Self::U4),
+            UIntType::U8 => u8::arbitrary(u).map(Self::U8),
+            UIntType::U16 => u16::arbitrary(u).map(Self::U16),
+            UIntType::U32 => u32::arbitrary(u).map(Self::U32),
+            UIntType::U64 => u64::arbitrary(u).map(Self::U64),
+            UIntType::U128 => u128::arbitrary(u).map(Self::U128),
+            UIntType::U256 => U256::arbitrary(u).map(Self::U256),
         }
     }
 }
@@ -514,7 +538,10 @@ impl ValueConstructible for Value {
         bound: NonZeroPow2Usize,
     ) -> Self {
         let elements: Arc<[Self]> = elements.into_iter().collect();
-        assert!(elements.len() < bound.get(), "Too many elements");
+        assert!(
+            elements.len() < bound.get(),
+            "There must be fewer list elements than the bound {bound}"
+        );
         for element in elements.iter() {
             assert!(
                 element.is_of_type(&ty),
@@ -588,7 +615,7 @@ impl Value {
 }
 
 impl Value {
-    /// Create a typed value from a constant expression.
+    /// Create value from a constant expression.
     ///
     /// ## Errors
     ///
@@ -599,158 +626,182 @@ impl Value {
     /// - Witness expressions
     /// - Match expressions
     /// - Call expressions
-    pub fn from_const_expr(expr: &parse::Expression, ty: &ResolvedType) -> Result<Self, Error> {
-        #[derive(Debug)]
-        enum Task<'a> {
-            ConvertAs(&'a parse::Expression, &'a ResolvedType),
-            MakeLeft(ResolvedType),
-            MakeRight(ResolvedType),
-            MakeSome,
-            MakeTuple(usize),
-            MakeArray(usize, ResolvedType),
-            MakeList(usize, ResolvedType, NonZeroPow2Usize),
-        }
+    pub fn from_const_expr(expr: &ast::Expression) -> Option<Self> {
+        use ast::ExprTree;
+        use ast::SingleExpressionInner as S;
 
-        impl<'a> Task<'a> {
-            /// Variant of [`Task::ConvertAs`] that takes one paired input instead of two single inputs.
-            fn convert_as((expr, ty): (&'a parse::Expression, &'a ResolvedType)) -> Self {
-                Self::ConvertAs(expr, ty)
+        let mut output = vec![];
+        for data in ExprTree::Expression(expr).post_order_iter() {
+            let single = match &data.node {
+                ExprTree::Expression(..) => continue, // skip
+                ExprTree::Single(single) => single,
+                ExprTree::Block(..)
+                | ExprTree::Statement(..)
+                | ExprTree::Assignment(..)
+                | ExprTree::Call(..)
+                | ExprTree::Match(..) => return None, // not const
+            };
+            let size = data.node.n_children();
+            match single.inner() {
+                S::Constant(value) => output.push(value.clone()),
+                S::Witness(..) | S::Variable(..) | S::Call(..) | S::Match(..) => return None, // not const
+                S::Expression(..) => continue, // skip
+                S::Tuple(..) => {
+                    let elements = output.split_off(output.len() - size);
+                    debug_assert_eq!(elements.len(), size);
+                    output.push(Self::tuple(elements));
+                }
+                S::Array(..) => {
+                    let elements = output.split_off(output.len() - size);
+                    debug_assert_eq!(elements.len(), size);
+                    let ty = single.ty().as_array().expect("value is type-checked").0;
+                    output.push(Self::array(elements, ty.clone()));
+                }
+                S::List(..) => {
+                    let elements = output.split_off(output.len() - size);
+                    debug_assert_eq!(elements.len(), size);
+                    let (ty, bound) = single.ty().as_list().expect("value is type-checked");
+                    output.push(Self::list(elements, ty.clone(), bound));
+                }
+                S::Either(Either::Left(..)) => {
+                    let left = output.pop().unwrap();
+                    let right = single.ty().as_either().expect("value is type-checked").1;
+                    output.push(Self::left(left, right.clone()));
+                }
+                S::Either(Either::Right(..)) => {
+                    let left = single.ty().as_either().expect("value is type-checked").0;
+                    let right = output.pop().unwrap();
+                    output.push(Self::right(left.clone(), right));
+                }
+                S::Option(None) => {
+                    let inner = single.ty().as_option().expect("value is type-checked");
+                    output.push(Self::none(inner.clone()));
+                }
+                S::Option(Some(..)) => {
+                    let inner = output.pop().unwrap();
+                    output.push(Self::some(inner));
+                }
             }
         }
+        debug_assert_eq!(output.len(), 1);
+        output.pop()
+    }
 
-        use parse::{ExpressionInner, SingleExpressionInner};
-
-        let mut stack = vec![Task::ConvertAs(expr, ty)];
+    /// Reconstruct the given structural value according to the given type.
+    ///
+    /// Return `None` if reconstructing fails.
+    /// In this case, the structural value was not of the given type.
+    pub fn reconstruct(value: &StructuralValue, ty: &ResolvedType) -> Option<Self> {
         let mut output = vec![];
-
-        while let Some(top) = stack.pop() {
-            match top {
-                Task::ConvertAs(expr, ty) => {
-                    let inner = match expr.inner() {
-                        ExpressionInner::Single(single) => single.inner(),
-                        ExpressionInner::Block(..) => return Err(Error::ExpressionNotConstant),
-                    };
-
-                    match (inner, ty.as_inner()) {
-                        (SingleExpressionInner::Boolean(bit), TypeInner::Boolean) => {
-                            output.push(Value::from(*bit))
-                        }
-                        (SingleExpressionInner::Decimal(decimal), TypeInner::UInt(ty)) => {
-                            let value = UIntValue::parse_decimal(decimal, *ty)?;
-                            output.push(Value::from(value));
-                        }
-                        (SingleExpressionInner::Binary(binary), TypeInner::UInt(ty)) => {
-                            let value = UIntValue::parse_binary(binary, *ty)?;
-                            output.push(Value::from(value));
-                        }
-                        (SingleExpressionInner::Hexadecimal(hexadecimal), _) => {
-                            let value = Value::parse_hexadecimal(hexadecimal, ty)?;
-                            output.push(value);
-                        }
-                        (
-                            SingleExpressionInner::Either(Either::Left(expr_l)),
-                            TypeInner::Either(ty_l, ty_r),
-                        ) => {
-                            stack.push(Task::MakeLeft(ty_r.as_ref().clone()));
-                            stack.push(Task::ConvertAs(expr_l, ty_l))
-                        }
-                        (
-                            SingleExpressionInner::Either(Either::Right(expr_r)),
-                            TypeInner::Either(ty_l, ty_r),
-                        ) => {
-                            stack.push(Task::MakeRight(ty_l.as_ref().clone()));
-                            stack.push(Task::ConvertAs(expr_r, ty_r))
-                        }
-                        (SingleExpressionInner::Option(None), TypeInner::Option(ty_r)) => {
-                            output.push(Value::none(ty_r.as_ref().clone()))
-                        }
-                        (SingleExpressionInner::Option(Some(expr_r)), TypeInner::Option(ty_r)) => {
-                            stack.push(Task::MakeSome);
-                            stack.push(Task::ConvertAs(expr_r, ty_r))
-                        }
-                        (SingleExpressionInner::Tuple(exprs), TypeInner::Tuple(tys))
-                            if exprs.len() == tys.len() =>
-                        {
-                            stack.push(Task::MakeTuple(exprs.len()));
-                            stack.extend(
-                                exprs
-                                    .iter()
-                                    .rev()
-                                    .zip(tys.iter().rev().map(Arc::as_ref))
-                                    .map(Task::convert_as),
-                            );
-                        }
-                        (SingleExpressionInner::Array(exprs), TypeInner::Array(ty, size))
-                            if exprs.len() == *size =>
-                        {
-                            stack.push(Task::MakeArray(exprs.len(), ty.as_ref().clone()));
-                            stack.extend(
-                                exprs
-                                    .iter()
-                                    .rev()
-                                    .zip(std::iter::repeat(ty.as_ref()))
-                                    .map(Task::convert_as),
-                            );
-                        }
-                        (SingleExpressionInner::List(exprs), TypeInner::List(ty, bound))
-                            if exprs.len() < bound.get() =>
-                        {
-                            stack.push(Task::MakeList(exprs.len(), ty.as_ref().clone(), *bound));
-                            stack.extend(
-                                exprs
-                                    .iter()
-                                    .rev()
-                                    .zip(std::iter::repeat(ty.as_ref()))
-                                    .map(Task::convert_as),
-                            );
-                        }
-                        (SingleExpressionInner::Expression(child), _) => {
-                            stack.push(Task::ConvertAs(child, ty));
-                        }
-                        (
-                            SingleExpressionInner::Variable(..)
-                            | SingleExpressionInner::Witness(..)
-                            | SingleExpressionInner::Call(..)
-                            | SingleExpressionInner::Match(..),
-                            _,
-                        ) => {
-                            return Err(Error::ExpressionNotConstant);
-                        }
-                        _ => return Err(Error::ExpressionUnexpectedType(ty.clone())),
+        for data in value.destruct(ty).post_order_iter() {
+            let (value, ty) = match data.node {
+                Destructor::Ok { value, ty } => (value, ty),
+                Destructor::WrongType => return None,
+            };
+            let size = data.node.n_children();
+            match ty.as_inner() {
+                TypeInner::Boolean => {
+                    let bit = destruct::as_bit(value)?;
+                    output.push(Self::from(bit));
+                }
+                TypeInner::UInt(ty) => {
+                    let integer = destruct::as_integer(value, *ty)?;
+                    output.push(Self::from(integer));
+                }
+                TypeInner::Tuple(..) => {
+                    let elements = output.split_off(output.len() - size);
+                    debug_assert_eq!(elements.len(), size);
+                    output.push(Self::tuple(elements));
+                }
+                TypeInner::Array(ty, _) => {
+                    let elements = output.split_off(output.len() - size);
+                    debug_assert_eq!(elements.len(), size);
+                    output.push(Self::array(elements, ty.as_ref().clone()));
+                }
+                TypeInner::List(ty, bound) => {
+                    let elements = output.split_off(output.len() - size);
+                    debug_assert_eq!(elements.len(), size);
+                    output.push(Self::list(elements, ty.as_ref().clone(), *bound));
+                }
+                TypeInner::Either(ty_l, ty_r) => {
+                    let val = output.pop().unwrap();
+                    match destruct::as_either(value).expect("parent is type-checked") {
+                        Either::Left(..) => output.push(Self::left(val, ty_r.as_ref().clone())),
+                        Either::Right(..) => output.push(Self::right(ty_l.as_ref().clone(), val)),
                     }
                 }
-                Task::MakeLeft(right) => {
-                    let left = output.pop().unwrap();
-                    output.push(Value::left(left, right));
-                }
-                Task::MakeRight(left) => {
-                    let right = output.pop().unwrap();
-                    output.push(Value::right(left, right));
-                }
-                Task::MakeSome => {
-                    let inner = output.pop().unwrap();
-                    output.push(Value::some(inner));
-                }
-                Task::MakeTuple(size) => {
-                    let components = output.split_off(output.len() - size);
-                    debug_assert_eq!(components.len(), size);
-                    output.push(Value::tuple(components));
-                }
-                Task::MakeArray(size, ty) => {
-                    let elements = output.split_off(output.len() - size);
-                    debug_assert_eq!(elements.len(), size);
-                    output.push(Value::array(elements, ty));
-                }
-                Task::MakeList(size, ty, bound) => {
-                    let elements = output.split_off(output.len() - size);
-                    debug_assert_eq!(elements.len(), size);
-                    output.push(Value::list(elements, ty, bound));
+                TypeInner::Option(ty_r) => {
+                    match destruct::as_option(value).expect("parent is type-checked") {
+                        None => output.push(Self::none(ty_r.as_ref().clone())),
+                        Some(..) => {
+                            let val_r = output.pop().unwrap();
+                            output.push(Self::some(val_r));
+                        }
+                    }
                 }
             }
         }
-
         debug_assert_eq!(output.len(), 1);
-        Ok(output.pop().unwrap())
+        output.pop()
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl crate::ArbitraryOfType for Value {
+    type Type = ResolvedType;
+
+    fn arbitrary_of_type(
+        u: &mut arbitrary::Unstructured,
+        ty: &Self::Type,
+    ) -> arbitrary::Result<Self> {
+        use arbitrary::Arbitrary;
+
+        match ty.as_inner() {
+            TypeInner::Boolean => bool::arbitrary(u).map(Self::from),
+            TypeInner::UInt(ty_int) => UIntValue::arbitrary_of_type(u, ty_int).map(Self::from),
+            TypeInner::Either(ty_l, ty_r) => match u.int_in_range(0..=1)? {
+                0 => Self::arbitrary_of_type(u, ty_l)
+                    .map(|val_l| Self::left(val_l, ty_r.as_ref().clone())),
+                1 => Self::arbitrary_of_type(u, ty_r)
+                    .map(|val_r| Self::right(ty_l.as_ref().clone(), val_r)),
+                _ => unreachable!(),
+            },
+            TypeInner::Option(ty_r) => match u.int_in_range(0..=1)? {
+                0 => Ok(Self::none(ty_r.as_ref().clone())),
+                1 => Self::arbitrary_of_type(u, ty_r).map(Self::some),
+                _ => unreachable!(),
+            },
+            TypeInner::Tuple(tys) => {
+                let components = tys
+                    .iter()
+                    .map(|ty| Self::arbitrary_of_type(u, ty))
+                    .collect::<arbitrary::Result<Vec<Self>>>()?;
+                Ok(Self::tuple(components))
+            }
+            TypeInner::Array(ty, size) => {
+                let elements = (0..*size)
+                    .map(|_| Self::arbitrary_of_type(u, ty))
+                    .collect::<arbitrary::Result<Vec<Self>>>()?;
+                Ok(Self::array(elements, ty.as_ref().clone()))
+            }
+            TypeInner::List(ty, bound) => {
+                let size = u.int_in_range(0..=bound.get().saturating_sub(1))?;
+                let elements = (0..size)
+                    .map(|_| Self::arbitrary_of_type(u, ty))
+                    .collect::<arbitrary::Result<Vec<Self>>>()?;
+                Ok(Self::list(elements, ty.as_ref().clone(), *bound))
+            }
+        }
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for Value {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        use crate::ArbitraryOfType;
+
+        let ty = ResolvedType::arbitrary(u)?;
+        Self::arbitrary_of_type(u, &ty)
     }
 }
 
@@ -848,22 +899,27 @@ impl ValueConstructible for StructuralValue {
         bound: NonZeroPow2Usize,
     ) -> Self {
         let elements: Vec<Self> = elements.into_iter().collect();
-        assert!(bound.get() <= elements.len(), "Too many elements");
+        assert!(
+            elements.len() < bound.get(),
+            "There must be fewer list elements than the bound {bound}"
+        );
         for element in elements.iter() {
             assert!(
                 element.is_of_type(&ty),
                 "Element {element} is not of expected type {ty}"
             );
         }
-        let partition = Partition::from_slice(&elements, bound.get() / 2);
-        let process = |block: &[Self]| -> Self {
+        let partition = Partition::from_slice(&elements, bound);
+        let process = |block: &[Self], size: usize| -> Self {
             let tree = BTreeSlice::from_slice(block);
             match tree.fold(Self::product) {
                 Some(array) => Self::some(array),
-                None => Self::none(StructuralType::array(ty.clone(), block.len())),
+                None => Self::none(StructuralType::array(ty.clone(), size)),
             }
         };
-        partition.fold(process, Self::product)
+        let ret = partition.fold(process, Self::product);
+        debug_assert!(ret.is_of_type(&StructuralType::list(ty, bound)));
+        ret
     }
 }
 
@@ -949,13 +1005,183 @@ impl StructuralValue {
     pub fn is_of_type(&self, ty: &StructuralType) -> bool {
         self.as_ref().is_of_type(ty.as_ref())
     }
+
+    fn destruct<'a>(&'a self, ty: &'a ResolvedType) -> Destructor<'a> {
+        Destructor::Ok {
+            value: self.as_ref(),
+            ty,
+        }
+    }
+}
+
+/// An iterator over the contents of a Simplicity value in terms of a Simfony type.
+///
+/// ## Examples
+///
+/// A Simfony array is a nested Simplicity product.
+/// The destructor allows simple iteration over all array elements.
+///
+/// A Simfony list is a nested Simplicity product _(partition)_
+/// of options of more products _(blocks)_.
+/// The destructor allows simple iteration over all list elements.
+///
+/// ## Lazy type checking
+///
+/// The destructor creates a tree of Simplicity value-Simfony type pairs.
+/// The Simfony type dictates whether the node has children.
+/// Parent nodes are type-checked. Leaf nodes are not type-checked.
+///
+/// The destructor tries to destruct the Simplicity value into child values.
+/// If destructing fails, then a single `Destructor::WrongType` leaf is created instead.
+/// This leaf signifies that the entire tree is ill-typed and that the original Simplicity value
+/// was not of the given Simfony type.`Destructor::WrongType` leaves, if there are any,
+/// should appear early during post-order iteration, enabling early termination.
+///
+/// The leaf values (Boolean, unsigned integer, empty tuple, empty array) are not checked.
+/// Extraction of actual Simfony values (Boolean, unsigned integer, ...)
+/// from the leaf Simplicity values may fail, in which case the entire tree is, again, ill-typed.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+enum Destructor<'a> {
+    Ok {
+        value: &'a SimValue,
+        ty: &'a ResolvedType,
+    },
+    WrongType,
+}
+
+impl<'a> Destructor<'a> {
+    /// Create a destructor for the given Simplicity `value` and the given Simfony type.
+    pub const fn new(value: &'a SimValue, ty: &'a ResolvedType) -> Self {
+        Self::Ok { value, ty }
+    }
+
+    const fn new_pair((value, ty): (&'a SimValue, &'a ResolvedType)) -> Self {
+        Self::Ok { value, ty }
+    }
+}
+
+impl<'a> TreeLike for Destructor<'a> {
+    fn as_node(&self) -> Tree<Self> {
+        let (value, ty) = match self {
+            Self::Ok { value, ty } => (value, ty),
+            Self::WrongType => return Tree::Nullary,
+        };
+        match ty.as_inner() {
+            TypeInner::Boolean | TypeInner::UInt(..) => Tree::Nullary,
+            TypeInner::Either(ty_l, ty_r) => match destruct::as_either(value) {
+                Some(Either::Left(val_l)) => Tree::Unary(Self::new(val_l, ty_l)),
+                Some(Either::Right(val_r)) => Tree::Unary(Self::new(val_r, ty_r)),
+                None => Tree::Unary(Self::WrongType),
+            },
+            TypeInner::Option(ty_r) => match destruct::as_option(value) {
+                Some(None) => Tree::Nullary,
+                Some(Some(val_r)) => Tree::Unary(Self::new(val_r, ty_r)),
+                None => Tree::Unary(Self::WrongType),
+            },
+            TypeInner::Tuple(tys) => match destruct::as_tuple(value, tys.len()) {
+                Some(elements) => Tree::Nary(
+                    elements
+                        .into_iter()
+                        .zip(tys.iter().map(Arc::as_ref))
+                        .map(Destructor::new_pair)
+                        .collect(),
+                ),
+                None => Tree::Unary(Self::WrongType),
+            },
+            TypeInner::Array(ty, size) => match destruct::as_array(value, *size) {
+                Some(elements) => Tree::Nary(
+                    elements
+                        .into_iter()
+                        .zip(std::iter::repeat(ty.as_ref()))
+                        .map(Destructor::new_pair)
+                        .collect(),
+                ),
+                None => Tree::Unary(Self::WrongType),
+            },
+            TypeInner::List(ty, bound) => match destruct::as_list(value, *bound) {
+                Some(elements) => Tree::Nary(
+                    elements
+                        .into_iter()
+                        .zip(std::iter::repeat(ty.as_ref()))
+                        .map(Destructor::new_pair)
+                        .collect(),
+                ),
+                None => Tree::Unary(Self::WrongType),
+            },
+        }
+    }
+}
+
+/// Functions for destructing Simplicity values alongside Simfony types.
+mod destruct {
+    use super::*;
+
+    pub fn as_bit(value: &SimValue) -> Option<bool> {
+        match value.as_left() {
+            Some(unit) if unit.is_unit() => Some(false),
+            _ => match value.as_right() {
+                Some(unit) if unit.is_unit() => Some(true),
+                _ => None,
+            },
+        }
+    }
+
+    pub fn as_integer(value: &SimValue, ty: UIntType) -> Option<UIntValue> {
+        let bit_len = ty.bit_width().get();
+        let unfolder = Unfolder::new(value, bit_len);
+        let bit_values = unfolder.unfold(SimValue::as_product)?;
+        let (bytes, written_bits) = bit_values.into_iter().filter_map(as_bit).collect_bits();
+        if bit_len != written_bits {
+            return None;
+        }
+        match bit_len {
+            1 => Some(UIntValue::U1(bytes[0] >> 7)),
+            2 => Some(UIntValue::U2(bytes[0] >> 6)),
+            4 => Some(UIntValue::U4(bytes[0] >> 4)),
+            8 | 16 | 32 | 64 | 128 | 256 => {
+                Some(UIntValue::try_from(bytes.as_slice()).expect("Enough bytes"))
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_tuple(value: &SimValue, size: usize) -> Option<Vec<&SimValue>> {
+        Unfolder::new(value, size).unfold(SimValue::as_product)
+    }
+
+    pub fn as_array(value: &SimValue, size: usize) -> Option<Vec<&SimValue>> {
+        Unfolder::new(value, size).unfold(SimValue::as_product)
+    }
+
+    pub fn as_list<'a>(value: &'a SimValue, bound: NonZeroPow2Usize) -> Option<Vec<&'a SimValue>> {
+        let as_block = |value: &'a SimValue, size: usize| match as_option(value) {
+            Some(Some(folded)) => as_array(folded, size),
+            Some(None) => Some(vec![]),
+            None => None,
+        };
+        Combiner::new(value, bound).unfold(as_block, SimValue::as_product)
+    }
+
+    pub fn as_either(value: &SimValue) -> Option<Either<&SimValue, &SimValue>> {
+        match value.as_left() {
+            Some(inner) => Some(Either::Left(inner)),
+            None => value.as_right().map(Either::Right),
+        }
+    }
+
+    pub fn as_option(value: &SimValue) -> Option<Option<&SimValue>> {
+        match value.as_left() {
+            Some(inner) if inner.is_unit() => Some(None),
+            _ => value.as_right().map(Some),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parse::{self, ParseFromStr};
     use crate::types::{StructuralType, TypeConstructible};
-    use parse::ParseFromStr;
 
     #[test]
     fn display_value() {
@@ -1036,8 +1262,9 @@ mod tests {
         ];
 
         for (string, ty, expected_value) in string_ty_value {
-            let expr = parse::Expression::parse_from_str(string).unwrap();
-            let parsed_value = Value::from_const_expr(&expr, &ty).unwrap();
+            let parse_expr = parse::Expression::parse_from_str(string).unwrap();
+            let ast_expr = ast::Expression::analyze_const(&parse_expr, &ty).unwrap();
+            let parsed_value = Value::from_const_expr(&ast_expr).unwrap();
             assert_eq!(parsed_value, expected_value);
             assert!(parsed_value.is_of_type(&ty));
         }

@@ -153,12 +153,15 @@ impl<'de> de::Visitor<'de> for ValueMapVisitor {
             Some(s) => ResolvedType::parse_from_str(s).map_err(de::Error::custom)?,
             None => return Err(de::Error::missing_field("type")),
         };
-        let expression = match value {
+        let expr = match value {
             Some(s) => parse::Expression::parse_from_str(s).map_err(de::Error::custom)?,
             None => return Err(de::Error::missing_field("value")),
         };
+        let expr = ast::Expression::analyze_const(&expr, &ty).map_err(de::Error::custom)?;
 
-        Value::from_const_expr(&expression, &ty).map_err(de::Error::custom)
+        Value::from_const_expr(&expr)
+            .ok_or(Error::ExpressionNotConstant)
+            .map_err(de::Error::custom)
     }
 }
 
