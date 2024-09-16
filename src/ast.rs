@@ -259,10 +259,12 @@ pub enum CallName {
     IsNone(ResolvedType),
     /// [`Option::unwrap`].
     Unwrap,
-    /// [`assert`].
+    /// [`assert!`].
     Assert,
-    /// [`panic`] without error message.
+    /// [`panic!`] without error message.
     Panic,
+    /// [`dbg!`].
+    Debug,
     /// Cast from the given source type.
     TypeCast(ResolvedType),
     /// A custom function that was defined previously.
@@ -1070,6 +1072,14 @@ impl AbstractSyntaxTree for Call {
                 scope.track_call(from, TrackedCallName::Panic);
                 analyze_arguments(from.args(), &args_tys, scope)?
             }
+            CallName::Debug => {
+                let args_tys = [ty.clone()];
+                check_argument_types(from.args(), &args_tys).with_span(from)?;
+                let args = analyze_arguments(from.args(), &args_tys, scope)?;
+                let [arg_ty] = args_tys;
+                scope.track_call(from.args().first().unwrap(), TrackedCallName::Debug(arg_ty));
+                args
+            }
             CallName::TypeCast(source) => {
                 if StructuralType::from(&source) != StructuralType::from(ty) {
                     return Err(Error::InvalidCast(source, ty.clone())).with_span(from);
@@ -1176,6 +1186,7 @@ impl AbstractSyntaxTree for CallName {
             parse::CallName::Unwrap => Ok(Self::Unwrap),
             parse::CallName::Assert => Ok(Self::Assert),
             parse::CallName::Panic => Ok(Self::Panic),
+            parse::CallName::Debug => Ok(Self::Debug),
             parse::CallName::TypeCast(target) => {
                 scope.resolve(target).map(Self::TypeCast).with_span(from)
             }

@@ -177,10 +177,12 @@ pub enum CallName {
     Unwrap,
     /// [`Option::is_none`].
     IsNone(AliasedType),
-    /// [`assert`].
+    /// [`assert!`].
     Assert,
-    /// [`panic`] without error message.
+    /// [`panic!`] without error message.
     Panic,
+    /// [`dbg!`].
+    Debug,
     /// Cast from the given source type.
     TypeCast(AliasedType),
     /// Name of a custom function.
@@ -671,6 +673,7 @@ impl fmt::Display for CallName {
             CallName::IsNone(ty) => write!(f, "is_none::<{ty}>"),
             CallName::Assert => write!(f, "assert!"),
             CallName::Panic => write!(f, "panic!"),
+            CallName::Debug => write!(f, "dbg!"),
             CallName::TypeCast(ty) => write!(f, "<{ty}>::into"),
             CallName::Custom(name) => write!(f, "{name}"),
             CallName::Fold(name, bound) => write!(f, "fold::<{name}, {bound}>"),
@@ -943,6 +946,7 @@ impl PestParse for CallName {
             Rule::unwrap => Ok(Self::Unwrap),
             Rule::assert => Ok(Self::Assert),
             Rule::panic => Ok(Self::Panic),
+            Rule::debug => Ok(Self::Debug),
             Rule::type_cast => {
                 let inner = pair.into_inner().next().unwrap();
                 AliasedType::parse(inner).map(Self::TypeCast)

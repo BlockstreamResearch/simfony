@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use either::Either;
 use simplicity::Cmr;
 
 use crate::error::Span;
@@ -29,6 +30,7 @@ pub enum TrackedCallName {
     UnwrapLeft(ResolvedType),
     UnwrapRight(ResolvedType),
     Unwrap,
+    Debug(ResolvedType),
 }
 
 /// Fallible call expression with runtime input value.
@@ -47,6 +49,13 @@ pub enum FallibleCallName {
     UnwrapLeft(Value),
     UnwrapRight(Value),
     Unwrap,
+}
+
+/// Debug expression with runtime input value.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct DebugValue {
+    text: Arc<str>,
+    value: Value,
 }
 
 impl DebugSymbols {
@@ -100,10 +109,12 @@ impl TrackedCall {
     }
 
     /// Supply the Simplicity input value of the call expression at runtime.
+    /// Convert the debug call into a fallible call or into a debug value,
+    /// depending on the kind of debug symbol.
     ///
     /// Return `None` if the Simplicity input value is of the wrong type,
     /// according to the debug symbol.
-    pub fn map_value(&self, value: &StructuralValue) -> Option<FallibleCall> {
+    pub fn map_value(&self, value: &StructuralValue) -> Option<Either<FallibleCall, DebugValue>> {
         let name = match self.name() {
             TrackedCallName::Assert => FallibleCallName::Assert,
             TrackedCallName::Panic => FallibleCallName::Panic,
@@ -115,11 +126,19 @@ impl TrackedCall {
                 Value::reconstruct(value, ty).map(FallibleCallName::UnwrapRight)?
             }
             TrackedCallName::Unwrap => FallibleCallName::Unwrap,
+            TrackedCallName::Debug(ty) => {
+                return Value::reconstruct(value, ty)
+                    .map(|value| DebugValue {
+                        text: Arc::clone(&self.text),
+                        value,
+                    })
+                    .map(Either::Right)
+            }
         };
-        Some(FallibleCall {
+        Some(Either::Left(FallibleCall {
             text: Arc::clone(&self.text),
             name,
-        })
+        }))
     }
 }
 
@@ -132,5 +151,17 @@ impl FallibleCall {
     /// Access the name of the call.
     pub fn name(&self) -> &FallibleCallName {
         &self.name
+    }
+}
+
+impl DebugValue {
+    /// Access the Simfony text of the debug expression.
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    /// Access the runtime input value.
+    pub fn value(&self) -> &Value {
+        &self.value
     }
 }
