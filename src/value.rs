@@ -47,6 +47,8 @@ impl fmt::Debug for UIntValue {
 
 impl fmt::Display for UIntValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use hex_conservative::DisplayHex;
+
         match self {
             UIntValue::U1(n) => <u8 as fmt::Display>::fmt(n, f),
             UIntValue::U2(n) => <u8 as fmt::Display>::fmt(n, f),
@@ -55,8 +57,8 @@ impl fmt::Display for UIntValue {
             UIntValue::U16(n) => <u16 as fmt::Display>::fmt(n, f),
             UIntValue::U32(n) => <u32 as fmt::Display>::fmt(n, f),
             UIntValue::U64(n) => <u64 as fmt::Display>::fmt(n, f),
-            UIntValue::U128(n) => <u128 as fmt::Display>::fmt(n, f),
-            UIntValue::U256(n) => <U256 as fmt::Display>::fmt(n, f),
+            UIntValue::U128(n) => write!(f, "{}", n.to_be_bytes().as_hex()),
+            UIntValue::U256(n) => write!(f, "{}", n.as_ref().as_hex()),
         }
     }
 }
@@ -819,6 +821,12 @@ impl AsRef<SimValue> for StructuralValue {
 impl From<StructuralValue> for SimValue {
     fn from(value: StructuralValue) -> Self {
         value.0
+    }
+}
+
+impl From<SimValue> for StructuralValue {
+    fn from(value: SimValue) -> Self {
+        Self(value)
     }
 }
 

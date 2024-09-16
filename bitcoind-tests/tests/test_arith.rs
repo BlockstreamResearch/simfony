@@ -43,7 +43,7 @@ pub fn test_simplicity(cl: &ElementsD, program_file: &str, witness_file: &str) {
     let program_text = std::fs::read_to_string(program_path).unwrap();
     let witness_text = std::fs::read_to_string(witness_path).unwrap();
     let witness_values = serde_json::from_str::<WitnessValues>(&witness_text).unwrap();
-    let program = simfony::satisfy(&program_text, &witness_values).unwrap();
+    let program = simfony::satisfy(&program_text, &witness_values).unwrap().simplicity;
 
     let secp = secp256k1::Secp256k1::new();
     let internal_key = XOnlyPublicKey::from_str("f5919fa64ce45f8306849072b26c1bfdd2937e6b81774796ff372bd1eb5362d2").unwrap();

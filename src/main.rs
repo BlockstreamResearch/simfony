@@ -38,7 +38,7 @@ fn run() -> Result<(), String> {
         let witness = serde_json::from_str::<WitnessValues>(&wit_text).unwrap();
 
         let program = satisfy(&prog_text, &witness)?;
-        let (program_bytes, witness_bytes) = program.encode_to_vec();
+        let (program_bytes, witness_bytes) = program.simplicity.encode_to_vec();
         println!(
             "Program:\n{}",
             Base64Display::new(&program_bytes, &STANDARD)

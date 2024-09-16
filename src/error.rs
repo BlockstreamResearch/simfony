@@ -2,7 +2,8 @@ use std::fmt;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use simplicity::elements;
+use simplicity::hashes::{sha256, Hash, HashEngine};
+use simplicity::{elements, Cmr};
 
 use crate::parse::{MatchPattern, Rule};
 use crate::str::{FunctionName, Identifier, JetName, WitnessName};
@@ -88,6 +89,45 @@ impl Span {
     /// Check if the span covers more than one line.
     pub const fn is_multiline(&self) -> bool {
         self.start.line.get() < self.end.line.get()
+    }
+
+    /// Return the CMR of the span.
+    pub fn cmr(&self) -> Cmr {
+        let mut hasher = sha256::HashEngine::default();
+        hasher.input(&self.start.line.get().to_be_bytes());
+        hasher.input(&self.start.col.get().to_be_bytes());
+        hasher.input(&self.end.line.get().to_be_bytes());
+        hasher.input(&self.end.col.get().to_be_bytes());
+        let hash = sha256::Hash::from_engine(hasher);
+        Cmr::from_byte_array(hash.to_byte_array())
+    }
+
+    /// Return a slice from the given `file` that corresponds to the span.
+    ///
+    /// Return `None` if the span runs out of bounds.
+    pub fn to_slice<'a>(&self, file: &'a str) -> Option<&'a str> {
+        let mut current_line = 1;
+        let mut current_col = 1;
+        let mut start_index = None;
+
+        for (i, c) in file.char_indices() {
+            if current_line == self.start.line.get() && current_col == self.start.col.get() {
+                start_index = Some(i);
+            }
+            if current_line == self.end.line.get() && current_col == self.end.col.get() {
+                let start_index = start_index.expect("start comes before end");
+                let end_index = i;
+                return Some(&file[start_index..end_index]);
+            }
+            if c == '\n' {
+                current_line += 1;
+                current_col = 1;
+            } else {
+                current_col += 1;
+            }
+        }
+
+        None
     }
 }
 

@@ -5,6 +5,7 @@ pub type ProgNode = Arc<named::ConstructNode>;
 pub mod array;
 pub mod ast;
 pub mod compile;
+pub mod debug;
 pub mod dummy_env;
 pub mod error;
 pub mod jet;
@@ -24,6 +25,7 @@ use simplicity::{jet::Elements, CommitNode, RedeemNode};
 pub extern crate simplicity;
 pub use simplicity::elements;
 
+use crate::debug::DebugSymbols;
 use crate::error::WithFile;
 use crate::parse::ParseFromStr;
 use crate::witness::WitnessValues;
@@ -37,10 +39,16 @@ pub fn compile(prog_text: &str) -> Result<Arc<CommitNode<Elements>>, String> {
     Ok(simplicity_commit)
 }
 
-pub fn satisfy(
-    prog_text: &str,
-    witness: &WitnessValues,
-) -> Result<Arc<RedeemNode<Elements>>, String> {
+/// A satisfied Simfony program, compiled to Simplicity.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SatisfiedProgram {
+    /// Simplicity target code, including witness data.
+    pub simplicity: Arc<RedeemNode<Elements>>,
+    /// Debug symbols for the Simplicity target code.
+    pub debug_symbols: DebugSymbols,
+}
+
+pub fn satisfy(prog_text: &str, witness: &WitnessValues) -> Result<SatisfiedProgram, String> {
     let parse_program = parse::Program::parse_from_str(prog_text)?;
     let ast_program = ast::Program::analyze(&parse_program).with_file(prog_text)?;
     let simplicity_named_construct = ast_program.compile().with_file(prog_text)?;
@@ -49,7 +57,12 @@ pub fn satisfy(
         .map_err(|e| e.to_string())?;
 
     let simplicity_witness = named::to_witness_node(&simplicity_named_construct, witness);
-    simplicity_witness.finalize().map_err(|e| e.to_string())
+    let simplicity_redeem = simplicity_witness.finalize().map_err(|e| e.to_string())?;
+
+    Ok(SatisfiedProgram {
+        simplicity: simplicity_redeem,
+        debug_symbols: ast_program.debug_symbols(prog_text),
+    })
 }
 
 /// Recursively implement [`PartialEq`], [`Eq`] and [`std::hash::Hash`]
@@ -158,12 +171,12 @@ mod tests {
         }
 
         pub fn with_witness_values(self, witness_values: &WitnessValues) -> TestCase<Compiled> {
-            let redeem_program = match satisfy(self.program.0.as_ref(), witness_values) {
+            let program = match satisfy(self.program.0.as_ref(), witness_values) {
                 Ok(x) => x,
                 Err(error) => panic!("{error}"),
             };
             TestCase {
-                program: Compiled(redeem_program),
+                program: Compiled(program.simplicity),
                 lock_time: self.lock_time,
                 sequence: self.sequence,
             }
