@@ -2,7 +2,8 @@ use std::fmt;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use simplicity::elements;
+use simplicity::hashes::{sha256, Hash, HashEngine};
+use simplicity::{elements, Cmr};
 
 use crate::parse::{MatchPattern, Rule};
 use crate::str::{FunctionName, Identifier, JetName, WitnessName};
@@ -88,6 +89,17 @@ impl Span {
     /// Check if the span covers more than one line.
     pub const fn is_multiline(&self) -> bool {
         self.start.line.get() < self.end.line.get()
+    }
+
+    /// Return the CMR of the span.
+    pub fn cmr(&self) -> Cmr {
+        let mut hasher = sha256::HashEngine::default();
+        hasher.input(&self.start.line.get().to_be_bytes());
+        hasher.input(&self.start.col.get().to_be_bytes());
+        hasher.input(&self.end.line.get().to_be_bytes());
+        hasher.input(&self.end.col.get().to_be_bytes());
+        let hash = sha256::Hash::from_engine(hasher);
+        Cmr::from_byte_array(hash.to_byte_array())
     }
 }
 

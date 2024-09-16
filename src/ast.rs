@@ -7,6 +7,7 @@ use either::Either;
 use miniscript::iter::{Tree, TreeLike};
 use simplicity::jet::Elements;
 
+use crate::debug::TrackedCallName;
 use crate::error::{Error, RichError, Span, WithSpan};
 use crate::num::{NonZeroPow2Usize, Pow2Usize};
 use crate::parse::MatchPattern;
@@ -37,6 +38,7 @@ impl DeclaredWitnesses {
 pub struct Program {
     main: Expression,
     witnesses: DeclaredWitnesses,
+    tracked_calls: Vec<(Span, TrackedCallName)>,
 }
 
 impl Program {
@@ -431,6 +433,7 @@ struct Scope {
     witnesses: HashMap<WitnessName, ResolvedType>,
     functions: HashMap<FunctionName, CustomFunction>,
     is_main: bool,
+    tracked_calls: Vec<(Span, TrackedCallName)>,
 }
 
 impl Scope {
@@ -544,11 +547,12 @@ impl Scope {
         }
     }
 
-    /// Consume the scope and return the map of witness names to their expected type.
+    /// Consume the scope and return its contents:
     ///
-    /// Use this map to finalize the Simfony program with witness values of the same type.
-    pub fn into_witnesses(self) -> HashMap<WitnessName, ResolvedType> {
-        self.witnesses
+    /// 1. The map that assigns witness names to their expected type.
+    /// 2. The list of tracked function calls.
+    pub fn destruct(self) -> (DeclaredWitnesses, Vec<(Span, TrackedCallName)>) {
+        (DeclaredWitnesses(self.witnesses), self.tracked_calls)
     }
 
     /// Insert a custom function into the global map.
@@ -573,6 +577,11 @@ impl Scope {
     /// Get the definition of a custom function.
     pub fn get_function(&self, name: &FunctionName) -> Option<&CustomFunction> {
         self.functions.get(name)
+    }
+
+    /// Track a call expression with its span.
+    pub fn track_call<S: AsRef<Span>>(&mut self, span: &S, name: TrackedCallName) {
+        self.tracked_calls.push((*span.as_ref(), name));
     }
 }
 
@@ -599,7 +608,7 @@ impl Program {
             .map(|s| Item::analyze(s, &unit, &mut scope))
             .collect::<Result<Vec<Item>, RichError>>()?;
         debug_assert!(scope.is_topmost());
-        let witnesses = DeclaredWitnesses(scope.into_witnesses());
+        let (witnesses, tracked_calls) = scope.destruct();
 
         let mut mains = items
             .into_iter()
@@ -617,7 +626,11 @@ impl Program {
             }
         };
 
-        Ok(Self { main, witnesses })
+        Ok(Self {
+            main,
+            witnesses,
+            tracked_calls,
+        })
     }
 }
 
@@ -1001,17 +1014,24 @@ impl AbstractSyntaxTree for Call {
                     .map_err(Error::UndefinedAlias)
                     .with_span(from)?;
                 check_output_type(&out_ty, ty).with_span(from)?;
+                scope.track_call(from, TrackedCallName::Jet);
                 analyze_arguments(from.args(), &args_tys, scope)?
             }
             CallName::UnwrapLeft(right_ty) => {
                 let args_tys = [ResolvedType::either(ty.clone(), right_ty)];
                 check_argument_types(from.args(), &args_tys).with_span(from)?;
-                analyze_arguments(from.args(), &args_tys, scope)?
+                let args = analyze_arguments(from.args(), &args_tys, scope)?;
+                let [arg_ty] = args_tys;
+                scope.track_call(from, TrackedCallName::UnwrapLeft(arg_ty));
+                args
             }
             CallName::UnwrapRight(left_ty) => {
                 let args_tys = [ResolvedType::either(left_ty, ty.clone())];
                 check_argument_types(from.args(), &args_tys).with_span(from)?;
-                analyze_arguments(from.args(), &args_tys, scope)?
+                let args = analyze_arguments(from.args(), &args_tys, scope)?;
+                let [arg_ty] = args_tys;
+                scope.track_call(from, TrackedCallName::UnwrapRight(arg_ty));
+                args
             }
             CallName::IsNone(some_ty) => {
                 let args_tys = [ResolvedType::option(some_ty)];
@@ -1023,6 +1043,7 @@ impl AbstractSyntaxTree for Call {
             CallName::Unwrap => {
                 let args_tys = [ResolvedType::option(ty.clone())];
                 check_argument_types(from.args(), &args_tys).with_span(from)?;
+                scope.track_call(from, TrackedCallName::Unwrap);
                 analyze_arguments(from.args(), &args_tys, scope)?
             }
             CallName::Assert => {
@@ -1030,12 +1051,14 @@ impl AbstractSyntaxTree for Call {
                 check_argument_types(from.args(), &args_tys).with_span(from)?;
                 let out_ty = ResolvedType::unit();
                 check_output_type(&out_ty, ty).with_span(from)?;
+                scope.track_call(from, TrackedCallName::Assert);
                 analyze_arguments(from.args(), &args_tys, scope)?
             }
             CallName::Panic => {
                 let args_tys = [];
                 check_argument_types(from.args(), &args_tys).with_span(from)?;
                 // panic! allows every output type because it will never return anything
+                scope.track_call(from, TrackedCallName::Panic);
                 analyze_arguments(from.args(), &args_tys, scope)?
             }
             CallName::TypeCast(source) => {

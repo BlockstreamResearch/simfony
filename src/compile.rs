@@ -12,7 +12,7 @@ use crate::ast::{
     Call, CallName, Expression, ExpressionInner, Match, Program, SingleExpression,
     SingleExpressionInner, Statement,
 };
-use crate::error::{Error, RichError, WithSpan};
+use crate::error::{Error, RichError, Span, WithSpan};
 use crate::named::{CoreExt, PairBuilder};
 use crate::num::{NonZeroPow2Usize, Pow2Usize};
 use crate::pattern::{BasePattern, Pattern};
@@ -286,35 +286,63 @@ impl Call {
         let args_ast = SingleExpression::tuple(self.args().clone(), *self.as_ref());
         let args = args_ast.compile(scope)?;
 
+        // Attach a debug symbol to the function body.
+        // This debug symbol can be used by the Simplicity runtime to print the call arguments
+        // during execution.
+        //
+        // The debug symbol is attached in such a way that a Simplicity runtime without support
+        // for debug symbols will simply ignore it. The semantics of the program remain unchanged.
+        fn with_debug_symbol<S: AsRef<Span>>(
+            args: PairBuilder<ProgNode>,
+            body: &ProgNode,
+            scope: &mut Scope,
+            span: &S,
+        ) -> Result<PairBuilder<ProgNode>, RichError> {
+            let false_and_args = ProgNode::bit(scope.ctx(), false).pair(args);
+            let nop_assert = ProgNode::assertl_drop(body, span.as_ref().cmr());
+            false_and_args.comp(&nop_assert).with_span(span)
+        }
+
         match self.name() {
             CallName::Jet(name) => {
                 let jet = ProgNode::jet(scope.ctx(), *name);
-                args.comp(&jet).with_span(self)
+                with_debug_symbol(args, &jet, scope, self)
             }
             CallName::UnwrapLeft(..) => {
-                let left_and_unit = args.pair(PairBuilder::unit(scope.ctx()));
-                let fail_cmr = Cmr::fail(FailEntropy::ZERO);
-                let get_inner = ProgNode::assertl_take(&ProgNode::iden(scope.ctx()), fail_cmr);
-                left_and_unit.comp(&get_inner).with_span(self)
+                let input_and_unit =
+                    PairBuilder::iden(scope.ctx()).pair(PairBuilder::unit(scope.ctx()));
+                let extract_inner = ProgNode::assertl_take(
+                    &ProgNode::iden(scope.ctx()),
+                    Cmr::fail(FailEntropy::ZERO),
+                );
+                let body = input_and_unit.comp(&extract_inner).with_span(self)?;
+                with_debug_symbol(args, body.as_ref(), scope, self)
             }
             CallName::UnwrapRight(..) | CallName::Unwrap => {
-                let right_and_unit = args.pair(PairBuilder::unit(scope.ctx()));
-                let fail_cmr = Cmr::fail(FailEntropy::ZERO);
-                let get_inner = ProgNode::assertr_take(fail_cmr, &ProgNode::iden(scope.ctx()));
-                right_and_unit.comp(&get_inner).with_span(self)
+                let input_and_unit =
+                    PairBuilder::iden(scope.ctx()).pair(PairBuilder::unit(scope.ctx()));
+                let extract_inner = ProgNode::assertr_take(
+                    Cmr::fail(FailEntropy::ZERO),
+                    &ProgNode::iden(scope.ctx()),
+                );
+                let body = input_and_unit.comp(&extract_inner).with_span(self)?;
+                with_debug_symbol(args, body.as_ref(), scope, self)
             }
             CallName::IsNone(..) => {
-                let sum_and_unit = args.pair(PairBuilder::unit(scope.ctx()));
+                let input_and_unit =
+                    PairBuilder::iden(scope.ctx()).pair(PairBuilder::unit(scope.ctx()));
                 let is_right = ProgNode::case_true_false(scope.ctx());
-                sum_and_unit.comp(&is_right).with_span(self)
+                let body = input_and_unit.comp(&is_right).with_span(self)?;
+                args.comp(&body).with_span(self)
             }
             CallName::Assert => {
                 let jet = ProgNode::jet(scope.ctx(), Elements::Verify);
-                args.comp(&jet).with_span(self)
+                with_debug_symbol(args, &jet, scope, self)
             }
             CallName::Panic => {
                 // panic! ignores its arguments
-                Ok(PairBuilder::fail(scope.ctx(), FailEntropy::ZERO))
+                let fail = ProgNode::fail(scope.ctx(), FailEntropy::ZERO);
+                with_debug_symbol(args, &fail, scope, self)
             }
             CallName::TypeCast(..) => {
                 // A cast converts between two structurally equal types.
