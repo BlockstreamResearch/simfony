@@ -7,7 +7,7 @@ use either::Either;
 use miniscript::iter::{Tree, TreeLike};
 use simplicity::jet::Elements;
 
-use crate::debug::TrackedCallName;
+use crate::debug::{DebugSymbols, TrackedCallName};
 use crate::error::{Error, RichError, Span, WithSpan};
 use crate::num::{NonZeroPow2Usize, Pow2Usize};
 use crate::parse::MatchPattern;
@@ -52,6 +52,15 @@ impl Program {
     /// Access the map of declared witnesses.
     pub fn witnesses(&self) -> &DeclaredWitnesses {
         &self.witnesses
+    }
+
+    /// Access the debug symbols of the program.
+    pub fn debug_symbols(&self, file: &str) -> DebugSymbols {
+        let mut debug_symbols = DebugSymbols::default();
+        for (span, name) in self.tracked_calls.clone() {
+            debug_symbols.insert(span, name, file);
+        }
+        debug_symbols
     }
 }
 
