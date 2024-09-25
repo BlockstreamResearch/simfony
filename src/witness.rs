@@ -70,6 +70,20 @@ impl WitnessValues {
 
         Ok(())
     }
+
+    /// Create an iterator over all name-value pairs.
+    pub fn iter(&self) -> impl Iterator<Item = (&WitnessName, &Value)> {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for WitnessValues {
+    type Item = (WitnessName, Value);
+    type IntoIter = <BTreeMap<WitnessName, Value> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
 }
 
 impl ParseFromStr for ResolvedType {
