@@ -4,7 +4,7 @@ use std::fmt;
 
 use serde::{de, Deserialize, Deserializer};
 
-use crate::ast;
+use crate::ast::DeclaredWitnesses;
 use crate::error::{Error, RichError, WithFile, WithSpan};
 use crate::parse::ParseFromStr;
 use crate::str::WitnessName;
@@ -41,7 +41,7 @@ impl WitnessValues {
         }
     }
 
-    /// Check if the witness values are consistent with the witness types as declared in the program.
+    /// Check if the witness values are consistent with the declared witness types.
     ///
     /// 1. Values that occur in the program are type checked.
     /// 2. Values that don't occur in the program are skipped.
@@ -51,10 +51,9 @@ impl WitnessValues {
     /// in the witness map. These witnesses may lie on pruned branches that will not be part of the
     /// finalized Simplicity program. However, before the finalization, we cannot know which
     /// witnesses will be pruned and which won't be pruned. This check skips unassigned witnesses.
-    pub fn is_consistent(&self, program: &ast::Program) -> Result<(), Error> {
-        let declared = program.witnesses();
+    pub fn is_consistent(&self, witness_types: &DeclaredWitnesses) -> Result<(), Error> {
         for name in self.0.keys() {
-            let declared_ty = match declared.get(name) {
+            let declared_ty = match witness_types.get(name) {
                 Some(ty) => ty,
                 None => continue,
             };
@@ -212,8 +211,8 @@ impl<'de> Deserialize<'de> for WitnessName {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parse;
     use crate::value::ValueConstructible;
+    use crate::{ast, parse, CompiledProgram, SatisfiedProgram};
 
     #[test]
     fn witness_reuse() {
@@ -241,7 +240,7 @@ mod tests {
         let a = WitnessName::parse_from_str("a").unwrap();
         witness.insert(a, Value::u16(42)).unwrap();
 
-        match crate::satisfy(s, &witness) {
+        match SatisfiedProgram::new(s, &witness) {
             Ok(_) => panic!("Ill-typed witness assignment was falsely accepted"),
             Err(error) => assert_eq!(
                 "Witness `a` was declared with type `u32` but its assigned value is of type `u16`",
@@ -288,7 +287,7 @@ fn main() {
     assert!(jet::is_zero_32(f()));
 }"#;
 
-        match crate::compile(s) {
+        match CompiledProgram::new(s) {
             Ok(_) => panic!("Witness outside main was falsely accepted"),
             Err(error) => {
                 assert!(error

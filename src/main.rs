@@ -2,8 +2,8 @@ use base64::display::Base64Display;
 use base64::engine::general_purpose::STANDARD;
 
 use simfony::witness::WitnessValues;
-use simfony::{compile, satisfy};
 
+use simfony::CompiledProgram;
 use std::env;
 
 // Directly returning Result<(), String> prints the error using Debug
@@ -30,6 +30,7 @@ fn run() -> Result<(), String> {
     let prog_file = &args[1];
     let prog_path = std::path::Path::new(prog_file);
     let prog_text = std::fs::read_to_string(prog_path).map_err(|e| e.to_string())?;
+    let compiled = CompiledProgram::new(&prog_text)?;
 
     if args.len() >= 3 {
         let wit_file = &args[2];
@@ -37,8 +38,8 @@ fn run() -> Result<(), String> {
         let wit_text = std::fs::read_to_string(wit_path).map_err(|e| e.to_string())?;
         let witness = serde_json::from_str::<WitnessValues>(&wit_text).unwrap();
 
-        let program = satisfy(&prog_text, &witness)?;
-        let (program_bytes, witness_bytes) = program.simplicity.encode_to_vec();
+        let satisfied = compiled.satisfy(&witness)?;
+        let (program_bytes, witness_bytes) = satisfied.redeem().encode_to_vec();
         println!(
             "Program:\n{}",
             Base64Display::new(&program_bytes, &STANDARD)
@@ -48,9 +49,7 @@ fn run() -> Result<(), String> {
             Base64Display::new(&witness_bytes, &STANDARD)
         );
     } else {
-        // No second argument is provided. Just compile the program.
-        let program = compile(&prog_text)?;
-        let program_bytes = program.encode_to_vec();
+        let program_bytes = compiled.commit().encode_to_vec();
         println!(
             "Program:\n{}",
             Base64Display::new(&program_bytes, &STANDARD)

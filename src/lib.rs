@@ -25,44 +25,95 @@ use simplicity::{jet::Elements, CommitNode, RedeemNode};
 pub extern crate simplicity;
 pub use simplicity::elements;
 
+use crate::ast::DeclaredWitnesses;
 use crate::debug::DebugSymbols;
 use crate::error::WithFile;
 use crate::parse::ParseFromStr;
 use crate::witness::WitnessValues;
 
-pub fn compile(prog_text: &str) -> Result<Arc<CommitNode<Elements>>, String> {
-    let parse_program = parse::Program::parse_from_str(prog_text)?;
-    let ast_program = ast::Program::analyze(&parse_program).with_file(prog_text)?;
-    let simplicity_named_construct = ast_program.compile().with_file(prog_text)?;
-    let simplicity_commit = named::to_commit_node(&simplicity_named_construct)
-        .expect("Failed to set program source and target type to unit");
-    Ok(simplicity_commit)
+/// A Simfony program, compiled to Simplicity.
+#[derive(Clone, Debug)]
+pub struct CompiledProgram {
+    simplicity: ProgNode,
+    witness_types: DeclaredWitnesses,
+    debug_symbols: DebugSymbols,
 }
 
-/// A satisfied Simfony program, compiled to Simplicity.
+impl CompiledProgram {
+    /// Parse and compile a Simfony program from the given string.
+    ///
+    /// ## Errors
+    ///
+    /// The string is not a valid Simfony program.
+    pub fn new(s: &str) -> Result<Self, String> {
+        let parse_program = parse::Program::parse_from_str(s)?;
+        let ast_program = ast::Program::analyze(&parse_program).with_file(s)?;
+        let simplicity_named_construct = ast_program.compile().with_file(s)?;
+        Ok(Self {
+            simplicity: simplicity_named_construct,
+            witness_types: ast_program.witnesses().clone(),
+            debug_symbols: ast_program.debug_symbols(s),
+        })
+    }
+
+    /// Access the debug symbols for the Simplicity target code.
+    pub fn debug_symbols(&self) -> &DebugSymbols {
+        &self.debug_symbols
+    }
+
+    /// Access the Simplicity target code, without witness data.
+    pub fn commit(&self) -> Arc<CommitNode<Elements>> {
+        named::to_commit_node(&self.simplicity).expect("Compiled Simfony program has type 1 -> 1")
+    }
+
+    /// Satisfy the Simfony program with the given `witness_values`.
+    ///
+    /// ## Errors
+    ///
+    /// - Witness values have a different type than declared in the Simfony program.
+    /// - There are missing witness values.
+    pub fn satisfy(&self, witness_values: &WitnessValues) -> Result<SatisfiedProgram, String> {
+        witness_values
+            .is_consistent(&self.witness_types)
+            .map_err(|e| e.to_string())?;
+        let simplicity_witness = named::to_witness_node(&self.simplicity, witness_values);
+        let simplicity_redeem = simplicity_witness.finalize().map_err(|e| e.to_string())?;
+        Ok(SatisfiedProgram {
+            simplicity: simplicity_redeem,
+            debug_symbols: self.debug_symbols.clone(),
+        })
+    }
+}
+
+/// A Simfony program, compiled to Simplicity and satisfied with witness data.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SatisfiedProgram {
-    /// Simplicity target code, including witness data.
-    pub simplicity: Arc<RedeemNode<Elements>>,
-    /// Debug symbols for the Simplicity target code.
-    pub debug_symbols: DebugSymbols,
+    simplicity: Arc<RedeemNode<Elements>>,
+    debug_symbols: DebugSymbols,
 }
 
-pub fn satisfy(prog_text: &str, witness: &WitnessValues) -> Result<SatisfiedProgram, String> {
-    let parse_program = parse::Program::parse_from_str(prog_text)?;
-    let ast_program = ast::Program::analyze(&parse_program).with_file(prog_text)?;
-    let simplicity_named_construct = ast_program.compile().with_file(prog_text)?;
-    witness
-        .is_consistent(&ast_program)
-        .map_err(|e| e.to_string())?;
+impl SatisfiedProgram {
+    /// Parse, compile and satisfy a Simfony program
+    /// from the given string and the given `witness_values`.
+    ///
+    /// ## See
+    ///
+    /// - [`CompiledProgram::new`]
+    /// - [`CompiledProgram::satisfy`]
+    pub fn new(s: &str, witness_values: &WitnessValues) -> Result<Self, String> {
+        let compiled = CompiledProgram::new(s)?;
+        compiled.satisfy(witness_values)
+    }
 
-    let simplicity_witness = named::to_witness_node(&simplicity_named_construct, witness);
-    let simplicity_redeem = simplicity_witness.finalize().map_err(|e| e.to_string())?;
+    /// Access the Simplicity target code, including witness data.
+    pub fn redeem(&self) -> &Arc<RedeemNode<Elements>> {
+        &self.simplicity
+    }
 
-    Ok(SatisfiedProgram {
-        simplicity: simplicity_redeem,
-        debug_symbols: ast_program.debug_symbols(prog_text),
-    })
+    /// Access the debug symbols for the Simplicity target code.
+    pub fn debug_symbols(&self) -> &DebugSymbols {
+        &self.debug_symbols
+    }
 }
 
 /// Recursively implement [`PartialEq`], [`Eq`] and [`std::hash::Hash`]
@@ -138,30 +189,34 @@ mod tests {
 
     use crate::*;
 
-    struct Simfony<'a>(Cow<'a, str>);
-    struct Compiled(Arc<RedeemNode<Elements>>);
-
     struct TestCase<T> {
         program: T,
         lock_time: elements::LockTime,
         sequence: elements::Sequence,
     }
 
-    impl<'a> TestCase<Simfony<'a>> {
+    impl<'a> TestCase<CompiledProgram> {
         pub fn program_file<P: AsRef<Path>>(program_file_path: P) -> Self {
             let program_text = std::fs::read_to_string(program_file_path).unwrap();
             Self::program_text(Cow::Owned(program_text))
         }
 
-        pub fn program_text(program_text: Cow<'a, str>) -> TestCase<Simfony<'a>> {
+        pub fn program_text(program_text: Cow<'a, str>) -> Self {
+            let program = match CompiledProgram::new(program_text.as_ref()) {
+                Ok(x) => x,
+                Err(error) => panic!("{error}"),
+            };
             Self {
-                program: Simfony(program_text),
+                program,
                 lock_time: elements::LockTime::ZERO,
                 sequence: elements::Sequence::MAX,
             }
         }
 
-        pub fn with_witness_file<P: AsRef<Path>>(self, witness_file_path: P) -> TestCase<Compiled> {
+        pub fn with_witness_file<P: AsRef<Path>>(
+            self,
+            witness_file_path: P,
+        ) -> TestCase<SatisfiedProgram> {
             let witness_text = std::fs::read_to_string(witness_file_path).unwrap();
             let witness_values = match serde_json::from_str::<WitnessValues>(&witness_text) {
                 Ok(x) => x,
@@ -170,13 +225,16 @@ mod tests {
             self.with_witness_values(&witness_values)
         }
 
-        pub fn with_witness_values(self, witness_values: &WitnessValues) -> TestCase<Compiled> {
-            let program = match satisfy(self.program.0.as_ref(), witness_values) {
+        pub fn with_witness_values(
+            self,
+            witness_values: &WitnessValues,
+        ) -> TestCase<SatisfiedProgram> {
+            let program = match self.program.satisfy(witness_values) {
                 Ok(x) => x,
                 Err(error) => panic!("{error}"),
             };
             TestCase {
-                program: Compiled(program.simplicity),
+                program,
                 lock_time: self.lock_time,
                 sequence: self.sequence,
             }
@@ -206,10 +264,10 @@ mod tests {
         }
     }
 
-    impl TestCase<Compiled> {
+    impl TestCase<SatisfiedProgram> {
         #[allow(dead_code)]
         pub fn print_encoding(self) -> Self {
-            let (program_bytes, witness_bytes) = self.program.0.encode_to_vec();
+            let (program_bytes, witness_bytes) = self.program.redeem().encode_to_vec();
             println!(
                 "Program:\n{}",
                 Base64Display::new(&program_bytes, &STANDARD)
@@ -222,9 +280,9 @@ mod tests {
         }
 
         fn run(self) -> Result<(), simplicity::bit_machine::ExecutionError> {
-            let mut mac = BitMachine::for_program(&self.program.0);
+            let mut mac = BitMachine::for_program(self.program.redeem());
             let env = dummy_env::dummy_with(self.lock_time, self.sequence);
-            mac.exec(&self.program.0, &env).map(|_| ())
+            mac.exec(self.program.redeem(), &env).map(|_| ())
         }
 
         pub fn assert_run_success(self) {
@@ -368,7 +426,7 @@ fn main() {
     jet_verify(my_true());
 }
 "#;
-        match satisfy(prog_text, &WitnessValues::empty()) {
+        match SatisfiedProgram::new(prog_text, &WitnessValues::empty()) {
             Ok(_) => panic!("Accepted faulty program"),
             Err(error) => {
                 if !error.contains("Expected expression of type `bool`, found type `()`") {
@@ -380,12 +438,12 @@ fn main() {
 
     #[test]
     fn fuzz_regression_1() {
-        compile("type f=f").unwrap_err();
+        CompiledProgram::new("type f=f").unwrap_err();
     }
 
     #[test]
     #[ignore]
     fn fuzz_slow_unit_1() {
-        compile("fn fnnfn(MMet:(((sssss,((((((sssss,ssssss,ss,((((((sssss,ss,((((((sssss,ssssss,ss,((((((sssss,ssssss,((((((sssss,sssssssss,(((((((sssss,sssssssss,(((((ssss,((((((sssss,sssssssss,(((((((sssss,ssss,((((((sssss,ss,((((((sssss,ssssss,ss,((((((sssss,ssssss,((((((sssss,sssssssss,(((((((sssss,sssssssss,(((((ssss,((((((sssss,sssssssss,(((((((sssss,sssssssssssss,(((((((((((u|(").unwrap_err();
+        CompiledProgram::new("fn fnnfn(MMet:(((sssss,((((((sssss,ssssss,ss,((((((sssss,ss,((((((sssss,ssssss,ss,((((((sssss,ssssss,((((((sssss,sssssssss,(((((((sssss,sssssssss,(((((ssss,((((((sssss,sssssssss,(((((((sssss,ssss,((((((sssss,ss,((((((sssss,ssssss,ss,((((((sssss,ssssss,((((((sssss,sssssssss,(((((((sssss,sssssssss,(((((ssss,((((((sssss,sssssssss,(((((((sssss,sssssssssssss,(((((((((((u|(").unwrap_err();
     }
 }

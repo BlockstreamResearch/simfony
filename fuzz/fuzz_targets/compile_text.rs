@@ -1,6 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::{fuzz_target, Corpus};
+use simfony::CompiledProgram;
 
 /// The PEST parser is slow for inputs with many open brackets.
 /// Detect some of these inputs to reject them from the corpus.
@@ -31,7 +32,7 @@ fuzz_target!(|data: &[u8]| -> Corpus {
             return Corpus::Reject;
         }
 
-        let _ = simfony::compile(program_text);
+        let _ = CompiledProgram::new(program_text);
     }
 
     Corpus::Keep
