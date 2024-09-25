@@ -1,5 +1,5 @@
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::btree_map::Entry;
+use std::collections::BTreeMap;
 use std::fmt;
 
 use serde::{de, Deserialize, Deserializer};
@@ -13,12 +13,12 @@ use crate::{ast, parse};
 
 /// Mapping of witness names to their assigned values.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct WitnessValues(HashMap<WitnessName, Value>);
+pub struct WitnessValues(BTreeMap<WitnessName, Value>);
 
 impl WitnessValues {
     /// Return the empty witness map.
     pub fn empty() -> Self {
-        Self(HashMap::new())
+        Self(BTreeMap::new())
     }
 
     /// Get the value that is assigned to the given name.
