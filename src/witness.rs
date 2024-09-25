@@ -4,12 +4,12 @@ use std::fmt;
 
 use serde::{de, Deserialize, Deserializer};
 
+use crate::ast;
 use crate::error::{Error, RichError, WithFile, WithSpan};
 use crate::parse::ParseFromStr;
 use crate::str::WitnessName;
 use crate::types::{AliasedType, ResolvedType};
 use crate::value::Value;
-use crate::{ast, parse};
 
 /// Mapping of witness names to their assigned values.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -167,15 +167,10 @@ impl<'de> de::Visitor<'de> for ValueMapVisitor {
             Some(s) => ResolvedType::parse_from_str(s).map_err(de::Error::custom)?,
             None => return Err(de::Error::missing_field("type")),
         };
-        let expr = match value {
-            Some(s) => parse::Expression::parse_from_str(s).map_err(de::Error::custom)?,
-            None => return Err(de::Error::missing_field("value")),
-        };
-        let expr = ast::Expression::analyze_const(&expr, &ty).map_err(de::Error::custom)?;
-
-        Value::from_const_expr(&expr)
-            .ok_or(Error::ExpressionNotConstant)
-            .map_err(de::Error::custom)
+        match value {
+            Some(s) => Value::parse_from_str(s, &ty).map_err(de::Error::custom),
+            None => Err(de::Error::missing_field("value")),
+        }
     }
 }
 
@@ -217,6 +212,7 @@ impl<'de> Deserialize<'de> for WitnessName {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parse;
     use crate::value::ValueConstructible;
 
     #[test]
