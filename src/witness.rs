@@ -1,24 +1,24 @@
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::btree_map::Entry;
+use std::collections::BTreeMap;
 use std::fmt;
 
 use serde::{de, Deserialize, Deserializer};
 
+use crate::ast::DeclaredWitnesses;
 use crate::error::{Error, RichError, WithFile, WithSpan};
 use crate::parse::ParseFromStr;
 use crate::str::WitnessName;
 use crate::types::{AliasedType, ResolvedType};
 use crate::value::Value;
-use crate::{ast, parse};
 
 /// Mapping of witness names to their assigned values.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct WitnessValues(HashMap<WitnessName, Value>);
+pub struct WitnessValues(BTreeMap<WitnessName, Value>);
 
 impl WitnessValues {
     /// Return the empty witness map.
     pub fn empty() -> Self {
-        Self(HashMap::new())
+        Self(BTreeMap::new())
     }
 
     /// Get the value that is assigned to the given name.
@@ -41,7 +41,7 @@ impl WitnessValues {
         }
     }
 
-    /// Check if the witness values are consistent with the witness types as declared in the program.
+    /// Check if the witness values are consistent with the declared witness types.
     ///
     /// 1. Values that occur in the program are type checked.
     /// 2. Values that don't occur in the program are skipped.
@@ -51,10 +51,9 @@ impl WitnessValues {
     /// in the witness map. These witnesses may lie on pruned branches that will not be part of the
     /// finalized Simplicity program. However, before the finalization, we cannot know which
     /// witnesses will be pruned and which won't be pruned. This check skips unassigned witnesses.
-    pub fn is_consistent(&self, program: &ast::Program) -> Result<(), Error> {
-        let declared = program.witnesses();
+    pub fn is_consistent(&self, witness_types: &DeclaredWitnesses) -> Result<(), Error> {
         for name in self.0.keys() {
-            let declared_ty = match declared.get(name) {
+            let declared_ty = match witness_types.get(name) {
                 Some(ty) => ty,
                 None => continue,
             };
@@ -69,6 +68,20 @@ impl WitnessValues {
         }
 
         Ok(())
+    }
+
+    /// Create an iterator over all name-value pairs.
+    pub fn iter(&self) -> impl Iterator<Item = (&WitnessName, &Value)> {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for WitnessValues {
+    type Item = (WitnessName, Value);
+    type IntoIter = <BTreeMap<WitnessName, Value> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }
 
@@ -153,15 +166,10 @@ impl<'de> de::Visitor<'de> for ValueMapVisitor {
             Some(s) => ResolvedType::parse_from_str(s).map_err(de::Error::custom)?,
             None => return Err(de::Error::missing_field("type")),
         };
-        let expr = match value {
-            Some(s) => parse::Expression::parse_from_str(s).map_err(de::Error::custom)?,
-            None => return Err(de::Error::missing_field("value")),
-        };
-        let expr = ast::Expression::analyze_const(&expr, &ty).map_err(de::Error::custom)?;
-
-        Value::from_const_expr(&expr)
-            .ok_or(Error::ExpressionNotConstant)
-            .map_err(de::Error::custom)
+        match value {
+            Some(s) => Value::parse_from_str(s, &ty).map_err(de::Error::custom),
+            None => Err(de::Error::missing_field("value")),
+        }
     }
 }
 
@@ -204,6 +212,7 @@ impl<'de> Deserialize<'de> for WitnessName {
 mod tests {
     use super::*;
     use crate::value::ValueConstructible;
+    use crate::{ast, parse, CompiledProgram, SatisfiedProgram};
 
     #[test]
     fn witness_reuse() {
@@ -231,7 +240,7 @@ mod tests {
         let a = WitnessName::parse_from_str("a").unwrap();
         witness.insert(a, Value::u16(42)).unwrap();
 
-        match crate::satisfy(s, &witness) {
+        match SatisfiedProgram::new(s, &witness) {
             Ok(_) => panic!("Ill-typed witness assignment was falsely accepted"),
             Err(error) => assert_eq!(
                 "Witness `a` was declared with type `u32` but its assigned value is of type `u16`",
@@ -278,7 +287,7 @@ fn main() {
     assert!(jet::is_zero_32(f()));
 }"#;
 
-        match crate::compile(s) {
+        match CompiledProgram::new(s) {
             Ok(_) => panic!("Witness outside main was falsely accepted"),
             Err(error) => {
                 assert!(error

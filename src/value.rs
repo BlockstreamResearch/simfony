@@ -7,13 +7,14 @@ use simplicity::types::Final as SimType;
 use simplicity::{BitCollector, Value as SimValue};
 
 use crate::array::{BTreeSlice, Combiner, Partition, Unfolder};
-use crate::ast;
-use crate::error::Error;
+use crate::error::{Error, RichError, WithSpan};
 use crate::num::{NonZeroPow2Usize, Pow2Usize, U256};
+use crate::parse::ParseFromStr;
 use crate::str::{Binary, Decimal, Hexadecimal};
 use crate::types::{
     ResolvedType, StructuralType, TypeConstructible, TypeDeconstructible, TypeInner, UIntType,
 };
+use crate::{ast, parse};
 
 /// Unsigned integer value.
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -746,6 +747,15 @@ impl Value {
         debug_assert_eq!(output.len(), 1);
         output.pop()
     }
+
+    /// Parse a value of the given type from a string.
+    pub fn parse_from_str(s: &str, ty: &ResolvedType) -> Result<Self, RichError> {
+        let parse_expr = parse::Expression::parse_from_str(s)?;
+        let ast_expr = ast::Expression::analyze_const(&parse_expr, ty)?;
+        Self::from_const_expr(&ast_expr)
+            .ok_or(Error::ExpressionUnexpectedType(ty.clone()))
+            .with_span(s)
+    }
 }
 
 #[cfg(feature = "arbitrary")]
@@ -1188,7 +1198,7 @@ mod destruct {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parse::{self, ParseFromStr};
+    use crate::parse;
     use crate::types::{StructuralType, TypeConstructible};
 
     #[test]

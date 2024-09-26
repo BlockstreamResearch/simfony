@@ -9,6 +9,7 @@ use std::str::FromStr;
 use ::secp256k1::XOnlyPublicKey;
 use simfony::elements::taproot::{TaprootBuilder, LeafVersion};
 use simfony::elements;
+use simfony::SatisfiedProgram;
 
 use elements::pset::PartiallySignedTransaction as Psbt;
 use elements::{
@@ -43,13 +44,13 @@ pub fn test_simplicity(cl: &ElementsD, program_file: &str, witness_file: &str) {
     let program_text = std::fs::read_to_string(program_path).unwrap();
     let witness_text = std::fs::read_to_string(witness_path).unwrap();
     let witness_values = serde_json::from_str::<WitnessValues>(&witness_text).unwrap();
-    let program = simfony::satisfy(&program_text, &witness_values).unwrap().simplicity;
+    let program = SatisfiedProgram::new(&program_text, &witness_values).unwrap();
 
     let secp = secp256k1::Secp256k1::new();
     let internal_key = XOnlyPublicKey::from_str("f5919fa64ce45f8306849072b26c1bfdd2937e6b81774796ff372bd1eb5362d2").unwrap();
 
     let builder = TaprootBuilder::new();
-    let script = elements::script::Script::from(program.cmr().as_ref().to_vec());
+    let script = elements::script::Script::from(program.redeem().cmr().as_ref().to_vec());
     let script_ver = (script, LeafVersion::from_u8(0xbe).unwrap());
     let builder = builder.add_leaf_with_ver(0, script_ver.0.clone(), script_ver.1).unwrap();
     let data = builder.finalize(&secp, internal_key).unwrap();
@@ -79,7 +80,7 @@ pub fn test_simplicity(cl: &ElementsD, program_file: &str, witness_file: &str) {
     psbt.add_output(psbt::Output::from_txout(out));
     let fee_out = TxOut::new_fee(3_000, witness_utxo.asset.explicit().unwrap());
     psbt.add_output(psbt::Output::from_txout(fee_out));
-    let (program_bytes, witness_bytes) = program.encode_to_vec();
+    let (program_bytes, witness_bytes) = program.redeem().encode_to_vec();
     psbt.inputs_mut()[0].final_script_witness =
     Some(vec![
         witness_bytes,
