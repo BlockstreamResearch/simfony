@@ -9,7 +9,7 @@ let a: u32 = 10;
 let b = {
     let c: u32 = 2;
     let d: u32 = 3;
-    assert!(jet::eq_32(a, 10)); // Use variables from outer copes
+    assert!(jet::eq_32(a, 10)); // Use variables from outer scopes
     let a: u32 = 7; // Shadow variables from outer scopes
     jet::max_32(jet::max_32(c, d), a) // Missing ; because the block returns a value
 };
