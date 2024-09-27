@@ -404,6 +404,7 @@ pub fn source_type(jet: Elements) -> Vec<AliasedType> {
         /*
          * Bitcoin (without primitives)
          */
+        Elements::TapdataInit => vec![],
         Elements::ParseLock | Elements::ParseSequence => vec![U32.into()],
         /*
          * ==============================
@@ -444,6 +445,7 @@ pub fn source_type(jet: Elements) -> Vec<AliasedType> {
         Elements::AnnexHash => vec![Ctx8.into(), option(U256)],
         Elements::BuildTapleafSimplicity => vec![U256.into()],
         Elements::BuildTapbranch => vec![U256.into(), U256.into()],
+        Elements::BuildTaptweak => vec![Pubkey.into(), U256.into()],
         /*
          * Time locks
          */
@@ -911,6 +913,7 @@ pub fn target_type(jet: Elements) -> AliasedType {
          */
         Elements::ParseLock => either(Height, Time),
         Elements::ParseSequence => option(either(Distance, Duration)),
+        Elements::TapdataInit => Ctx8.into(),
         /*
          * ==============================
          *         Elements jets
@@ -943,7 +946,8 @@ pub fn target_type(jet: Elements) -> AliasedType {
         | Elements::TapleafHash
         | Elements::TappathHash
         | Elements::BuildTapleafSimplicity
-        | Elements::BuildTapbranch => U256.into(),
+        | Elements::BuildTapbranch
+        | Elements::BuildTaptweak => U256.into(),
         Elements::OutpointHash
         | Elements::AssetAmountHash
         | Elements::NonceHash

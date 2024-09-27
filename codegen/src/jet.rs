@@ -414,6 +414,7 @@ This jet should not be used directly."#,
         // Bitcoin (without primitives)
         Elements::ParseLock => "Parse an integer as a consensus-encoded Bitcoin lock time.",
         Elements::ParseSequence => "Parse an integer as a consensus-encoded Bitcoin sequence number.",
+        Elements::TapdataInit => r#"Create a SHA256 context, initialized with a "TapData" tag."#,
         // Signature hash modes
         Elements::AnnexHash => r#"Continue a SHA256 hash with an optional hash by appending the following:
 - If there is no hash, then the byte `0x00`.
@@ -433,6 +434,14 @@ This builds a taproot from two branches."#,
 - The lexicographically larger of the two inputs (32 bytes).
 
 This builds a taproot from two branches."#,
+        Elements::BuildTaptweak => r#"Implementation of `taproot_tweak_pubkey` from BIP-0341.
+
+## Panics
+1. The input x-only public key is off curve or exceeds the field size.
+2. The internal hash value `t` exceeds the secp256k1 group order.
+3. The generated tweaked point is infinity, and thus has no valid x-only public key.
+
+Note that situations 2 and 3 are cryptographically impossible to occur."#,
         Elements::InputAmountsHash => "Return the SHA256 hash of the serialization of each input UTXO's asset and amount fields.",
         Elements::InputAnnexesHash => r#"Return the SHA256 hash of the concatenation of the following for every input:
 - If the input has no annex, or isn't a taproot spend, then the byte `0x00`.
@@ -953,13 +962,13 @@ const DIGITAL_SIGNATURES: [Elements; 1] = [
     Elements::Bip0340Verify
 ];
 #[rustfmt::skip]
-const BITCOIN: [Elements; 2] = [
-    Elements::ParseLock, Elements::ParseSequence
+const BITCOIN: [Elements; 3] = [
+    Elements::ParseLock, Elements::ParseSequence, Elements::TapdataInit,
 ];
 // Elements
 #[rustfmt::skip]
-const SIGNATURE_HASH_MODES: [Elements; 34] = [
-    Elements::AnnexHash, Elements::AssetAmountHash, Elements::BuildTapbranch, Elements::BuildTapleafSimplicity, Elements::InputAmountsHash, Elements::InputAnnexesHash, Elements::InputHash, Elements::InputOutpointsHash, Elements::InputScriptSigsHash, Elements::InputScriptsHash, Elements::InputSequencesHash, Elements::InputUtxoHash, Elements::InputUtxosHash, Elements::InputsHash, Elements::IssuanceAssetAmountsHash, Elements::IssuanceBlindingEntropyHash, Elements::IssuanceHash, Elements::IssuanceRangeProofsHash, Elements::IssuanceTokenAmountsHash, Elements::IssuancesHash, Elements::NonceHash, Elements::OutpointHash, Elements::OutputAmountsHash, Elements::OutputHash, Elements::OutputNoncesHash, Elements::OutputRangeProofsHash, Elements::OutputScriptsHash, Elements::OutputSurjectionProofsHash, Elements::OutputsHash, Elements::SigAllHash, Elements::TapEnvHash, Elements::TapleafHash, Elements::TappathHash, Elements::TxHash
+const SIGNATURE_HASH_MODES: [Elements; 35] = [
+    Elements::AnnexHash, Elements::AssetAmountHash, Elements::BuildTapbranch, Elements::BuildTapleafSimplicity, Elements::BuildTaptweak, Elements::InputAmountsHash, Elements::InputAnnexesHash, Elements::InputHash, Elements::InputOutpointsHash, Elements::InputScriptSigsHash, Elements::InputScriptsHash, Elements::InputSequencesHash, Elements::InputUtxoHash, Elements::InputUtxosHash, Elements::InputsHash, Elements::IssuanceAssetAmountsHash, Elements::IssuanceBlindingEntropyHash, Elements::IssuanceHash, Elements::IssuanceRangeProofsHash, Elements::IssuanceTokenAmountsHash, Elements::IssuancesHash, Elements::NonceHash, Elements::OutpointHash, Elements::OutputAmountsHash, Elements::OutputHash, Elements::OutputNoncesHash, Elements::OutputRangeProofsHash, Elements::OutputScriptsHash, Elements::OutputSurjectionProofsHash, Elements::OutputsHash, Elements::SigAllHash, Elements::TapEnvHash, Elements::TapleafHash, Elements::TappathHash, Elements::TxHash
 ];
 #[rustfmt::skip]
 const TIME_LOCKS: [Elements; 9] = [
