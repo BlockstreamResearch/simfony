@@ -39,6 +39,7 @@
             defaultRust
             pkgs.just
             pkgs.gdb
+            pkgs.cargo-hack
           ] ++ (
             if with_elements then [ elementsd-simplicity ] else []
           );
@@ -57,11 +58,12 @@
           buildInputs = [
             (mkRust "stable" "latest" "default" [])
             pkgs.just
+            pkgs.cargo-hack
           ];
         };
         msrv = pkgs.mkShell {
           buildInputs = [
-            (mkRust "stable" "1.61.0" "minimal" [])
+            (mkRust "stable" "1.63.0" "minimal" [])
             pkgs.just
           ];
         };

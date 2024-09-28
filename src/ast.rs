@@ -20,7 +20,7 @@ use crate::value::{UIntValue, Value};
 use crate::{impl_eq_hash, parse};
 
 /// Map of witness names to their expected type, as declared in the program.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct DeclaredWitnesses(HashMap<WitnessName, ResolvedType>);
 
 impl DeclaredWitnesses {

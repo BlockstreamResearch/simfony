@@ -10,6 +10,10 @@ fmtcheck:
 lint:
     cargo clippy --all-targets --workspace -- --deny warnings
 
+# Build code with all feature combinations
+build_features:
+    cargo hack check --feature-powerset --no-dev-deps
+
 # Run unit tests
 test:
     cargo test --workspace
@@ -20,6 +24,7 @@ check:
     rustc --version
     just fmtcheck
     just lint
+    just build_features
     just test
 
 # Run fuzz test for 30 seconds
