@@ -20,7 +20,7 @@ Take a look at the [example programs](https://github.com/BlockstreamResearch/sim
 
 ## MSRV
 
-This crate should compile with any feature combination on **Rust 1.61.0** or higher.
+This crate should compile with any feature combination on **Rust 1.63.0** or higher.
 
 ## Simplicity's need for a high-level language
 
