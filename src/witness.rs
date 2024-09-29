@@ -21,6 +21,16 @@ impl WitnessValues {
         Self(BTreeMap::new())
     }
 
+    /// Check if the map is empty.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Return the number of entries in the map.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
     /// Get the value that is assigned to the given name.
     pub fn get(&self, name: &WitnessName) -> Option<&Value> {
         self.0.get(name)
