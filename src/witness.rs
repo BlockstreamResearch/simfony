@@ -2,7 +2,7 @@ use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::fmt;
 
-use serde::{de, Deserialize, Deserializer};
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::ast::DeclaredWitnesses;
 use crate::error::{Error, RichError, WithFile, WithSpan};
@@ -215,6 +215,25 @@ impl<'de> Deserialize<'de> for WitnessName {
         D: Deserializer<'de>,
     {
         deserializer.deserialize_str(ParserVisitor::<Self>(std::marker::PhantomData))
+    }
+}
+
+impl Serialize for WitnessValues {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use serde::ser::SerializeMap;
+
+        let mut map = serializer.serialize_map(Some(self.len()))?;
+        for (name, value) in self.iter() {
+            let value_map = BTreeMap::from([
+                ("value", value.to_string()),
+                ("type", value.ty().to_string()),
+            ]);
+            map.serialize_entry(name.as_inner(), &value_map)?;
+        }
+        map.end()
     }
 }
 
