@@ -12,6 +12,7 @@ libfuzzer-sys = "0.4"
 arbitrary = { version = "1", features = ["derive"] }
 simfony = { path = "..", features = ["arbitrary"]}
 itertools = "0.13.0"
+serde_json = "1.0.105"
 
 [[bin]]
 name = "compile_text"
@@ -30,6 +31,13 @@ bench = false
 [[bin]]
 name = "display_parse_tree"
 path = "fuzz_targets/display_parse_tree.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_witness_rtt"
+path = "fuzz_targets/parse_witness_rtt.rs"
 test = false
 doc = false
 bench = false
