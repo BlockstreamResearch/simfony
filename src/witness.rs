@@ -13,6 +13,7 @@ use crate::value::Value;
 
 /// Mapping of witness names to their assigned values.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct WitnessValues(BTreeMap<WitnessName, Value>);
 
 impl WitnessValues {
