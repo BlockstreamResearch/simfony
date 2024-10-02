@@ -36,6 +36,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "parse_value_rtt"
+path = "fuzz_targets/parse_value_rtt.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "parse_witness_rtt"
 path = "fuzz_targets/parse_witness_rtt.rs"
 test = false

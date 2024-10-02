@@ -36,6 +36,7 @@ check_fuzz:
     just fuzz compile_parse_tree
     just fuzz compile_text
     just fuzz display_parse_tree
+    just fuzz parse_value_rtt
     just fuzz parse_witness_rtt
     just fuzz reconstruct_value
 
