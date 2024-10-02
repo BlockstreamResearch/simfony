@@ -2,7 +2,7 @@ use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::fmt;
 
-use serde::{de, Deserialize, Deserializer};
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::ast::DeclaredWitnesses;
 use crate::error::{Error, RichError, WithFile, WithSpan};
@@ -12,13 +12,24 @@ use crate::types::{AliasedType, ResolvedType};
 use crate::value::Value;
 
 /// Mapping of witness names to their assigned values.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct WitnessValues(BTreeMap<WitnessName, Value>);
 
 impl WitnessValues {
     /// Return the empty witness map.
     pub fn empty() -> Self {
         Self(BTreeMap::new())
+    }
+
+    /// Check if the map is empty.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Return the number of entries in the map.
+    pub fn len(&self) -> usize {
+        self.0.len()
     }
 
     /// Get the value that is assigned to the given name.
@@ -205,6 +216,25 @@ impl<'de> Deserialize<'de> for WitnessName {
         D: Deserializer<'de>,
     {
         deserializer.deserialize_str(ParserVisitor::<Self>(std::marker::PhantomData))
+    }
+}
+
+impl Serialize for WitnessValues {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use serde::ser::SerializeMap;
+
+        let mut map = serializer.serialize_map(Some(self.len()))?;
+        for (name, value) in self.iter() {
+            let value_map = BTreeMap::from([
+                ("value", value.to_string()),
+                ("type", value.ty().to_string()),
+            ]);
+            map.serialize_entry(name.as_inner(), &value_map)?;
+        }
+        map.end()
     }
 }
 
