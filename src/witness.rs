@@ -247,9 +247,7 @@ mod tests {
     #[test]
     fn witness_reuse() {
         let s = r#"fn main() {
-    let a: u32 = witness("a");
-    let also_a: u32 = witness("a");
-    assert!(jet::eq_32(a, b));
+    assert!(jet::eq_32(witness::A, witness::A));
 }"#;
         let program = parse::Program::parse_from_str(s).expect("parsing works");
         match ast::Program::analyze(&program).map_err(Error::from) {
@@ -262,18 +260,17 @@ mod tests {
     #[test]
     fn witness_type_mismatch() {
         let s = r#"fn main() {
-    let a: u32 = witness("a");
-    assert!(jet::is_zero_32(a));
+    assert!(jet::is_zero_32(witness::A));
 }"#;
 
         let mut witness = WitnessValues::empty();
-        let a = WitnessName::parse_from_str("a").unwrap();
+        let a = WitnessName::parse_from_str("A").unwrap();
         witness.insert(a, Value::u16(42)).unwrap();
 
         match SatisfiedProgram::new(s, &witness) {
             Ok(_) => panic!("Ill-typed witness assignment was falsely accepted"),
             Err(error) => assert_eq!(
-                "Witness `a` was declared with type `u32` but its assigned value is of type `u16`",
+                "Witness `A` was declared with type `u32` but its assigned value is of type `u16`",
                 error
             ),
         }
@@ -294,14 +291,14 @@ mod tests {
     #[test]
     fn witness_serde_duplicate_assignment() {
         let s = r#"{
-  "a": { "value": "42", "type": "u32" },
-  "a": { "value": "43", "type": "u16" }
+  "A": { "value": "42", "type": "u32" },
+  "A": { "value": "43", "type": "u16" }
 }"#;
 
         match serde_json::from_str::<WitnessValues>(s) {
             Ok(_) => panic!("Duplicate witness assignment was falsely accepted"),
             Err(error) => assert_eq!(
-                "Witness `a` has already been assigned a value at line 4 column 1",
+                "Witness `A` has already been assigned a value at line 4 column 1",
                 &error.to_string()
             ),
         }
@@ -310,7 +307,7 @@ mod tests {
     #[test]
     fn witness_outside_main() {
         let s = r#"fn f() -> u32 {
-    witness("output_of_f")
+    witness::OUTPUT_OF_F
 }
 
 fn main() {

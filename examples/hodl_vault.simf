@@ -24,19 +24,19 @@ fn checksigfromstack(pk: Pubkey, bytes: [u32; 2], sig: Signature) {
 
 fn main() {
     let min_height: Height = 1000;
-    let oracle_height: Height = witness("oracle_height");
+    let oracle_height: Height = witness::ORACLE_HEIGHT;
     assert!(jet::le_32(min_height, oracle_height));
     jet::check_lock_height(oracle_height);
 
     let target_price: u32 = 100000; // laser eyes until 100k
-    let oracle_price: u32 = witness("oracle_price");
+    let oracle_price: u32 = witness::ORACLE_PRICE;
     assert!(jet::le_32(target_price, oracle_price));
 
     let oracle_pk: Pubkey = 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798; // 1 * G
-    let oracle_sig: Signature = witness("oracle_sig");
+    let oracle_sig: Signature = witness::ORACLE_SIG;
     checksigfromstack(oracle_pk, [oracle_height, oracle_price], oracle_sig);
 
     let owner_pk: Pubkey = 0xc6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5; // 2 * G
-    let owner_sig: Signature = witness("owner_sig");
+    let owner_sig: Signature = witness::OWNER_SIG;
     checksig(owner_pk, owner_sig);
 }

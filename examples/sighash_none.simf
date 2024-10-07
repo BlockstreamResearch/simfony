@@ -21,6 +21,5 @@ fn main() {
     let msg: u256 = jet::sha_256_ctx_8_finalize(ctx);
 
     let pk: Pubkey = 0xf9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9;
-    let sig: Signature = witness("sig");
-    jet::bip_0340_verify((pk, msg), sig);
+    jet::bip_0340_verify((pk, msg), witness::SIG);
 }
