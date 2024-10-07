@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 
 use crate::ast::WitnessTypes;
 use crate::error::{Error, RichError, WithFile, WithSpan};
+use crate::parse;
 use crate::parse::ParseFromStr;
 use crate::str::WitnessName;
 use crate::types::{AliasedType, ResolvedType};
@@ -101,6 +102,12 @@ impl ParseFromStr for ResolvedType {
             .map_err(Error::UndefinedAlias)
             .with_span(s)
             .with_file(s)
+    }
+}
+
+impl ParseFromStr for WitnessValues {
+    fn parse_from_str(s: &str) -> Result<Self, RichError> {
+        parse::WitnessProgram::parse_from_str(s).and_then(|x| Self::analyze(&x))
     }
 }
 

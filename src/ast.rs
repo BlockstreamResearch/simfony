@@ -12,11 +12,12 @@ use crate::error::{Error, RichError, Span, WithSpan};
 use crate::num::{NonZeroPow2Usize, Pow2Usize};
 use crate::parse::MatchPattern;
 use crate::pattern::Pattern;
-use crate::str::{FunctionName, Identifier, WitnessName};
+use crate::str::{FunctionName, Identifier, ModuleName, WitnessName};
 use crate::types::{
     AliasedType, ResolvedType, StructuralType, TypeConstructible, TypeDeconstructible, UIntType,
 };
 use crate::value::{UIntValue, Value};
+use crate::witness::WitnessValues;
 use crate::{impl_eq_hash, parse};
 
 /// Map of witness names to their expected type, as declared in the program.
@@ -75,6 +76,8 @@ pub enum Item {
     TypeAlias,
     /// A function.
     Function(Function),
+    /// A module, which is ignored.
+    Module,
 }
 
 /// Definition of a function.
@@ -374,6 +377,44 @@ impl MatchArm {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum WitnessItem {
+    Ignored,
+    WitnessModule(WitnessModule),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct WitnessModule {
+    assignments: Arc<[WitnessAssignment]>,
+    span: Span,
+}
+
+impl WitnessModule {
+    /// Access the assignments of the module.
+    pub fn assignments(&self) -> &[WitnessAssignment] {
+        &self.assignments
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct WitnessAssignment {
+    name: WitnessName,
+    value: Value,
+    span: Span,
+}
+
+impl WitnessAssignment {
+    /// Access the assigned witness name.
+    pub fn name(&self) -> &WitnessName {
+        &self.name
+    }
+
+    /// Access the assigned witness value.
+    pub fn value(&self) -> &Value {
+        &self.value
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum ExprTree<'a> {
     Expression(&'a Expression),
@@ -653,6 +694,7 @@ impl AbstractSyntaxTree for Item {
             parse::Item::Function(function) => {
                 Function::analyze(function, ty, scope).map(Self::Function)
             }
+            parse::Item::Module => Ok(Self::Module),
         }
     }
 }
@@ -1278,6 +1320,91 @@ impl AbstractSyntaxTree for Match {
     }
 }
 
+impl WitnessValues {
+    pub fn analyze(from: &parse::WitnessProgram) -> Result<Self, RichError> {
+        let unit = ResolvedType::unit();
+        let mut scope = Scope::default();
+        let items = from
+            .items()
+            .iter()
+            .map(|s| WitnessItem::analyze(s, &unit, &mut scope))
+            .collect::<Result<Vec<WitnessItem>, RichError>>()?;
+        debug_assert!(scope.is_topmost());
+        let mut iter = items.into_iter().filter_map(|item| match item {
+            WitnessItem::WitnessModule(witness_module) => Some(witness_module),
+            _ => None,
+        });
+        let witness_module = iter
+            .next()
+            .ok_or(Error::ModuleRequired(ModuleName::witness()))
+            .with_span(from)?;
+        if iter.next().is_some() {
+            return Err(Error::ModuleRedefined(ModuleName::witness())).with_span(from);
+        }
+        let mut witness_values = Self::empty();
+        for assignment in witness_module.assignments() {
+            witness_values
+                .insert(assignment.name().clone(), assignment.value().clone())
+                .with_span(assignment)?;
+        }
+        Ok(witness_values)
+    }
+}
+
+impl AbstractSyntaxTree for WitnessItem {
+    type From = parse::WitnessItem;
+
+    fn analyze(from: &Self::From, ty: &ResolvedType, scope: &mut Scope) -> Result<Self, RichError> {
+        assert!(ty.is_unit(), "Items cannot return anything");
+        assert!(scope.is_topmost(), "Items live in the topmost scope only");
+        match from {
+            parse::WitnessItem::Ignored => Ok(Self::Ignored),
+            parse::WitnessItem::WitnessModule(witness_module) => {
+                WitnessModule::analyze(witness_module, ty, scope).map(Self::WitnessModule)
+            }
+        }
+    }
+}
+
+impl AbstractSyntaxTree for WitnessModule {
+    type From = parse::WitnessModule;
+
+    fn analyze(from: &Self::From, ty: &ResolvedType, scope: &mut Scope) -> Result<Self, RichError> {
+        assert!(ty.is_unit(), "Modules cannot return anything");
+        assert!(scope.is_topmost(), "Modules live in the topmost scope only");
+        let assignments = from
+            .assignments()
+            .iter()
+            .map(|s| WitnessAssignment::analyze(s, ty, scope))
+            .collect::<Result<Arc<[WitnessAssignment]>, RichError>>()?;
+        debug_assert!(scope.is_topmost());
+
+        Ok(Self {
+            span: *from.as_ref(),
+            assignments,
+        })
+    }
+}
+
+impl AbstractSyntaxTree for WitnessAssignment {
+    type From = parse::WitnessAssignment;
+
+    fn analyze(from: &Self::From, ty: &ResolvedType, scope: &mut Scope) -> Result<Self, RichError> {
+        assert!(ty.is_unit(), "Assignments cannot return anything");
+        let ty_expr = scope.resolve(from.ty()).with_span(from)?;
+        let expression = Expression::analyze(from.expression(), &ty_expr, scope)?;
+        let value = Value::from_const_expr(&expression)
+            .ok_or(Error::ExpressionUnexpectedType(ty_expr.clone()))
+            .with_span(from.expression())?;
+
+        Ok(Self {
+            name: from.name().clone(),
+            value,
+            span: *from.as_ref(),
+        })
+    }
+}
+
 impl AsRef<Span> for Assignment {
     fn as_ref(&self) -> &Span {
         &self.span
@@ -1303,6 +1430,18 @@ impl AsRef<Span> for Call {
 }
 
 impl AsRef<Span> for Match {
+    fn as_ref(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl AsRef<Span> for WitnessModule {
+    fn as_ref(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl AsRef<Span> for WitnessAssignment {
     fn as_ref(&self) -> &Span {
         &self.span
     }

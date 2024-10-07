@@ -168,3 +168,16 @@ impl<'a> arbitrary::Arbitrary<'a> for Hexadecimal {
         Ok(Self::from_str_unchecked(string.as_str()))
     }
 }
+
+/// The name of a module.
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct ModuleName(Arc<str>);
+
+impl ModuleName {
+    /// Return the name of the witness module.
+    pub fn witness() -> Self {
+        Self(Arc::from("witness"))
+    }
+}
+
+wrapped_string!(ModuleName, "module name");
