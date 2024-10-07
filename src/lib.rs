@@ -22,6 +22,7 @@ use std::sync::Arc;
 
 use simplicity::{jet::Elements, CommitNode, RedeemNode};
 
+pub extern crate either;
 pub extern crate simplicity;
 pub use simplicity::elements;
 
