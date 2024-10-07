@@ -38,7 +38,7 @@ impl DeclaredWitnesses {
 pub struct Program {
     main: Expression,
     witnesses: DeclaredWitnesses,
-    tracked_calls: Vec<(Span, TrackedCallName)>,
+    tracked_calls: Arc<[(Span, TrackedCallName)]>,
 }
 
 impl Program {
@@ -57,8 +57,8 @@ impl Program {
     /// Access the debug symbols of the program.
     pub fn debug_symbols(&self, file: &str) -> DebugSymbols {
         let mut debug_symbols = DebugSymbols::default();
-        for (span, name) in self.tracked_calls.clone() {
-            debug_symbols.insert(span, name, file);
+        for (span, name) in self.tracked_calls.iter() {
+            debug_symbols.insert(*span, name.clone(), file);
         }
         debug_symbols
     }
@@ -640,7 +640,7 @@ impl Program {
         Ok(Self {
             main,
             witnesses,
-            tracked_calls,
+            tracked_calls: tracked_calls.into_iter().collect(),
         })
     }
 }
