@@ -13,6 +13,8 @@ pub mod named;
 pub mod num;
 pub mod parse;
 pub mod pattern;
+#[cfg(feature = "serde")]
+mod serde;
 pub mod str;
 pub mod types;
 pub mod value;
@@ -225,6 +227,7 @@ mod tests {
             }
         }
 
+        #[cfg(feature = "serde")]
         pub fn with_witness_file<P: AsRef<Path>>(
             self,
             witness_file_path: P,
@@ -254,6 +257,7 @@ mod tests {
     }
 
     impl<T> TestCase<T> {
+        #[allow(dead_code)]
         pub fn with_lock_time(mut self, height: u32) -> Self {
             let height = elements::locktime::Height::from_consensus(height).unwrap();
             self.lock_time = elements::LockTime::Blocks(height);
@@ -263,6 +267,7 @@ mod tests {
             self
         }
 
+        #[allow(dead_code)]
         pub fn with_sequence(mut self, distance: u16) -> Self {
             self.sequence = elements::Sequence::from_height(distance);
             self
@@ -320,6 +325,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "serde")]
     fn escrow_with_delay_timeout() {
         TestCase::program_file("./examples/escrow_with_delay.simf")
             .with_sequence(1000)
@@ -336,6 +342,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "serde")]
     fn hodl_vault() {
         TestCase::program_file("./examples/hodl_vault.simf")
             .with_lock_time(1000)
@@ -345,6 +352,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "serde")]
     fn htlc_complete() {
         TestCase::program_file("./examples/htlc.simf")
             .print_sighash_all()
@@ -353,6 +361,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "serde")]
     fn last_will_inherit() {
         TestCase::program_file("./examples/last_will.simf")
             .with_sequence(25920)
@@ -362,6 +371,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "serde")]
     fn p2ms() {
         TestCase::program_file("./examples/p2ms.simf")
             .print_sighash_all()
@@ -370,6 +380,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "serde")]
     fn p2pk() {
         TestCase::program_file("./examples/p2pk.simf")
             .print_sighash_all()
@@ -378,6 +389,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "serde")]
     fn p2pkh() {
         TestCase::program_file("./examples/p2pkh.simf")
             .print_sighash_all()
@@ -386,6 +398,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "serde")]
     fn presigned_vault_complete() {
         TestCase::program_file("./examples/presigned_vault.simf")
             .with_sequence(1000)
@@ -395,6 +408,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "serde")]
     fn sighash_all_anyprevoutanyscript() {
         TestCase::program_file("./examples/sighash_all_anyprevoutanyscript.simf")
             .with_witness_file("./examples/sighash_all_anyprevoutanyscript.wit")
@@ -402,6 +416,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "serde")]
     fn sighash_none() {
         TestCase::program_file("./examples/sighash_none.simf")
             .with_witness_file("./examples/sighash_none.wit")
@@ -409,6 +424,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "serde")]
     fn transfer_with_timeout_transfer() {
         TestCase::program_file("./examples/transfer_with_timeout.simf")
             .print_sighash_all()

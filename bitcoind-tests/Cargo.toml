@@ -5,7 +5,7 @@ authors = ["sanket1729 <sanket1729@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-simfony = { path = ".." }
+simfony = { path = "..", features = ["serde"] }
 elementsd = { version = "0.11.0" }
 actual-rand = { package = "rand", version = "0.8.4" }
 secp256k1 = { version = "0.28.0", features = ["rand-std"] }
