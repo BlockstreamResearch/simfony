@@ -28,7 +28,7 @@ pub extern crate either;
 pub extern crate simplicity;
 pub use simplicity::elements;
 
-use crate::ast::DeclaredWitnesses;
+use crate::ast::WitnessTypes;
 use crate::debug::DebugSymbols;
 use crate::error::WithFile;
 use crate::parse::ParseFromStr;
@@ -38,7 +38,7 @@ use crate::witness::WitnessValues;
 #[derive(Clone, Debug)]
 pub struct CompiledProgram {
     simplicity: ProgNode,
-    witness_types: DeclaredWitnesses,
+    witness_types: WitnessTypes,
     debug_symbols: DebugSymbols,
 }
 
@@ -47,7 +47,7 @@ impl Default for CompiledProgram {
         use simplicity::node::CoreConstructible;
         Self {
             simplicity: ProgNode::unit(&simplicity::types::Context::new()),
-            witness_types: DeclaredWitnesses::default(),
+            witness_types: WitnessTypes::default(),
             debug_symbols: DebugSymbols::default(),
         }
     }
@@ -65,7 +65,7 @@ impl CompiledProgram {
         let simplicity_named_construct = ast_program.compile().with_file(s)?;
         Ok(Self {
             simplicity: simplicity_named_construct,
-            witness_types: ast_program.witnesses().clone(),
+            witness_types: ast_program.witness_types().clone(),
             debug_symbols: ast_program.debug_symbols(s),
         })
     }

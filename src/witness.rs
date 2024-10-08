@@ -1,7 +1,7 @@
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 
-use crate::ast::DeclaredWitnesses;
+use crate::ast::WitnessTypes;
 use crate::error::{Error, RichError, WithFile, WithSpan};
 use crate::parse::ParseFromStr;
 use crate::str::WitnessName;
@@ -59,7 +59,7 @@ impl WitnessValues {
     /// in the witness map. These witnesses may lie on pruned branches that will not be part of the
     /// finalized Simplicity program. However, before the finalization, we cannot know which
     /// witnesses will be pruned and which won't be pruned. This check skips unassigned witnesses.
-    pub fn is_consistent(&self, witness_types: &DeclaredWitnesses) -> Result<(), Error> {
+    pub fn is_consistent(&self, witness_types: &WitnessTypes) -> Result<(), Error> {
         for name in self.0.keys() {
             let declared_ty = match witness_types.get(name) {
                 Some(ty) => ty,
