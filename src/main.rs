@@ -1,8 +1,6 @@
 use base64::display::Base64Display;
 use base64::engine::general_purpose::STANDARD;
 
-use simfony::witness::WitnessValues;
-
 use simfony::CompiledProgram;
 use std::env;
 
@@ -15,6 +13,7 @@ fn main() {
     }
 }
 
+#[cfg(feature = "serde")]
 fn run() -> Result<(), String> {
     let args: Vec<String> = env::args().collect();
 
@@ -36,7 +35,7 @@ fn run() -> Result<(), String> {
         let wit_file = &args[2];
         let wit_path = std::path::Path::new(wit_file);
         let wit_text = std::fs::read_to_string(wit_path).map_err(|e| e.to_string())?;
-        let witness = serde_json::from_str::<WitnessValues>(&wit_text).unwrap();
+        let witness = serde_json::from_str::<simfony::witness::WitnessValues>(&wit_text).unwrap();
 
         let satisfied = compiled.satisfy(&witness)?;
         let (program_bytes, witness_bytes) = satisfied.redeem().encode_to_vec();
@@ -55,6 +54,32 @@ fn run() -> Result<(), String> {
             Base64Display::new(&program_bytes, &STANDARD)
         );
     }
+
+    Ok(())
+}
+
+#[cfg(not(feature = "serde"))]
+fn run() -> Result<(), String> {
+    let args: Vec<String> = env::args().collect();
+
+    if args.len() < 2 {
+        println!("Usage: {} PROGRAM_FILE", args[0]);
+        println!(
+            "Compile the given Simfony program and print the resulting Simplicity base64 string."
+        );
+        return Ok(());
+    }
+
+    let prog_file = &args[1];
+    let prog_path = std::path::Path::new(prog_file);
+    let prog_text = std::fs::read_to_string(prog_path).map_err(|e| e.to_string())?;
+    let compiled = CompiledProgram::new(&prog_text)?;
+
+    let program_bytes = compiled.commit().encode_to_vec();
+    println!(
+        "Program:\n{}",
+        Base64Display::new(&program_bytes, &STANDARD)
+    );
 
     Ok(())
 }

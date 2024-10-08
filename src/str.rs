@@ -4,8 +4,21 @@ use std::sync::Arc;
 
 /// Implementations for newtypes that wrap [`Arc<str>`].
 macro_rules! wrapped_string {
-    ($wrapper:ident) => {
+    ($wrapper:ident, $name:expr) => {
         impl $wrapper {
+            #[doc = "Create a"]
+            #[doc = $name]
+            #[doc = ".\n\n"]
+            #[doc = "## Precondition\n\n"]
+            #[doc = "The string must be a valid"]
+            #[doc = $name]
+            #[doc = ".\n\n"]
+            #[doc = "## Panics\n\n"]
+            #[doc = "Panics may occur down the line if the precondition is not satisfied."]
+            pub fn from_str_unchecked(s: &str) -> Self {
+                Self(Arc::from(s))
+            }
+
             /// Access the inner string.
             pub fn as_inner(&self) -> &str {
                 self.0.as_ref()
@@ -54,92 +67,34 @@ macro_rules! impl_arbitrary_lowercase_alpha {
 pub struct FunctionName(Arc<str>);
 
 impl FunctionName {
-    /// Create a function name.
-    ///
-    /// ## Precondition
-    ///
-    /// The string must be a valid function name.
-    ///
-    /// ## Panics
-    ///
-    /// Panics may occur down the line if the precondition is not satisfied.
-    pub fn from_str_unchecked(s: &str) -> Self {
-        Self(Arc::from(s))
-    }
-
     /// Return the name of the main function.
     pub fn main() -> Self {
         Self(Arc::from("main"))
     }
 }
 
-wrapped_string!(FunctionName);
+wrapped_string!(FunctionName, "function name");
 impl_arbitrary_lowercase_alpha!(FunctionName);
 
 /// The identifier of a variable.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Identifier(Arc<str>);
 
-impl Identifier {
-    /// Create a variable identifier.
-    ///
-    /// ## Precondition
-    ///
-    /// The string must be a valid variable identifier.
-    ///
-    /// ## Panics
-    ///
-    /// Panics may occur down the line if the precondition is not satisfied.
-    pub fn from_str_unchecked(s: &str) -> Self {
-        Self(Arc::from(s))
-    }
-}
-
-wrapped_string!(Identifier);
+wrapped_string!(Identifier, "variable identifier");
 impl_arbitrary_lowercase_alpha!(Identifier);
 
 /// The name of a witness.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct WitnessName(Arc<str>);
 
-impl WitnessName {
-    /// Create a witness name.
-    ///
-    /// ## Precondition
-    ///
-    /// The string must be a valid witness name.
-    ///
-    /// ## Panics
-    ///
-    /// Panics may occur down the line if the precondition is not satisfied.
-    pub fn from_str_unchecked(s: &str) -> Self {
-        Self(Arc::from(s))
-    }
-}
-
-wrapped_string!(WitnessName);
+wrapped_string!(WitnessName, "witness name");
 impl_arbitrary_lowercase_alpha!(WitnessName);
 
 /// The name of a jet.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct JetName(Arc<str>);
 
-impl JetName {
-    /// Create a jet name.
-    ///
-    /// ## Precondition
-    ///
-    /// The string must be a valid jet name.
-    ///
-    /// ## Panics
-    ///
-    /// Panics may occur down the line if the precondition is not satisfied.
-    pub fn from_str_unchecked(s: &str) -> Self {
-        Self(Arc::from(s))
-    }
-}
-
-wrapped_string!(JetName);
+wrapped_string!(JetName, "jet name");
 
 #[cfg(feature = "arbitrary")]
 impl<'a> arbitrary::Arbitrary<'a> for JetName {
@@ -155,22 +110,7 @@ impl<'a> arbitrary::Arbitrary<'a> for JetName {
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Decimal(Arc<str>);
 
-impl Decimal {
-    /// Create a decimal string.
-    ///
-    /// ## Precondition
-    ///
-    /// The string must be a valid decimal string.
-    ///
-    /// ## Panics
-    ///
-    /// Panics may occur down the line if the precondition is not satisfied.
-    pub fn from_str_unchecked(s: &str) -> Self {
-        Self(Arc::from(s))
-    }
-}
-
-wrapped_string!(Decimal);
+wrapped_string!(Decimal, "decimal string");
 
 #[cfg(feature = "arbitrary")]
 impl<'a> arbitrary::Arbitrary<'a> for Decimal {
@@ -189,22 +129,7 @@ impl<'a> arbitrary::Arbitrary<'a> for Decimal {
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Binary(Arc<str>);
 
-impl Binary {
-    /// Create a binary string.
-    ///
-    /// ## Precondition
-    ///
-    /// The string must be a valid binary string.
-    ///
-    /// ## Panics
-    ///
-    /// Panics may occur down the line if the precondition is not satisfied.
-    pub fn from_str_unchecked(s: &str) -> Self {
-        Self(Arc::from(s))
-    }
-}
-
-wrapped_string!(Binary);
+wrapped_string!(Binary, "binary string");
 
 #[cfg(feature = "arbitrary")]
 impl<'a> arbitrary::Arbitrary<'a> for Binary {
@@ -224,22 +149,7 @@ impl<'a> arbitrary::Arbitrary<'a> for Binary {
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Hexadecimal(Arc<str>);
 
-impl Hexadecimal {
-    /// Create a hexadecimal string.
-    ///
-    /// ## Precondition
-    ///
-    /// The string must be a valid hexadecimal string.
-    ///
-    /// ## Panics
-    ///
-    /// Panics may occur down the line if the precondition is not satisfied.
-    pub fn from_str_unchecked(s: &str) -> Self {
-        Self(Arc::from(s))
-    }
-}
-
-wrapped_string!(Hexadecimal);
+wrapped_string!(Hexadecimal, "hexadecimal string");
 
 #[cfg(feature = "arbitrary")]
 impl<'a> arbitrary::Arbitrary<'a> for Hexadecimal {

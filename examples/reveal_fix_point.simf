@@ -15,7 +15,7 @@ fn sha2(string: u256) -> u256 {
 }
 
 fn main() {
-    let string: u256 = witness("string");
+    let string: u256 = witness::STRING;
     let hash: u256 = sha2(string);
     assert!(jet::eq_256(string, hash));
 }

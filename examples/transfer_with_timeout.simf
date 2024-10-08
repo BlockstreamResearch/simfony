@@ -32,9 +32,8 @@ fn timeout_spend(sender_sig: Signature) {
 }
 
 fn main() {
-    let sender_sig: Signature = witness("sender_sig");
-    let transfer_or_timeout: Option<Signature> = witness("transfer_or_timeout");
-    match transfer_or_timeout {
+    let sender_sig: Signature = witness::SENDER_SIG;
+    match witness::TRANSFER_OR_TIMEOUT {
         Some(recipient_sig: Signature) => transfer_spend(sender_sig, recipient_sig),
         None => timeout_spend(sender_sig),
     }

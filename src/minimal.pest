@@ -73,7 +73,7 @@ call_expr         =  { call_name ~ call_args }
 dec_literal       = @{ (ASCII_DIGIT | "_")+ }
 bin_literal       = @{ "0b" ~ (ASCII_BIN_DIGIT | "_")+ }
 hex_literal       = @{ "0x" ~ (ASCII_HEX_DIGIT | "_")+ }
-witness_expr      =  { "witness(\"" ~ witness_name ~ "\")" }
+witness_expr      = ${ "witness::" ~ witness_name }
 variable_expr     =  { identifier }
 match_arm         =  { match_pattern ~ "=>" ~ (single_expression ~ "," | block_expression ~ ","?) }
 match_keyword     = @{ "match" ~ !ASCII_ALPHANUMERIC }

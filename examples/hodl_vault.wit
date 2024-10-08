@@ -1,17 +1,17 @@
 {
-    "oracle_height": {
+    "ORACLE_HEIGHT": {
         "value": "1000",
         "type": "u32"
     },
-    "oracle_price": {
+    "ORACLE_PRICE": {
         "value": "100000",
         "type": "u32"
     },
-    "oracle_sig": {
+    "ORACLE_SIG": {
         "value": "0x90231b8de96a1f940ddcf406fe8389417ca8fb0b03151608e2f94b31b443a7e0d26a12e437df69028f09027c37d5f6742a10c1e8864061d119b8bbce962d26d3",
         "type": "Signature"
     },
-    "owner_sig": {
+    "OWNER_SIG": {
         "value": "0xf2341f571f069216edfc72822f6094b8ec339c2f72dc64aea0eed1e3d60abf4572fdd04618e5b5bc672ccd71cfaf125b6c1b101aeca3a7b938fe83932ab38743",
         "type": "Signature"
     }

@@ -21,9 +21,9 @@ use crate::{impl_eq_hash, parse};
 
 /// Map of witness names to their expected type, as declared in the program.
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
-pub struct DeclaredWitnesses(HashMap<WitnessName, ResolvedType>);
+pub struct WitnessTypes(HashMap<WitnessName, ResolvedType>);
 
-impl DeclaredWitnesses {
+impl WitnessTypes {
     /// Get the expected type of the given witness `name`.
     pub fn get(&self, name: &WitnessName) -> Option<&ResolvedType> {
         self.0.get(name)
@@ -37,8 +37,8 @@ impl DeclaredWitnesses {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Program {
     main: Expression,
-    witnesses: DeclaredWitnesses,
-    tracked_calls: Vec<(Span, TrackedCallName)>,
+    witness_types: WitnessTypes,
+    tracked_calls: Arc<[(Span, TrackedCallName)]>,
 }
 
 impl Program {
@@ -49,16 +49,16 @@ impl Program {
         &self.main
     }
 
-    /// Access the map of declared witnesses.
-    pub fn witnesses(&self) -> &DeclaredWitnesses {
-        &self.witnesses
+    /// Access the types of witnesses of the program.
+    pub fn witness_types(&self) -> &WitnessTypes {
+        &self.witness_types
     }
 
     /// Access the debug symbols of the program.
     pub fn debug_symbols(&self, file: &str) -> DebugSymbols {
         let mut debug_symbols = DebugSymbols::default();
-        for (span, name) in self.tracked_calls.clone() {
-            debug_symbols.insert(span, name, file);
+        for (span, name) in self.tracked_calls.iter() {
+            debug_symbols.insert(*span, name.clone(), file);
         }
         debug_symbols
     }
@@ -562,8 +562,8 @@ impl Scope {
     ///
     /// 1. The map that assigns witness names to their expected type.
     /// 2. The list of tracked function calls.
-    pub fn destruct(self) -> (DeclaredWitnesses, Vec<(Span, TrackedCallName)>) {
-        (DeclaredWitnesses(self.witnesses), self.tracked_calls)
+    pub fn destruct(self) -> (WitnessTypes, Vec<(Span, TrackedCallName)>) {
+        (WitnessTypes(self.witnesses), self.tracked_calls)
     }
 
     /// Insert a custom function into the global map.
@@ -619,28 +619,19 @@ impl Program {
             .map(|s| Item::analyze(s, &unit, &mut scope))
             .collect::<Result<Vec<Item>, RichError>>()?;
         debug_assert!(scope.is_topmost());
-        let (witnesses, tracked_calls) = scope.destruct();
-
-        let mut mains = items
-            .into_iter()
-            .filter_map(|item| match item {
-                Item::Function(Function::Main(expr)) => Some(expr),
-                _ => None,
-            })
-            .collect::<Vec<Expression>>();
-        let main = match mains.len() {
-            0 => return Err(Error::MainRequired).with_span(from),
-            1 => mains.pop().unwrap(),
-            _ => {
-                return Err(Error::FunctionRedefined(FunctionName::main()))
-                    .with_span(mains.first().unwrap())
-            }
-        };
-
+        let (witness_types, tracked_calls) = scope.destruct();
+        let mut iter = items.into_iter().filter_map(|item| match item {
+            Item::Function(Function::Main(expr)) => Some(expr),
+            _ => None,
+        });
+        let main = iter.next().ok_or(Error::MainRequired).with_span(from)?;
+        if iter.next().is_some() {
+            return Err(Error::FunctionRedefined(FunctionName::main())).with_span(from);
+        }
         Ok(Self {
             main,
-            witnesses,
-            tracked_calls,
+            witness_types,
+            tracked_calls: tracked_calls.into_iter().collect(),
         })
     }
 }

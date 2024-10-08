@@ -34,8 +34,7 @@ fn cancel_spend(cold_sig: Signature) {
 }
 
 fn main() {
-    let hot_or_cold: Either<Signature, Signature> = witness("hot_or_cold");
-    match hot_or_cold {
+    match witness::HOT_OR_COLD {
         Left(hot_sig: Signature) => complete_spend(hot_sig),
         Right(cold_sig: Signature) => cancel_spend(cold_sig),
     }

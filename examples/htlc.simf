@@ -36,8 +36,7 @@ fn cancel_spend(sender_sig: Signature) {
 }
 
 fn main() {
-    let complete_or_cancel: Either<(u256, Signature), Signature> = witness("complete_or_cancel");
-    match complete_or_cancel {
+    match witness::COMPLETE_OR_CANCEL {
         Left(preimage_sig: (u256, Signature)) => {
             let (preimage, recipient_sig): (u256, Signature) = preimage_sig;
             complete_spend(preimage, recipient_sig);

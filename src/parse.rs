@@ -545,7 +545,7 @@ impl<'a> fmt::Display for ExprTree<'a> {
                     S::Decimal(decimal) => write!(f, "{decimal}")?,
                     S::Hexadecimal(hexadecimal) => write!(f, "0x{hexadecimal}")?,
                     S::Variable(name) => write!(f, "{name}")?,
-                    S::Witness(name) => write!(f, "witness(\"{name}\")")?,
+                    S::Witness(name) => write!(f, "witness::{name}")?,
                     S::Option(None) => write!(f, "None")?,
                     S::Option(Some(_)) => match data.n_children_yielded {
                         0 => write!(f, "Some(")?,

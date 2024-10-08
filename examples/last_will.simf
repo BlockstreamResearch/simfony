@@ -41,8 +41,7 @@ fn refresh_spend(hot_sig: Signature) {
 }
 
 fn main() {
-    let inherit_or_not: Either<Signature, Either<Signature, Signature>> = witness("inherit_or_not");
-    match inherit_or_not {
+    match witness::INHERIT_OR_NOT {
         Left(inheritor_sig: Signature) => inherit_spend(inheritor_sig),
         Right(cold_or_hot: Either<Signature, Signature>) => match cold_or_hot {
             Left(cold_sig: Signature) => cold_spend(cold_sig),

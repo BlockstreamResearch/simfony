@@ -16,7 +16,7 @@ build_features:
 
 # Run unit tests
 test:
-    cargo test --workspace
+    cargo test --workspace --all-features
 
 # Check code (CI)
 check:
@@ -33,9 +33,16 @@ fuzz target:
 
 # Check fuzz targets (CI; requires nightly)
 check_fuzz:
-    just fuzz display_parse_tree
-    just fuzz compile_text
     just fuzz compile_parse_tree
+    just fuzz compile_text
+    just fuzz display_parse_tree
+    just fuzz parse_value_rtt
+    just fuzz parse_witness_rtt
+    just fuzz reconstruct_value
+
+# Build fuzz tests
+build_fuzz:
+    cargo-fuzz check
 
 # Build integration tests
 build_integration:
