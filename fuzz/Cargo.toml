@@ -43,8 +43,15 @@ doc = false
 bench = false
 
 [[bin]]
-name = "parse_witness_rtt"
-path = "fuzz_targets/parse_witness_rtt.rs"
+name = "parse_witness_json_rtt"
+path = "fuzz_targets/parse_witness_json_rtt.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_witness_module_rtt"
+path = "fuzz_targets/parse_witness_module_rtt.rs"
 test = false
 doc = false
 bench = false
