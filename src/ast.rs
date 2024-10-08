@@ -620,23 +620,14 @@ impl Program {
             .collect::<Result<Vec<Item>, RichError>>()?;
         debug_assert!(scope.is_topmost());
         let (witnesses, tracked_calls) = scope.destruct();
-
-        let mut mains = items
-            .into_iter()
-            .filter_map(|item| match item {
-                Item::Function(Function::Main(expr)) => Some(expr),
-                _ => None,
-            })
-            .collect::<Vec<Expression>>();
-        let main = match mains.len() {
-            0 => return Err(Error::MainRequired).with_span(from),
-            1 => mains.pop().unwrap(),
-            _ => {
-                return Err(Error::FunctionRedefined(FunctionName::main()))
-                    .with_span(mains.first().unwrap())
-            }
-        };
-
+        let mut iter = items.into_iter().filter_map(|item| match item {
+            Item::Function(Function::Main(expr)) => Some(expr),
+            _ => None,
+        });
+        let main = iter.next().ok_or(Error::MainRequired).with_span(from)?;
+        if iter.next().is_some() {
+            return Err(Error::FunctionRedefined(FunctionName::main())).with_span(from);
+        }
         Ok(Self {
             main,
             witnesses,
