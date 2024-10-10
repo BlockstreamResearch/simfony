@@ -6,7 +6,7 @@ use simplicity::hashes::{sha256, Hash, HashEngine};
 use simplicity::{elements, Cmr};
 
 use crate::parse::{MatchPattern, Rule};
-use crate::str::{FunctionName, Identifier, JetName, WitnessName};
+use crate::str::{FunctionName, Identifier, JetName, ModuleName, WitnessName};
 use crate::types::{ResolvedType, UIntType};
 
 /// Position of an object inside a file.
@@ -329,6 +329,8 @@ pub enum Error {
     WitnessTypeMismatch(WitnessName, ResolvedType, ResolvedType),
     WitnessReassigned(WitnessName),
     WitnessOutsideMain,
+    ModuleRequired(ModuleName),
+    ModuleRedefined(ModuleName),
 }
 
 #[rustfmt::skip]
@@ -450,6 +452,14 @@ impl fmt::Display for Error {
             Error::WitnessOutsideMain => write!(
                 f,
                 "Witness expressions are not allowed outside the `main` function"
+            ),
+            Error::ModuleRequired(name) => write!(
+                f,
+                "Required module `{name}` is missing"
+            ),
+            Error::ModuleRedefined(name) => write!(
+                f,
+                "Module `{name}` is defined twice"
             ),
         }
     }

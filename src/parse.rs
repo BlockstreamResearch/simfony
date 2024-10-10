@@ -46,6 +46,8 @@ pub enum Item {
     TypeAlias(TypeAlias),
     /// A function.
     Function(Function),
+    /// A module, which is ignored.
+    Module,
 }
 
 /// Definition of a function.
@@ -408,6 +410,65 @@ impl MatchPattern {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct WitnessProgram {
+    items: Arc<[WitnessItem]>,
+    span: Span,
+}
+
+impl WitnessProgram {
+    /// Access the items of the program.
+    pub fn items(&self) -> &[WitnessItem] {
+        &self.items
+    }
+}
+
+impl_eq_hash!(WitnessProgram; items);
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum WitnessItem {
+    Ignored,
+    WitnessModule(WitnessModule),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct WitnessModule {
+    assignments: Arc<[WitnessAssignment]>,
+    span: Span,
+}
+
+impl WitnessModule {
+    /// Access the assignments of the module.
+    pub fn assignments(&self) -> &[WitnessAssignment] {
+        &self.assignments
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct WitnessAssignment {
+    name: WitnessName,
+    ty: AliasedType,
+    expression: Expression,
+    span: Span,
+}
+
+impl WitnessAssignment {
+    /// Access the assigned witness name.
+    pub fn name(&self) -> &WitnessName {
+        &self.name
+    }
+
+    /// Access the assigned witness type.
+    pub fn ty(&self) -> &AliasedType {
+        &self.ty
+    }
+
+    /// Access the assigned witness expression.
+    pub fn expression(&self) -> &Expression {
+        &self.expression
+    }
+}
+
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for item in self.items() {
@@ -422,6 +483,10 @@ impl fmt::Display for Item {
         match self {
             Self::TypeAlias(alias) => write!(f, "{alias}"),
             Self::Function(function) => write!(f, "{function}"),
+            // The parse tree contains no information about the contents of modules.
+            // We print a random empty module `mod witness {}` here
+            // so that `from_string(to_string(x)) = x` holds for all trees `x`.
+            Self::Module => write!(f, "mod witness {{}}"),
         }
     }
 }
@@ -740,8 +805,7 @@ impl PestParse for Program {
             .into_inner()
             .filter_map(|pair| match pair.as_rule() {
                 Rule::item => Some(Item::parse(pair)),
-                Rule::EOI => None,
-                _ => unreachable!("Corrupt grammar"),
+                _ => None,
             })
             .collect::<Result<Arc<[Item]>, RichError>>()?;
         Ok(Program { items, span })
@@ -757,7 +821,7 @@ impl PestParse for Item {
         match pair.as_rule() {
             Rule::type_alias => TypeAlias::parse(pair).map(Item::TypeAlias),
             Rule::function => Function::parse(pair).map(Item::Function),
-            _ => unreachable!("Corrupt grammar"),
+            _ => Ok(Self::Module),
         }
     }
 }
@@ -1366,6 +1430,71 @@ impl PestParse for NonZeroPow2Usize {
     }
 }
 
+impl PestParse for WitnessProgram {
+    const RULE: Rule = Rule::program;
+
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
+        assert!(matches!(pair.as_rule(), Self::RULE));
+        let span = Span::from(&pair);
+        let items = pair
+            .into_inner()
+            .filter_map(|pair| match pair.as_rule() {
+                Rule::item => Some(WitnessItem::parse(pair)),
+                _ => None,
+            })
+            .collect::<Result<Arc<[WitnessItem]>, RichError>>()?;
+        Ok(Self { items, span })
+    }
+}
+
+impl PestParse for WitnessItem {
+    const RULE: Rule = Rule::item;
+
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
+        assert!(matches!(pair.as_rule(), Self::RULE));
+        let pair = pair.into_inner().next().unwrap();
+        match pair.as_rule() {
+            Rule::witness_module => WitnessModule::parse(pair).map(Self::WitnessModule),
+            _ => Ok(Self::Ignored),
+        }
+    }
+}
+
+impl PestParse for WitnessModule {
+    const RULE: Rule = Rule::witness_module;
+
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
+        assert!(matches!(pair.as_rule(), Self::RULE));
+        let span = Span::from(&pair);
+        let mut it = pair.into_inner();
+        let _mod_keyword = it.next().unwrap();
+        let assignments = it
+            .map(WitnessAssignment::parse)
+            .collect::<Result<Arc<[WitnessAssignment]>, RichError>>()?;
+        Ok(Self { assignments, span })
+    }
+}
+
+impl PestParse for WitnessAssignment {
+    const RULE: Rule = Rule::witness_assign;
+
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
+        assert!(matches!(pair.as_rule(), Self::RULE));
+        let span = Span::from(&pair);
+        let mut it = pair.into_inner();
+        let _const_keyword = it.next().unwrap();
+        let name = WitnessName::parse(it.next().unwrap())?;
+        let ty = AliasedType::parse(it.next().unwrap())?;
+        let expression = Expression::parse(it.next().unwrap())?;
+        Ok(Self {
+            name,
+            ty,
+            expression,
+            span,
+        })
+    }
+}
+
 /// Pair of tokens from the 'pattern' rule.
 #[derive(Clone, Debug)]
 struct PatternPair<'a>(pest::iterators::Pair<'a, Rule>);
@@ -1466,6 +1595,24 @@ impl AsRef<Span> for Call {
 }
 
 impl AsRef<Span> for Match {
+    fn as_ref(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl AsRef<Span> for WitnessProgram {
+    fn as_ref(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl AsRef<Span> for WitnessModule {
+    fn as_ref(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl AsRef<Span> for WitnessAssignment {
     fn as_ref(&self) -> &Span {
         &self.span
     }

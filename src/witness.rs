@@ -1,8 +1,10 @@
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
+use std::fmt;
 
 use crate::ast::WitnessTypes;
 use crate::error::{Error, RichError, WithFile, WithSpan};
+use crate::parse;
 use crate::parse::ParseFromStr;
 use crate::str::WitnessName;
 use crate::types::{AliasedType, ResolvedType};
@@ -104,6 +106,22 @@ impl ParseFromStr for ResolvedType {
     }
 }
 
+impl ParseFromStr for WitnessValues {
+    fn parse_from_str(s: &str) -> Result<Self, RichError> {
+        parse::WitnessProgram::parse_from_str(s).and_then(|x| Self::analyze(&x))
+    }
+}
+
+impl fmt::Display for WitnessValues {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "mod witness{{")?;
+        for (name, value) in self.iter() {
+            writeln!(f, "    const {name}: {} = {value};", value.ty())?;
+        }
+        write!(f, "}}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,6 +189,25 @@ fn main() {
                 assert!(error
                     .contains("Witness expressions are not allowed outside the `main` function"))
             }
+        }
+    }
+
+    #[test]
+    fn missing_witness_module() {
+        match WitnessValues::parse_from_str("") {
+            Ok(_) => panic!("Missing witness module was falsely accepted"),
+            Err(error) => assert!(error.to_string().contains("module `witness` is missing")),
+        }
+    }
+
+    #[test]
+    fn redefined_witness_module() {
+        let s = r#"mod witness {} mod witness {}"#;
+        match WitnessValues::parse_from_str(s) {
+            Ok(_) => panic!("Redefined witness module was falsely accepted"),
+            Err(error) => assert!(error
+                .to_string()
+                .contains("Module `witness` is defined twice")),
         }
     }
 }

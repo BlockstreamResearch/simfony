@@ -70,7 +70,8 @@ jobs:
           - compile_text
           - display_parse_tree
           - parse_value_rtt
-          - parse_witness_rtt
+          - parse_witness_json_rtt
+          - parse_witness_module_rtt
           - reconstruct_value
     steps:
     - name: Checkout
