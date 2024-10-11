@@ -27,6 +27,7 @@ pub fn setup() -> (ElementsD, elements::BlockHash) {
         Some(i) => conf.0.args[i] = "-initialfreecoins=210000000000",
         None => conf.0.args.push("-initialfreecoins=210000000000"),
     };
+    conf.0.args.push("-evbparams=simplicity:-1:::");
 
     let elementsd = ElementsD::with_conf(elementsd::exe_path().unwrap(), &conf).unwrap();
 
