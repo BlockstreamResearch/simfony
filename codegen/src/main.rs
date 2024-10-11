@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io;
 
-use simfony::simplicity::jet::Elements;
+use simfony::simplicity::jet::{Elements, Jet};
 use simfony::types::TypeDeconstructible;
 
 mod jet;
@@ -14,6 +14,10 @@ fn write_jet<W: io::Write>(jet: Elements, w: &mut W) -> io::Result<()> {
             false => writeln!(w, "/// {line}")?,
         }
     }
+    writeln!(w, "///")?;
+    writeln!(w, "/// ## Cost")?;
+    writeln!(w, "///")?;
+    writeln!(w, "/// {} mWU _(milli weight units)_", jet.cost())?;
     write!(w, "pub fn {jet}(")?;
     let parameters = simfony::jet::source_type(jet);
     for (i, ty) in parameters.iter().enumerate() {
