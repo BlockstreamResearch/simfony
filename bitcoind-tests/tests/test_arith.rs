@@ -3,7 +3,6 @@
 //! Arith expression fragment integration tests
 //!
 
-use std::path::Path;
 use std::str::FromStr;
 
 use ::secp256k1::XOnlyPublicKey;
@@ -38,12 +37,15 @@ fn get_vout(cl: &ElementsD, txid: Txid, value: u64, spk: Script) -> (OutPoint, T
     unreachable!("Only call get vout on functions which have the expected outpoint");
 }
 
-pub fn test_simplicity(cl: &ElementsD, program_file: &str, witness_file: &str) {
-    let program_path = Path::new(program_file);
-    let witness_path = Path::new(witness_file);
-    let program_text = std::fs::read_to_string(program_path).unwrap();
-    let witness_text = std::fs::read_to_string(witness_path).unwrap();
-    let witness_values = serde_json::from_str::<WitnessValues>(&witness_text).unwrap();
+pub fn test_simplicity(cl: &ElementsD, program_file: &str, witness_file: Option<&str>) {
+    let program_text = std::fs::read_to_string(program_file).unwrap();
+    let witness_values = match witness_file {
+        Some(file) => {
+            let text = std::fs::read_to_string(file).unwrap();
+            serde_json::from_str::<WitnessValues>(&text).unwrap()
+        }
+        None => WitnessValues::default(),
+    };
     let program = SatisfiedProgram::new(&program_text, &witness_values).unwrap();
 
     let secp = secp256k1::Secp256k1::new();
@@ -99,6 +101,6 @@ fn test_arith() {
     let (cl, _genesis_hash) = &setup::setup();
     println!("{}", cl.get_new_address());
 
-    test_simplicity(cl, "../examples/cat.simf", "../examples/empty.wit");
+    test_simplicity(cl, "../examples/cat.simf", None);
     // TODO: Other examples require custom signatures
 }
