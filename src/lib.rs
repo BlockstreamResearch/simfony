@@ -466,7 +466,12 @@ fn main() {
 
     #[test]
     fn fuzz_regression_1() {
-        CompiledProgram::new("type f=f").unwrap_err();
+        parse::Program::parse_from_str("type f=f").unwrap();
+    }
+
+    #[test]
+    fn fuzz_regression_2() {
+        parse::Program::parse_from_str("fn dbggscas(h: bool, asyxhaaaa: a) {\nfalse}\n\n").unwrap();
     }
 
     #[test]

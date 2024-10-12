@@ -10,9 +10,9 @@ block_expression  =  { "{" ~ (statement ~ ";")* ~ expression? ~ "}" }
 identifier        = @{ !builtin_type ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
 jet               = @{ "jet::" ~ (ASCII_ALPHANUMERIC | "_")+ }
 witness_name      = @{ (ASCII_ALPHANUMERIC | "_")+ }
-builtin_type      = @{ "Either" | "Option" | "bool" | "List" | unsigned_type }
+builtin_type      = @{ ("Either" | "Option" | "bool" | "List" | unsigned_type) ~ !ASCII_ALPHANUMERIC }
 
-builtin_function  = @{ jet | "unwrap_left" | "unwrap_right" | "for_while" | "is_none" | "unwrap" | "assert" | "panic" | "match" | "into" | "fold" | "dbg" }
+builtin_function  = @{ (jet | "unwrap_left" | "unwrap_right" | "for_while" | "is_none" | "unwrap" | "assert" | "panic" | "match" | "into" | "fold" | "dbg") ~ !ASCII_ALPHANUMERIC }
 function_name     =  { !builtin_function ~ identifier }
 typed_identifier  =  { identifier ~ ":" ~ ty }
 function_params   =  { "(" ~ (typed_identifier ~ ("," ~ typed_identifier)*)? ~ ")" }
