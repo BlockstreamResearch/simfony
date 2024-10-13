@@ -228,7 +228,7 @@ impl<J> CoreConstructible for ConstructData<J> {
         Arrow::fail(inference_context, entropy).into()
     }
 
-    fn const_word(inference_context: &types::Context, word: simplicity::Value) -> Self {
+    fn const_word(inference_context: &types::Context, word: simplicity::Word) -> Self {
         Arrow::const_word(inference_context, word).into()
     }
 
@@ -270,22 +270,22 @@ pub trait CoreExt: CoreConstructible + Sized {
         }
     }
 
-    /// Compose a unit with a constant value.
+    /// Compose a unit with a scribed value.
     ///
     /// ## Infallibility
     ///
-    /// `unit` produces the unit value, which is the input of the word jet `const v`.
+    /// `unit` produces the unit value, which is the input of `scribe(v)`.
     ///
     /// ```text
-    /// unit    : A → 1
-    /// const v : 1 → B
-    /// -------------------
-    /// comp unit (const v) : A → B
+    /// unit      : A → 1
+    /// scribe(v) : 1 → B
+    /// ---------------------------
+    /// comp unit scribe(v) : A → B
     /// ```
-    fn unit_const_value(inference_context: &types::Context, value: simplicity::Value) -> Self {
+    fn unit_scribe(inference_context: &types::Context, value: &simplicity::Value) -> Self {
         Self::comp(
             &Self::unit(inference_context),
-            &Self::const_word(inference_context, value),
+            &Self::scribe(inference_context, value),
         )
         .unwrap()
     }
@@ -572,22 +572,22 @@ impl<P: CoreExt> PairBuilder<P> {
         Self(P::pair(&self.0, &other.0).unwrap())
     }
 
-    /// Compose a unit with a constant value.
+    /// Compose a unit with a scribed value.
     ///
     /// ## Invariant
     ///
     /// `unit` has a type variable as its source type.
-    /// `comp unit (const v)` has the same source type as `unit`.
-    /// Therefore, `comp unit (const v)` has a nested product of type variables as its source type.
+    /// `comp unit scribe(v)` has the same source type as `unit`.
+    /// Therefore, `comp unit scribe(v)` has a nested product of type variables as its source type.
     ///
     /// ```text
-    /// unit    : A → 1
-    /// const v : 1 → B
+    /// unit      : A → 1
+    /// scribe(v) : 1 → B
     /// ---------------------------
-    /// comp unit (const v) : A → B
+    /// comp unit scribe(v) : A → B
     /// ```
-    pub fn unit_const_value(inference_context: &types::Context, value: simplicity::Value) -> Self {
-        Self(P::unit_const_value(inference_context, value))
+    pub fn unit_scribe(inference_context: &types::Context, value: &simplicity::Value) -> Self {
+        Self(P::unit_scribe(inference_context, value))
     }
 }
 
