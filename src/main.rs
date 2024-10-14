@@ -35,7 +35,7 @@ fn run() -> Result<(), String> {
         let wit_file = &args[2];
         let wit_path = std::path::Path::new(wit_file);
         let wit_text = std::fs::read_to_string(wit_path).map_err(|e| e.to_string())?;
-        let witness = serde_json::from_str::<simfony::witness::WitnessValues>(&wit_text).unwrap();
+        let witness = serde_json::from_str::<simfony::WitnessValues>(&wit_text).unwrap();
 
         let satisfied = compiled.satisfy(&witness)?;
         let (program_bytes, witness_bytes) = satisfied.redeem().encode_to_vec();

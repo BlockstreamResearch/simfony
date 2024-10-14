@@ -17,7 +17,7 @@ use elements::{
 };
 use elementsd::bitcoincore_rpc::jsonrpc::serde_json;
 use elementsd::ElementsD;
-use simfony::witness::WitnessValues;
+use simfony::WitnessValues;
 
 mod setup;
 use setup::Call;

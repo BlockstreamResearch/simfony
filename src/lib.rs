@@ -18,7 +18,7 @@ mod serde;
 pub mod str;
 pub mod types;
 pub mod value;
-pub mod witness;
+mod witness;
 
 use std::sync::Arc;
 
@@ -32,7 +32,9 @@ use crate::ast::WitnessTypes;
 use crate::debug::DebugSymbols;
 use crate::error::WithFile;
 use crate::parse::ParseFromStr;
-use crate::witness::WitnessValues;
+pub use crate::types::ResolvedType;
+pub use crate::value::Value;
+pub use crate::witness::WitnessValues;
 
 /// A Simfony program, compiled to Simplicity.
 #[derive(Clone, Debug)]

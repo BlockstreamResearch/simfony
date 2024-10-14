@@ -3,7 +3,7 @@
 use libfuzzer_sys::fuzz_target;
 
 use simfony::parse::ParseFromStr;
-use simfony::witness::WitnessValues;
+use simfony::WitnessValues;
 
 fuzz_target!(|witness_values: WitnessValues| {
     let witness_text = witness_values.to_string();
