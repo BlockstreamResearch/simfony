@@ -704,8 +704,6 @@ dependencies = [
  "miniscript",
  "pest",
  "pest_derive",
- "serde",
- "serde_json",
  "simplicity-lang",
 ]
 
