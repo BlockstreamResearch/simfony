@@ -19,8 +19,8 @@ use elementsd::bitcoincore_rpc::jsonrpc::serde_json;
 use elementsd::ElementsD;
 use simfony::WitnessValues;
 
-mod setup;
-use setup::Call;
+mod common;
+use common::daemon::{self, Call};
 
 const PARAMS: elements::AddressParams = elements::AddressParams::ELEMENTS;
 
@@ -98,7 +98,7 @@ pub fn test_simplicity(cl: &ElementsD, program_file: &str, witness_file: Option<
 
 #[test]
 fn test_arith() {
-    let (cl, _genesis_hash) = &setup::setup();
+    let (cl, _genesis_hash) = &daemon::setup();
     println!("{}", cl.get_new_address());
 
     test_simplicity(cl, "../examples/cat.simf", None);
