@@ -220,9 +220,8 @@ impl SingleExpression {
     fn compile(&self, scope: &mut Scope) -> Result<PairBuilder<ProgNode>, RichError> {
         let expr = match self.inner() {
             SingleExpressionInner::Constant(value) => {
-                // FIXME: Handle values that are not powers of two (requires updated rust-simplicity API)
                 let value = StructuralValue::from(value);
-                PairBuilder::unit_const_value(scope.ctx(), value.into())
+                PairBuilder::unit_scribe(scope.ctx(), value.as_ref())
             }
             SingleExpressionInner::Witness(name) => PairBuilder::witness(scope.ctx(), name.clone()),
             SingleExpressionInner::Variable(identifier) => scope

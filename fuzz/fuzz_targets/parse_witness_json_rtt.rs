@@ -2,7 +2,7 @@
 
 use libfuzzer_sys::fuzz_target;
 
-use simfony::witness::WitnessValues;
+use simfony::WitnessValues;
 
 fuzz_target!(|witness_values: WitnessValues| {
     let witness_text = serde_json::to_string(&witness_values)

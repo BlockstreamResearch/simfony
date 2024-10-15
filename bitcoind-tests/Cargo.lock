@@ -704,15 +704,13 @@ dependencies = [
  "miniscript",
  "pest",
  "pest_derive",
- "serde",
- "serde_json",
  "simplicity-lang",
 ]
 
 [[package]]
 name = "simplicity-lang"
 version = "0.3.0"
-source = "git+https://github.com/BlockstreamResearch/rust-simplicity?rev=4ec0abadd796f5a7d9bc707cdc26dbb0770e7bd7#4ec0abadd796f5a7d9bc707cdc26dbb0770e7bd7"
+source = "git+https://github.com/BlockstreamResearch/rust-simplicity?rev=fbe88d6f703c2f3b74f52eb3eebf60411606ed42#fbe88d6f703c2f3b74f52eb3eebf60411606ed42"
 dependencies = [
  "bitcoin",
  "bitcoin_hashes",
@@ -728,7 +726,7 @@ dependencies = [
 [[package]]
 name = "simplicity-sys"
 version = "0.3.0"
-source = "git+https://github.com/BlockstreamResearch/rust-simplicity?rev=4ec0abadd796f5a7d9bc707cdc26dbb0770e7bd7#4ec0abadd796f5a7d9bc707cdc26dbb0770e7bd7"
+source = "git+https://github.com/BlockstreamResearch/rust-simplicity?rev=fbe88d6f703c2f3b74f52eb3eebf60411606ed42#fbe88d6f703c2f3b74f52eb3eebf60411606ed42"
 dependencies = [
  "bitcoin_hashes",
  "cc",

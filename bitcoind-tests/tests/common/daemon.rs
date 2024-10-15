@@ -1,8 +1,6 @@
-pub extern crate simfony;
-
-pub use simfony::elements;
 use std::str::FromStr;
 
+use simfony::elements;
 use elements::encode::{deserialize, serialize_hex};
 use elements::hex::FromHex;
 use elementsd::bitcoincore_rpc::jsonrpc::serde_json::{json, Value};

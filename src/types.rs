@@ -264,6 +264,11 @@ pub trait TypeConstructible: Sized + From<UIntType> {
     /// Create an array with `size` many values of the `element` type.
     fn array(element: Self, size: usize) -> Self;
 
+    /// Create an array of `size` many bytes.
+    fn byte_array(size: usize) -> Self {
+        Self::array(Self::u8(), size)
+    }
+
     /// Create a list with less than `bound` many values of the `element` type.
     fn list(element: Self, bound: NonZeroPow2Usize) -> Self;
 
