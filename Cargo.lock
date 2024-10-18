@@ -32,8 +32,8 @@ version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2c8d66485a3a2ea485c1913c4572ce0256067a5377ac8c75c4960e1cda98605f"
 dependencies = [
- "bitcoin-internals 0.3.0",
- "bitcoin_hashes 0.14.0",
+ "bitcoin-internals",
+ "bitcoin_hashes",
 ]
 
 [[package]]
@@ -56,20 +56,14 @@ checksum = "0032b0e8ead7074cda7fc4f034409607e3f03a6f71d66ade8a307f79b4d99e73"
 dependencies = [
  "base58ck",
  "bech32",
- "bitcoin-internals 0.3.0",
+ "bitcoin-internals",
  "bitcoin-io",
  "bitcoin-units",
- "bitcoin_hashes 0.14.0",
+ "bitcoin_hashes",
  "hex-conservative 0.2.1",
  "hex_lit",
  "secp256k1",
 ]
-
-[[package]]
-name = "bitcoin-internals"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9425c3bf7089c983facbae04de54513cce73b41c7f9ff8c845b54e7bc64ebbfb"
 
 [[package]]
 name = "bitcoin-internals"
@@ -95,17 +89,7 @@ version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5285c8bcaa25876d07f37e3d30c303f2609179716e11d688f51e8f1fe70063e2"
 dependencies = [
- "bitcoin-internals 0.3.0",
-]
-
-[[package]]
-name = "bitcoin_hashes"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1930a4dabfebb8d7d9992db18ebe3ae2876f0a305fab206fd168df931ede293b"
-dependencies = [
- "bitcoin-internals 0.2.0",
- "hex-conservative 0.1.1",
+ "bitcoin-internals",
 ]
 
 [[package]]
@@ -469,7 +453,7 @@ version = "0.29.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9465315bc9d4566e1724f0fffcbcc446268cb522e60f9a27bcded6b19c108113"
 dependencies = [
- "bitcoin_hashes 0.13.0",
+ "bitcoin_hashes",
  "rand",
  "secp256k1-sys",
 ]
@@ -497,9 +481,9 @@ dependencies = [
 
 [[package]]
 name = "secp256k1-zkp-sys"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c6eea7919e0cab992510edfbf40bd9342c0a3c2bb910f2c51355c2cb2d69839"
+checksum = "57f08b2d0b143a22e07f798ae4f0ab20d5590d7c68e0d090f2088a48a21d1654"
 dependencies = [
  "cc",
  "secp256k1-sys",
@@ -571,7 +555,7 @@ version = "0.3.0"
 source = "git+https://github.com/BlockstreamResearch/rust-simplicity?rev=fbe88d6f703c2f3b74f52eb3eebf60411606ed42#fbe88d6f703c2f3b74f52eb3eebf60411606ed42"
 dependencies = [
  "bitcoin",
- "bitcoin_hashes 0.14.0",
+ "bitcoin_hashes",
  "byteorder",
  "elements",
  "getrandom",
@@ -586,7 +570,7 @@ name = "simplicity-sys"
 version = "0.3.0"
 source = "git+https://github.com/BlockstreamResearch/rust-simplicity?rev=fbe88d6f703c2f3b74f52eb3eebf60411606ed42#fbe88d6f703c2f3b74f52eb3eebf60411606ed42"
 dependencies = [
- "bitcoin_hashes 0.14.0",
+ "bitcoin_hashes",
  "cc",
 ]
 
