@@ -1111,7 +1111,7 @@ impl AbstractSyntaxTree for Call {
                 check_argument_types(from.args(), &args_tys).with_span(from)?;
                 let args = analyze_arguments(from.args(), &args_tys, scope)?;
                 let [arg_ty] = args_tys;
-                scope.track_call(from.args().first().unwrap(), TrackedCallName::Debug(arg_ty));
+                scope.track_call(from, TrackedCallName::Debug(arg_ty));
                 args
             }
             CallName::TypeCast(source) => {

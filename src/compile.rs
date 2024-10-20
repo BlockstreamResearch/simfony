@@ -356,7 +356,7 @@ impl Call {
             CallName::Debug => {
                 // dbg! computes the identity function
                 let iden = ProgNode::iden(scope.ctx());
-                scope.with_debug_symbol(args, &iden, self.args().first().unwrap())
+                scope.with_debug_symbol(args, &iden, self)
             }
             CallName::TypeCast(..) => {
                 // A cast converts between two structurally equal types.

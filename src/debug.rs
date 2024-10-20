@@ -74,6 +74,11 @@ impl DebugSymbols {
     /// Use the Simfony source `file` to extract the Simfony text of the expression.
     pub(crate) fn insert(&mut self, span: Span, cmr: Cmr, name: TrackedCallName, file: &str) {
         let text = remove_excess_whitespace(span.to_slice(file).unwrap_or(""));
+        let text = text
+            .strip_prefix("dbg!(")
+            .and_then(|s| s.strip_suffix(")"))
+            .unwrap_or(&text);
+
         self.0.insert(
             cmr,
             TrackedCall {
