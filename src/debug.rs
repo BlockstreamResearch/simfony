@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use either::Either;
-use simplicity::Cmr;
+use hashes::{sha256, Hash, HashEngine};
+use simplicity::{hashes, Cmr};
 
 use crate::error::Span;
 use crate::types::ResolvedType;
@@ -13,6 +14,16 @@ use crate::value::{StructuralValue, Value};
 /// Tracking happens via CMRs that are inserted into the Simplicity target code.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DebugSymbols(HashMap<Cmr, TrackedCall>);
+
+/// Intermediate representation of tracked Simfony call expressions
+/// that is mutable and that lacks information about the source file.
+///
+/// The struct can be converted to [`DebugSymbols`] by providing the source file.
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
+pub(crate) struct CallTracker {
+    next_id: u32,
+    map: HashMap<Span, (Cmr, TrackedCallName)>,
+}
 
 /// Call expression with a debug symbol.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -61,9 +72,13 @@ pub struct DebugValue {
 impl DebugSymbols {
     /// Insert a tracked call expression.
     /// Use the Simfony source `file` to extract the Simfony text of the expression.
-    pub(crate) fn insert(&mut self, span: Span, name: TrackedCallName, file: &str) {
-        let cmr = span.cmr();
+    pub(crate) fn insert(&mut self, span: Span, cmr: Cmr, name: TrackedCallName, file: &str) {
         let text = remove_excess_whitespace(span.to_slice(file).unwrap_or(""));
+        let text = text
+            .strip_prefix("dbg!(")
+            .and_then(|s| s.strip_suffix(")"))
+            .unwrap_or(&text);
+
         self.0.insert(
             cmr,
             TrackedCall {
@@ -95,6 +110,45 @@ fn remove_excess_whitespace(s: &str) -> String {
         }
     };
     s.replace(is_excess_whitespace, "")
+}
+
+impl CallTracker {
+    /// Track a new function call with the given `span`.
+    ///
+    /// ## Precondition
+    ///
+    /// Different function calls have different spans.
+    ///
+    /// This holds true when the method is called on a real source file.
+    /// The precondition might be broken when this method is called on random input.
+    pub fn track_call(&mut self, span: Span, name: TrackedCallName) {
+        let cmr = self.next_id_cmr();
+        let _replaced = self.map.insert(span, (cmr, name));
+        self.next_id += 1;
+    }
+
+    /// Get the CMR of the tracked function call with the given `span`.
+    pub fn get_cmr(&self, span: &Span) -> Option<Cmr> {
+        self.map.get(span).map(|x| x.0)
+    }
+
+    fn next_id_cmr(&self) -> Cmr {
+        let tag_hash = sha256::Hash::hash(b"simfony\x1fdebug\x1f");
+        let mut engine = sha256::Hash::engine();
+        engine.input(tag_hash.as_ref());
+        engine.input(tag_hash.as_ref());
+        engine.input(self.next_id.to_be_bytes().as_ref());
+        Cmr::from_byte_array(sha256::Hash::from_engine(engine).to_byte_array())
+    }
+
+    /// Create debug symbols by attaching information from the source `file`.
+    pub fn with_file(&self, file: &str) -> DebugSymbols {
+        let mut debug_symbols = DebugSymbols::default();
+        for (span, (cmr, name)) in &self.map {
+            debug_symbols.insert(*span, *cmr, name.clone(), file);
+        }
+        debug_symbols
+    }
 }
 
 impl TrackedCall {

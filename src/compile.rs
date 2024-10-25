@@ -12,6 +12,7 @@ use crate::ast::{
     Call, CallName, Expression, ExpressionInner, Match, Program, SingleExpression,
     SingleExpressionInner, Statement,
 };
+use crate::debug::CallTracker;
 use crate::error::{Error, RichError, Span, WithSpan};
 use crate::named::{CoreExt, PairBuilder};
 use crate::num::{NonZeroPow2Usize, Pow2Usize};
@@ -59,16 +60,19 @@ struct Scope {
     /// ```
     variables: Vec<Vec<Pattern>>,
     ctx: simplicity::types::Context,
+    /// Tracker of function calls.
+    call_tracker: Arc<CallTracker>,
 }
 
 impl Scope {
     /// Create the main scope.
     ///
     /// _This function should be called at the start of the compilation and then never again._
-    pub fn new() -> Self {
+    pub fn new(call_tracker: Arc<CallTracker>) -> Self {
         Self {
             variables: vec![vec![Pattern::Ignore]],
             ctx: simplicity::types::Context::new(),
+            call_tracker,
         }
     }
 
@@ -77,6 +81,7 @@ impl Scope {
         Self {
             variables: vec![vec![input]],
             ctx: self.ctx.shallow_clone(),
+            call_tracker: Arc::clone(&self.call_tracker),
         }
     }
 
@@ -163,6 +168,28 @@ impl Scope {
     pub fn ctx(&self) -> &simplicity::types::Context {
         &self.ctx
     }
+
+    /// Attach a debug symbol to the function body.
+    /// This debug symbol can be used by the Simplicity runtime to print the call arguments
+    /// during execution.
+    ///
+    /// The debug symbol is attached in such a way that a Simplicity runtime without support
+    /// for debug symbols will simply ignore it. The semantics of the program remain unchanged.
+    pub fn with_debug_symbol<S: AsRef<Span>>(
+        &mut self,
+        args: PairBuilder<ProgNode>,
+        body: &ProgNode,
+        span: &S,
+    ) -> Result<PairBuilder<ProgNode>, RichError> {
+        match self.call_tracker.get_cmr(span.as_ref()) {
+            Some(cmr) => {
+                let false_and_args = ProgNode::bit(self.ctx(), false).pair(args);
+                let nop_assert = ProgNode::assertl_drop(body, cmr);
+                false_and_args.comp(&nop_assert).with_span(span)
+            }
+            None => args.comp(body).with_span(span),
+        }
+    }
 }
 
 fn compile_blk(
@@ -197,7 +224,7 @@ fn compile_blk(
 
 impl Program {
     pub fn compile(&self) -> Result<ProgNode, RichError> {
-        let mut scope = Scope::new();
+        let mut scope = Scope::new(Arc::clone(self.call_tracker()));
         self.main().compile(&mut scope).map(PairBuilder::build)
     }
 }
@@ -285,27 +312,10 @@ impl Call {
         let args_ast = SingleExpression::tuple(self.args().clone(), *self.as_ref());
         let args = args_ast.compile(scope)?;
 
-        // Attach a debug symbol to the function body.
-        // This debug symbol can be used by the Simplicity runtime to print the call arguments
-        // during execution.
-        //
-        // The debug symbol is attached in such a way that a Simplicity runtime without support
-        // for debug symbols will simply ignore it. The semantics of the program remain unchanged.
-        fn with_debug_symbol<S: AsRef<Span>>(
-            args: PairBuilder<ProgNode>,
-            body: &ProgNode,
-            scope: &mut Scope,
-            span: &S,
-        ) -> Result<PairBuilder<ProgNode>, RichError> {
-            let false_and_args = ProgNode::bit(scope.ctx(), false).pair(args);
-            let nop_assert = ProgNode::assertl_drop(body, span.as_ref().cmr());
-            false_and_args.comp(&nop_assert).with_span(span)
-        }
-
         match self.name() {
             CallName::Jet(name) => {
                 let jet = ProgNode::jet(scope.ctx(), *name);
-                with_debug_symbol(args, &jet, scope, self)
+                scope.with_debug_symbol(args, &jet, self)
             }
             CallName::UnwrapLeft(..) => {
                 let input_and_unit =
@@ -315,7 +325,7 @@ impl Call {
                     Cmr::fail(FailEntropy::ZERO),
                 );
                 let body = input_and_unit.comp(&extract_inner).with_span(self)?;
-                with_debug_symbol(args, body.as_ref(), scope, self)
+                scope.with_debug_symbol(args, body.as_ref(), self)
             }
             CallName::UnwrapRight(..) | CallName::Unwrap => {
                 let input_and_unit =
@@ -325,7 +335,7 @@ impl Call {
                     &ProgNode::iden(scope.ctx()),
                 );
                 let body = input_and_unit.comp(&extract_inner).with_span(self)?;
-                with_debug_symbol(args, body.as_ref(), scope, self)
+                scope.with_debug_symbol(args, body.as_ref(), self)
             }
             CallName::IsNone(..) => {
                 let input_and_unit =
@@ -336,17 +346,17 @@ impl Call {
             }
             CallName::Assert => {
                 let jet = ProgNode::jet(scope.ctx(), Elements::Verify);
-                with_debug_symbol(args, &jet, scope, self)
+                scope.with_debug_symbol(args, &jet, self)
             }
             CallName::Panic => {
                 // panic! ignores its arguments
                 let fail = ProgNode::fail(scope.ctx(), FailEntropy::ZERO);
-                with_debug_symbol(args, &fail, scope, self)
+                scope.with_debug_symbol(args, &fail, self)
             }
             CallName::Debug => {
                 // dbg! computes the identity function
                 let iden = ProgNode::iden(scope.ctx());
-                with_debug_symbol(args, &iden, scope, self.args().first().unwrap())
+                scope.with_debug_symbol(args, &iden, self)
             }
             CallName::TypeCast(..) => {
                 // A cast converts between two structurally equal types.

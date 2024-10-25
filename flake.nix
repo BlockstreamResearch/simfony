@@ -26,10 +26,11 @@
       pkgs = import nixpkgs {
         inherit system overlays;
       };
-      mkRust = stable: version: profile: extensions: pkgs.rust-bin.${stable}.${version}.${profile}.override {
+      mkRust = stable: version: profile: targets: extensions: pkgs.rust-bin.${stable}.${version}.${profile}.override {
+        inherit targets;
         inherit extensions;
       };
-      defaultRust = mkRust "stable" "latest" "default" ["rust-src"];
+      defaultRust = mkRust "stable" "latest" "default" ["wasm32-unknown-unknown"] ["rust-src"];
       elementsd-simplicity = pkgs.callPackage ./bitcoind-tests/elementsd-simplicity.nix {};
       CC_wasm32_unknown_unknown = "${pkgs.llvmPackages_16.clang-unwrapped}/bin/clang-16";
       AR_wasm32_unknown_unknown = "${pkgs.llvmPackages_16.libllvm}/bin/llvm-ar";
@@ -43,6 +44,9 @@
           ] ++ (
             if with_elements then [ elementsd-simplicity ] else []
           );
+          inherit CC_wasm32_unknown_unknown;
+          inherit AR_wasm32_unknown_unknown;
+          inherit CFLAGS_wasm32_unknown_unknown;
           # Constants for IDE
           RUST_TOOLCHAIN = "${defaultRust}/bin";
           RUST_STDLIB = "${defaultRust}/lib/rustlib/src/rust";
@@ -56,14 +60,14 @@
         # Temporary shells until CI has its nix derivations
         ci = pkgs.mkShell {
           buildInputs = [
-            (mkRust "stable" "latest" "default" [])
+            (mkRust "stable" "latest" "default" [] [])
             pkgs.just
             pkgs.cargo-hack
           ];
         };
         msrv = pkgs.mkShell {
           buildInputs = [
-            (mkRust "stable" "1.63.0" "minimal" [])
+            (mkRust "stable" "1.63.0" "minimal" [] [])
             pkgs.just
           ];
         };
@@ -71,13 +75,18 @@
           stdenv = pkgs.clang16Stdenv;
         } {
           buildInputs = [
-            (mkRust "nightly" "2024-07-01" "minimal" ["llvm-tools-preview"])
+            (mkRust "nightly" "2024-07-01" "minimal" [] ["llvm-tools-preview"])
             pkgs.just
             pkgs.cargo-fuzz
             pkgs.cargo-binutils
             pkgs.rustfilt
           ];
-          # Constants for compiler
+        };
+        wasm = pkgs.mkShell {
+          buildInputs = [
+            (mkRust "stable" "latest" "default" ["wasm32-unknown-unknown"] [])
+            pkgs.just
+          ];
           inherit CC_wasm32_unknown_unknown;
           inherit AR_wasm32_unknown_unknown;
           inherit CFLAGS_wasm32_unknown_unknown;

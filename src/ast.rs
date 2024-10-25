@@ -7,7 +7,7 @@ use either::Either;
 use miniscript::iter::{Tree, TreeLike};
 use simplicity::jet::Elements;
 
-use crate::debug::{DebugSymbols, TrackedCallName};
+use crate::debug::{CallTracker, DebugSymbols, TrackedCallName};
 use crate::error::{Error, RichError, Span, WithSpan};
 use crate::num::{NonZeroPow2Usize, Pow2Usize};
 use crate::parse::MatchPattern;
@@ -39,7 +39,7 @@ impl WitnessTypes {
 pub struct Program {
     main: Expression,
     witness_types: WitnessTypes,
-    tracked_calls: Arc<[(Span, TrackedCallName)]>,
+    call_tracker: Arc<CallTracker>,
 }
 
 impl Program {
@@ -57,11 +57,12 @@ impl Program {
 
     /// Access the debug symbols of the program.
     pub fn debug_symbols(&self, file: &str) -> DebugSymbols {
-        let mut debug_symbols = DebugSymbols::default();
-        for (span, name) in self.tracked_calls.iter() {
-            debug_symbols.insert(*span, name.clone(), file);
-        }
-        debug_symbols
+        self.call_tracker.with_file(file)
+    }
+
+    /// Access the tracker of function calls.
+    pub(crate) fn call_tracker(&self) -> &Arc<CallTracker> {
+        &self.call_tracker
     }
 }
 
@@ -485,7 +486,7 @@ struct Scope {
     witnesses: HashMap<WitnessName, ResolvedType>,
     functions: HashMap<FunctionName, CustomFunction>,
     is_main: bool,
-    tracked_calls: Vec<(Span, TrackedCallName)>,
+    call_tracker: CallTracker,
 }
 
 impl Scope {
@@ -602,9 +603,9 @@ impl Scope {
     /// Consume the scope and return its contents:
     ///
     /// 1. The map that assigns witness names to their expected type.
-    /// 2. The list of tracked function calls.
-    pub fn destruct(self) -> (WitnessTypes, Vec<(Span, TrackedCallName)>) {
-        (WitnessTypes(self.witnesses), self.tracked_calls)
+    /// 2. The function call tracker.
+    pub fn destruct(self) -> (WitnessTypes, CallTracker) {
+        (WitnessTypes(self.witnesses), self.call_tracker)
     }
 
     /// Insert a custom function into the global map.
@@ -633,7 +634,7 @@ impl Scope {
 
     /// Track a call expression with its span.
     pub fn track_call<S: AsRef<Span>>(&mut self, span: &S, name: TrackedCallName) {
-        self.tracked_calls.push((*span.as_ref(), name));
+        self.call_tracker.track_call(*span.as_ref(), name);
     }
 }
 
@@ -660,7 +661,7 @@ impl Program {
             .map(|s| Item::analyze(s, &unit, &mut scope))
             .collect::<Result<Vec<Item>, RichError>>()?;
         debug_assert!(scope.is_topmost());
-        let (witness_types, tracked_calls) = scope.destruct();
+        let (witness_types, call_tracker) = scope.destruct();
         let mut iter = items.into_iter().filter_map(|item| match item {
             Item::Function(Function::Main(expr)) => Some(expr),
             _ => None,
@@ -672,7 +673,7 @@ impl Program {
         Ok(Self {
             main,
             witness_types,
-            tracked_calls: tracked_calls.into_iter().collect(),
+            call_tracker: Arc::new(call_tracker),
         })
     }
 }
@@ -1110,7 +1111,7 @@ impl AbstractSyntaxTree for Call {
                 check_argument_types(from.args(), &args_tys).with_span(from)?;
                 let args = analyze_arguments(from.args(), &args_tys, scope)?;
                 let [arg_ty] = args_tys;
-                scope.track_call(from.args().first().unwrap(), TrackedCallName::Debug(arg_ty));
+                scope.track_call(from, TrackedCallName::Debug(arg_ty));
                 args
             }
             CallName::TypeCast(source) => {
