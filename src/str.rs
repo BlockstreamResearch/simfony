@@ -23,6 +23,11 @@ macro_rules! wrapped_string {
             pub fn as_inner(&self) -> &str {
                 self.0.as_ref()
             }
+
+            /// Make a cheap copy of the name.
+            pub fn shallow_clone(&self) -> Self {
+                Self(Arc::clone(&self.0))
+            }
         }
 
         impl std::fmt::Display for $wrapper {
