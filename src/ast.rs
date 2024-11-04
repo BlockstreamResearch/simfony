@@ -367,33 +367,35 @@ impl MatchArm {
     }
 }
 
+/// Item when analyzing modules.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum WitnessItem {
+pub enum ModuleItem {
     Ignored,
-    WitnessModule(WitnessModule),
+    Module(Module),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct WitnessModule {
-    assignments: Arc<[WitnessAssignment]>,
+pub struct Module {
+    name: ModuleName,
+    assignments: Arc<[ModuleAssignment]>,
     span: Span,
 }
 
-impl WitnessModule {
+impl Module {
     /// Access the assignments of the module.
-    pub fn assignments(&self) -> &[WitnessAssignment] {
+    pub fn assignments(&self) -> &[ModuleAssignment] {
         &self.assignments
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct WitnessAssignment {
+pub struct ModuleAssignment {
     name: WitnessName,
     value: Value,
     span: Span,
 }
 
-impl WitnessAssignment {
+impl ModuleAssignment {
     /// Access the assigned witness name.
     pub fn name(&self) -> &WitnessName {
         &self.name
@@ -1310,59 +1312,66 @@ impl AbstractSyntaxTree for Match {
     }
 }
 
+fn analyze_named_module(
+    name: ModuleName,
+    from: &parse::ModuleProgram,
+) -> Result<HashMap<WitnessName, Value>, RichError> {
+    let unit = ResolvedType::unit();
+    let mut scope = Scope::default();
+    let items = from
+        .items()
+        .iter()
+        .map(|s| ModuleItem::analyze(s, &unit, &mut scope))
+        .collect::<Result<Vec<ModuleItem>, RichError>>()?;
+    debug_assert!(scope.is_topmost());
+    let mut iter = items.into_iter().filter_map(|item| match item {
+        ModuleItem::Module(module) if module.name == name => Some(module),
+        _ => None,
+    });
+    let witness_module = iter
+        .next()
+        .ok_or(Error::ModuleRequired(name.shallow_clone()))
+        .with_span(from)?;
+    if iter.next().is_some() {
+        return Err(Error::ModuleRedefined(name)).with_span(from);
+    }
+    let mut map = HashMap::new();
+    for assignment in witness_module.assignments() {
+        if map.contains_key(assignment.name()) {
+            return Err(Error::WitnessReassigned(assignment.name().shallow_clone()))
+                .with_span(assignment);
+        }
+        map.insert(
+            assignment.name().shallow_clone(),
+            assignment.value().clone(),
+        );
+    }
+    Ok(map)
+}
+
 impl WitnessValues {
-    pub fn analyze(from: &parse::WitnessProgram) -> Result<Self, RichError> {
-        let unit = ResolvedType::unit();
-        let mut scope = Scope::default();
-        let items = from
-            .items()
-            .iter()
-            .map(|s| WitnessItem::analyze(s, &unit, &mut scope))
-            .collect::<Result<Vec<WitnessItem>, RichError>>()?;
-        debug_assert!(scope.is_topmost());
-        let mut iter = items.into_iter().filter_map(|item| match item {
-            WitnessItem::WitnessModule(witness_module) => Some(witness_module),
-            _ => None,
-        });
-        let witness_module = iter
-            .next()
-            .ok_or(Error::ModuleRequired(ModuleName::witness()))
-            .with_span(from)?;
-        if iter.next().is_some() {
-            return Err(Error::ModuleRedefined(ModuleName::witness())).with_span(from);
-        }
-        let mut map = HashMap::new();
-        for assignment in witness_module.assignments() {
-            if map.contains_key(assignment.name()) {
-                return Err(Error::WitnessReassigned(assignment.name().shallow_clone()))
-                    .with_span(assignment);
-            }
-            map.insert(
-                assignment.name().shallow_clone(),
-                assignment.value().clone(),
-            );
-        }
-        Ok(Self::from(map))
+    pub fn analyze(from: &parse::ModuleProgram) -> Result<Self, RichError> {
+        analyze_named_module(ModuleName::witness(), from).map(Self::from)
     }
 }
 
-impl AbstractSyntaxTree for WitnessItem {
-    type From = parse::WitnessItem;
+impl AbstractSyntaxTree for ModuleItem {
+    type From = parse::ModuleItem;
 
     fn analyze(from: &Self::From, ty: &ResolvedType, scope: &mut Scope) -> Result<Self, RichError> {
         assert!(ty.is_unit(), "Items cannot return anything");
         assert!(scope.is_topmost(), "Items live in the topmost scope only");
         match from {
-            parse::WitnessItem::Ignored => Ok(Self::Ignored),
-            parse::WitnessItem::WitnessModule(witness_module) => {
-                WitnessModule::analyze(witness_module, ty, scope).map(Self::WitnessModule)
+            parse::ModuleItem::Ignored => Ok(Self::Ignored),
+            parse::ModuleItem::Module(witness_module) => {
+                Module::analyze(witness_module, ty, scope).map(Self::Module)
             }
         }
     }
 }
 
-impl AbstractSyntaxTree for WitnessModule {
-    type From = parse::WitnessModule;
+impl AbstractSyntaxTree for Module {
+    type From = parse::Module;
 
     fn analyze(from: &Self::From, ty: &ResolvedType, scope: &mut Scope) -> Result<Self, RichError> {
         assert!(ty.is_unit(), "Modules cannot return anything");
@@ -1370,19 +1379,20 @@ impl AbstractSyntaxTree for WitnessModule {
         let assignments = from
             .assignments()
             .iter()
-            .map(|s| WitnessAssignment::analyze(s, ty, scope))
-            .collect::<Result<Arc<[WitnessAssignment]>, RichError>>()?;
+            .map(|s| ModuleAssignment::analyze(s, ty, scope))
+            .collect::<Result<Arc<[ModuleAssignment]>, RichError>>()?;
         debug_assert!(scope.is_topmost());
 
         Ok(Self {
+            name: from.name().shallow_clone(),
             span: *from.as_ref(),
             assignments,
         })
     }
 }
 
-impl AbstractSyntaxTree for WitnessAssignment {
-    type From = parse::WitnessAssignment;
+impl AbstractSyntaxTree for ModuleAssignment {
+    type From = parse::ModuleAssignment;
 
     fn analyze(from: &Self::From, ty: &ResolvedType, scope: &mut Scope) -> Result<Self, RichError> {
         assert!(ty.is_unit(), "Assignments cannot return anything");
@@ -1430,13 +1440,13 @@ impl AsRef<Span> for Match {
     }
 }
 
-impl AsRef<Span> for WitnessModule {
+impl AsRef<Span> for Module {
     fn as_ref(&self) -> &Span {
         &self.span
     }
 }
 
-impl AsRef<Span> for WitnessAssignment {
+impl AsRef<Span> for ModuleAssignment {
     fn as_ref(&self) -> &Span {
         &self.span
     }

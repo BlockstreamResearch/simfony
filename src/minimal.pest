@@ -2,7 +2,7 @@ WHITESPACE        = _{ " " | "\t" | "\n" | "\r" }
 COMMENT           = _{ ("/*" ~ (!"*/" ~ ANY)* ~ "*/") | ("//" ~ (!"\n" ~ ANY)*) }
 
 program           =  { SOI ~ item* ~ EOI }
-item              =  { type_alias | function | witness_module }
+item              =  { type_alias | function | module }
 statement         =  { assignment | expression }
 expression        =  { block_expression | single_expression }
 block_expression  =  { "{" ~ (statement ~ ";")* ~ expression? ~ "}" }
@@ -84,6 +84,7 @@ list_expr         =  { "list![" ~ (expression ~ ("," ~ expression)* ~ ","?)? ~ "
 single_expression =  { left_expr | right_expr | none_expr | some_expr | false_expr | true_expr | call_expr | match_expr | tuple_expr | array_expr | list_expr | bin_literal | hex_literal | dec_literal | witness_expr | variable_expr | "(" ~ expression ~ ")" }
 
 mod_keyword       = @{ "mod" ~ !ASCII_ALPHANUMERIC }
-witness_module    =  { mod_keyword ~ "witness" ~ "{" ~ (witness_assign ~ ";")* ~ "}" }
 const_keyword     = @{ "const" ~ !ASCII_ALPHANUMERIC }
-witness_assign    =  { const_keyword ~ witness_name ~ ":" ~ ty ~ "=" ~ expression }
+module_name       = @{ "witness" | "param" }
+module_assign     =  { const_keyword ~ witness_name ~ ":" ~ ty ~ "=" ~ expression }
+module            =  { mod_keyword ~ module_name ~ "{" ~ (module_assign ~ ";")* ~ "}" }

@@ -69,7 +69,7 @@ macro_rules! impl_name_value_map {
 
         impl ParseFromStr for $wrapper {
             fn parse_from_str(s: &str) -> Result<Self, RichError> {
-                parse::WitnessProgram::parse_from_str(s).and_then(|x| Self::analyze(&x))
+                parse::ModuleProgram::parse_from_str(s).and_then(|x| Self::analyze(&x))
             }
         }
 
