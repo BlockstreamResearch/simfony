@@ -7,7 +7,7 @@ use crate::parse::ParseFromStr;
 use crate::str::WitnessName;
 use crate::types::ResolvedType;
 use crate::value::Value;
-use crate::witness::WitnessValues;
+use crate::witness::{Arguments, WitnessValues};
 
 struct WitnessMapVisitor;
 
@@ -33,6 +33,17 @@ impl<'de> de::Visitor<'de> for WitnessMapVisitor {
 }
 
 impl<'de> Deserialize<'de> for WitnessValues {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer
+            .deserialize_map(WitnessMapVisitor)
+            .map(Self::from)
+    }
+}
+
+impl<'de> Deserialize<'de> for Arguments {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -155,6 +166,15 @@ impl<'a> Serialize for ValueMapSerializer<'a> {
 }
 
 impl Serialize for WitnessValues {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        WitnessMapSerializer(self.as_inner()).serialize(serializer)
+    }
+}
+
+impl Serialize for Arguments {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,

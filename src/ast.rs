@@ -17,7 +17,7 @@ use crate::types::{
     AliasedType, ResolvedType, StructuralType, TypeConstructible, TypeDeconstructible, UIntType,
 };
 use crate::value::{UIntValue, Value};
-use crate::witness::{WitnessTypes, WitnessValues};
+use crate::witness::{Parameters, WitnessTypes, WitnessValues};
 use crate::{impl_eq_hash, parse};
 
 /// A program consists of the main function.
@@ -27,6 +27,7 @@ use crate::{impl_eq_hash, parse};
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Program {
     main: Expression,
+    parameters: Parameters,
     witness_types: WitnessTypes,
     call_tracker: Arc<CallTracker>,
 }
@@ -39,7 +40,12 @@ impl Program {
         &self.main
     }
 
-    /// Access the types of witnesses of the program.
+    /// Access the parameters of the program.
+    pub fn parameters(&self) -> &Parameters {
+        &self.parameters
+    }
+
+    /// Access the witness types of the program.
     pub fn witness_types(&self) -> &WitnessTypes {
         &self.witness_types
     }
@@ -197,6 +203,8 @@ pub enum SingleExpressionInner {
     Constant(Value),
     /// Witness value.
     Witness(WitnessName),
+    /// Parameter value.
+    Parameter(WitnessName),
     /// Variable that has been assigned a value.
     Variable(Identifier),
     /// Expression in parentheses.
@@ -442,7 +450,11 @@ impl<'a> TreeLike for ExprTree<'a> {
             },
             Self::Assignment(assignment) => Tree::Unary(Self::Expression(assignment.expression())),
             Self::Single(single) => match single.inner() {
-                S::Constant(_) | S::Witness(_) | S::Variable(_) | S::Option(None) => Tree::Nullary,
+                S::Constant(_)
+                | S::Witness(_)
+                | S::Parameter(_)
+                | S::Variable(_)
+                | S::Option(None) => Tree::Nullary,
                 S::Expression(l)
                 | S::Either(Either::Left(l))
                 | S::Either(Either::Right(l))
@@ -474,6 +486,7 @@ impl<'a> TreeLike for ExprTree<'a> {
 struct Scope {
     variables: Vec<HashMap<Identifier, ResolvedType>>,
     aliases: HashMap<Identifier, ResolvedType>,
+    parameters: HashMap<WitnessName, ResolvedType>,
     witnesses: HashMap<WitnessName, ResolvedType>,
     functions: HashMap<FunctionName, CustomFunction>,
     is_main: bool,
@@ -571,12 +584,28 @@ impl Scope {
         Ok(())
     }
 
+    /// Insert a parameter into the global map.
+    ///
+    /// ## Errors
+    ///
+    /// A parameter of the same name has already been defined as a different type.
+    pub fn insert_parameter(&mut self, name: WitnessName, ty: ResolvedType) -> Result<(), Error> {
+        match self.parameters.entry(name.clone()) {
+            Entry::Occupied(entry) if entry.get() == &ty => Ok(()),
+            Entry::Occupied(entry) => Err(Error::ExpressionTypeMismatch(entry.get().clone(), ty)),
+            Entry::Vacant(entry) => {
+                entry.insert(ty);
+                Ok(())
+            }
+        }
+    }
+
     /// Insert a witness into the global map.
     ///
     /// ## Errors
     ///
     /// - The current scope is not inside the main function.
-    /// - The witness name has already been defined somewhere else in the program.
+    /// - A witness with the same name has already been defined.
     pub fn insert_witness(&mut self, name: WitnessName, ty: ResolvedType) -> Result<(), Error> {
         if !self.is_main {
             return Err(Error::WitnessOutsideMain);
@@ -593,10 +622,15 @@ impl Scope {
 
     /// Consume the scope and return its contents:
     ///
-    /// 1. The map that assigns witness names to their expected type.
-    /// 2. The function call tracker.
-    pub fn destruct(self) -> (WitnessTypes, CallTracker) {
-        (WitnessTypes::from(self.witnesses), self.call_tracker)
+    /// 1. The map of parameter types.
+    /// 2. The map of witness types.
+    /// 3. The function call tracker.
+    pub fn destruct(self) -> (Parameters, WitnessTypes, CallTracker) {
+        (
+            Parameters::from(self.parameters),
+            WitnessTypes::from(self.witnesses),
+            self.call_tracker,
+        )
     }
 
     /// Insert a custom function into the global map.
@@ -652,7 +686,7 @@ impl Program {
             .map(|s| Item::analyze(s, &unit, &mut scope))
             .collect::<Result<Vec<Item>, RichError>>()?;
         debug_assert!(scope.is_topmost());
-        let (witness_types, call_tracker) = scope.destruct();
+        let (parameters, witness_types, call_tracker) = scope.destruct();
         let mut iter = items.into_iter().filter_map(|item| match item {
             Item::Function(Function::Main(expr)) => Some(expr),
             _ => None,
@@ -663,6 +697,7 @@ impl Program {
         }
         Ok(Self {
             main,
+            parameters,
             witness_types,
             call_tracker: Arc::new(call_tracker),
         })
@@ -886,6 +921,12 @@ impl AbstractSyntaxTree for SingleExpression {
                     .insert_witness(name.clone(), ty.clone())
                     .with_span(from)?;
                 SingleExpressionInner::Witness(name.clone())
+            }
+            parse::SingleExpressionInner::Parameter(name) => {
+                scope
+                    .insert_parameter(name.shallow_clone(), ty.clone())
+                    .with_span(from)?;
+                SingleExpressionInner::Parameter(name.shallow_clone())
             }
             parse::SingleExpressionInner::Variable(identifier) => {
                 let bound_ty = scope
@@ -1352,6 +1393,12 @@ fn analyze_named_module(
 impl WitnessValues {
     pub fn analyze(from: &parse::ModuleProgram) -> Result<Self, RichError> {
         analyze_named_module(ModuleName::witness(), from).map(Self::from)
+    }
+}
+
+impl crate::witness::Arguments {
+    pub fn analyze(from: &parse::ModuleProgram) -> Result<Self, RichError> {
+        analyze_named_module(ModuleName::param(), from).map(Self::from)
     }
 }
 

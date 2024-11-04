@@ -293,8 +293,10 @@ pub enum SingleExpressionInner {
     Binary(Binary),
     /// Hexadecimal string literal.
     Hexadecimal(Hexadecimal),
-    /// Witness identifier expression
+    /// Witness value.
     Witness(WitnessName),
+    /// Parameter value.
+    Parameter(WitnessName),
     /// Variable identifier expression
     Variable(Identifier),
     /// Function call
@@ -571,6 +573,7 @@ impl<'a> TreeLike for ExprTree<'a> {
                 | S::Hexadecimal(_)
                 | S::Variable(_)
                 | S::Witness(_)
+                | S::Parameter(_)
                 | S::Option(None) => Tree::Nullary,
                 S::Option(Some(l))
                 | S::Either(Either::Left(l))
@@ -621,6 +624,7 @@ impl<'a> fmt::Display for ExprTree<'a> {
                     S::Hexadecimal(hexadecimal) => write!(f, "0x{hexadecimal}")?,
                     S::Variable(name) => write!(f, "{name}")?,
                     S::Witness(name) => write!(f, "witness::{name}")?,
+                    S::Parameter(name) => write!(f, "param::{name}")?,
                     S::Option(None) => write!(f, "None")?,
                     S::Option(Some(_)) => match data.n_children_yielded {
                         0 => write!(f, "Some(")?,
@@ -1138,10 +1142,12 @@ impl PestParse for SingleExpression {
                 Hexadecimal::parse(inner_pair).map(SingleExpressionInner::Hexadecimal)?
             }
             Rule::dec_literal => Decimal::parse(inner_pair).map(SingleExpressionInner::Decimal)?,
-            Rule::witness_expr => {
-                let witness_pair = inner_pair.into_inner().next().unwrap();
-                SingleExpressionInner::Witness(WitnessName::parse(witness_pair)?)
-            }
+            Rule::witness_expr => SingleExpressionInner::Witness(WitnessName::parse(
+                inner_pair.into_inner().next().unwrap(),
+            )?),
+            Rule::param_expr => SingleExpressionInner::Parameter(WitnessName::parse(
+                inner_pair.into_inner().next().unwrap(),
+            )?),
             Rule::variable_expr => {
                 let identifier_pair = inner_pair.into_inner().next().unwrap();
                 SingleExpressionInner::Variable(Identifier::parse(identifier_pair)?)

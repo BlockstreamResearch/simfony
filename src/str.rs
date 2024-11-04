@@ -183,6 +183,11 @@ impl ModuleName {
     pub fn witness() -> Self {
         Self(Arc::from("witness"))
     }
+
+    /// Return the name of the parameter module.
+    pub fn param() -> Self {
+        Self(Arc::from("param"))
+    }
 }
 
 wrapped_string!(ModuleName, "module name");

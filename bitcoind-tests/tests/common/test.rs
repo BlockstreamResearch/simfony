@@ -51,8 +51,8 @@ impl<'a> TestCase<'a> {
 
     pub fn program_path<P: AsRef<std::path::Path>>(mut self, path: P) -> Self {
         let text = std::fs::read_to_string(path).expect("path should be readable");
-        let compiled =
-            simfony::CompiledProgram::new(text.as_str()).expect("program should compile");
+        let compiled = simfony::CompiledProgram::new(text.as_str(), simfony::Arguments::default())
+            .expect("program should compile");
         self.compiled = Some(compiled);
         self
     }

@@ -33,7 +33,58 @@ use crate::error::WithFile;
 use crate::parse::ParseFromStr;
 pub use crate::types::ResolvedType;
 pub use crate::value::Value;
-pub use crate::witness::{WitnessTypes, WitnessValues};
+pub use crate::witness::{Arguments, Parameters, WitnessTypes, WitnessValues};
+
+/// The template of a Simfony program.
+///
+/// A template has parameterized values that need to be supplied with arguments.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TemplateProgram {
+    simfony: ast::Program,
+    file: Arc<str>,
+}
+
+impl TemplateProgram {
+    /// Parse the template of a Simfony program.
+    ///
+    /// ## Errors
+    ///
+    /// The string is not a valid Simfony program.
+    pub fn new<Str: Into<Arc<str>>>(s: Str) -> Result<Self, String> {
+        let file = s.into();
+        let parse_program = parse::Program::parse_from_str(&file)?;
+        let ast_program = ast::Program::analyze(&parse_program).with_file(Arc::clone(&file))?;
+        Ok(Self {
+            simfony: ast_program,
+            file,
+        })
+    }
+
+    /// Access the parameters of the program.
+    pub fn parameters(&self) -> &Parameters {
+        self.simfony.parameters()
+    }
+
+    /// Instantiate the template program with the given `arguments`.
+    ///
+    /// ## Errors
+    ///
+    /// The arguments are not consistent with the parameters of the program.
+    /// Use [`TemplateProgram::parameters`] to see which parameters the program has.
+    pub fn instantiate(&self, arguments: Arguments) -> Result<CompiledProgram, String> {
+        arguments
+            .is_consistent(self.simfony.parameters())
+            .map_err(|error| error.to_string())?;
+        Ok(CompiledProgram {
+            debug_symbols: self.simfony.debug_symbols(self.file.as_ref()),
+            simplicity: self
+                .simfony
+                .compile(arguments)
+                .with_file(Arc::clone(&self.file))?,
+            witness_types: self.simfony.witness_types().shallow_clone(),
+        })
+    }
+}
 
 /// A Simfony program, compiled to Simplicity.
 #[derive(Clone, Debug)]
@@ -57,18 +108,12 @@ impl Default for CompiledProgram {
 impl CompiledProgram {
     /// Parse and compile a Simfony program from the given string.
     ///
-    /// ## Errors
+    /// ## See
     ///
-    /// The string is not a valid Simfony program.
-    pub fn new(s: &str) -> Result<Self, String> {
-        let parse_program = parse::Program::parse_from_str(s)?;
-        let ast_program = ast::Program::analyze(&parse_program).with_file(s)?;
-        let simplicity_named_construct = ast_program.compile().with_file(s)?;
-        Ok(Self {
-            simplicity: simplicity_named_construct,
-            witness_types: ast_program.witness_types().shallow_clone(),
-            debug_symbols: ast_program.debug_symbols(s),
-        })
+    /// - [`TemplateProgram::new`]
+    /// - [`TemplateProgram::instantiate`]
+    pub fn new<Str: Into<Arc<str>>>(s: Str, arguments: Arguments) -> Result<Self, String> {
+        TemplateProgram::new(s).and_then(|template| template.instantiate(arguments))
     }
 
     /// Access the debug symbols for the Simplicity target code.
@@ -108,15 +153,19 @@ pub struct SatisfiedProgram {
 }
 
 impl SatisfiedProgram {
-    /// Parse, compile and satisfy a Simfony program
-    /// from the given string and the given `witness_values`.
+    /// Parse, compile and satisfy a Simfony program from the given string.
     ///
     /// ## See
     ///
-    /// - [`CompiledProgram::new`]
+    /// - [`TemplateProgram::new`]
+    /// - [`TemplateProgram::instantiate`]
     /// - [`CompiledProgram::satisfy`]
-    pub fn new(s: &str, witness_values: WitnessValues) -> Result<Self, String> {
-        let compiled = CompiledProgram::new(s)?;
+    pub fn new<Str: Into<Arc<str>>>(
+        s: Str,
+        arguments: Arguments,
+        witness_values: WitnessValues,
+    ) -> Result<Self, String> {
+        let compiled = CompiledProgram::new(s, arguments)?;
         compiled.satisfy(witness_values)
     }
 
@@ -183,7 +232,7 @@ trait ArbitraryRec: Sized {
 /// 1. Generate the type via [`arbitrary::Arbitrary`].
 /// 2. Generate the structure via [`ArbitraryOfType::arbitrary_of_type`].
 #[cfg(feature = "arbitrary")]
-trait ArbitraryOfType: Sized {
+pub trait ArbitraryOfType: Sized {
     /// Internal type of the structure.
     type Type;
 
@@ -217,7 +266,7 @@ mod tests {
         }
 
         pub fn program_text(program_text: Cow<'a, str>) -> Self {
-            let program = match CompiledProgram::new(program_text.as_ref()) {
+            let program = match CompiledProgram::new(program_text.as_ref(), Arguments::default()) {
                 Ok(x) => x,
                 Err(error) => panic!("{error}"),
             };
@@ -455,7 +504,7 @@ fn main() {
     jet_verify(my_true());
 }
 "#;
-        match SatisfiedProgram::new(prog_text, WitnessValues::default()) {
+        match SatisfiedProgram::new(prog_text, Arguments::default(), WitnessValues::default()) {
             Ok(_) => panic!("Accepted faulty program"),
             Err(error) => {
                 if !error.contains("Expected expression of type `bool`, found type `()`") {
@@ -478,6 +527,6 @@ fn main() {
     #[test]
     #[ignore]
     fn fuzz_slow_unit_1() {
-        CompiledProgram::new("fn fnnfn(MMet:(((sssss,((((((sssss,ssssss,ss,((((((sssss,ss,((((((sssss,ssssss,ss,((((((sssss,ssssss,((((((sssss,sssssssss,(((((((sssss,sssssssss,(((((ssss,((((((sssss,sssssssss,(((((((sssss,ssss,((((((sssss,ss,((((((sssss,ssssss,ss,((((((sssss,ssssss,((((((sssss,sssssssss,(((((((sssss,sssssssss,(((((ssss,((((((sssss,sssssssss,(((((((sssss,sssssssssssss,(((((((((((u|(").unwrap_err();
+        parse::Program::parse_from_str("fn fnnfn(MMet:(((sssss,((((((sssss,ssssss,ss,((((((sssss,ss,((((((sssss,ssssss,ss,((((((sssss,ssssss,((((((sssss,sssssssss,(((((((sssss,sssssssss,(((((ssss,((((((sssss,sssssssss,(((((((sssss,ssss,((((((sssss,ss,((((((sssss,ssssss,ss,((((((sssss,ssssss,((((((sssss,sssssssss,(((((((sssss,sssssssss,(((((ssss,((((((sssss,sssssssss,(((((((sssss,sssssssssssss,(((((((((((u|(").unwrap_err();
     }
 }

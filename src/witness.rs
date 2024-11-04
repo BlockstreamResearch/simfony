@@ -140,6 +140,69 @@ impl ParseFromStr for ResolvedType {
     }
 }
 
+/// Map of parameters.
+///
+/// A parameter is a named variable that resolves to a value of a given type.
+/// Parameters have a name and a type.
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub struct Parameters(Arc<HashMap<WitnessName, ResolvedType>>);
+
+impl_name_type_map!(Parameters);
+
+/// Map of arguments.
+///
+/// An argument is the value of a parameter.
+/// Arguments have a name and a value of a given type.
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct Arguments(Arc<HashMap<WitnessName, Value>>);
+
+impl_name_value_map!(Arguments, "param");
+
+impl Arguments {
+    /// Check if the arguments are consistent with the given parameters.
+    ///
+    /// 1. Each parameter must be supplied with an argument.
+    /// 2. The type of each parameter must match the type of its argument.
+    ///
+    /// Arguments without a corresponding parameter are ignored.
+    pub fn is_consistent(&self, parameters: &Parameters) -> Result<(), Error> {
+        for (name, parameter_ty) in parameters.iter() {
+            let argument = self
+                .get(name)
+                .ok_or_else(|| Error::ArgumentMissing(name.shallow_clone()))?;
+            if !argument.is_of_type(parameter_ty) {
+                return Err(Error::ArgumentTypeMismatch(
+                    name.clone(),
+                    parameter_ty.clone(),
+                    argument.ty().clone(),
+                ));
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl crate::ArbitraryOfType for Arguments {
+    type Type = Parameters;
+
+    fn arbitrary_of_type(
+        u: &mut arbitrary::Unstructured,
+        ty: &Self::Type,
+    ) -> arbitrary::Result<Self> {
+        let mut map = HashMap::new();
+        for (name, parameter_ty) in ty.iter() {
+            map.insert(
+                name.shallow_clone(),
+                Value::arbitrary_of_type(u, parameter_ty)?,
+            );
+        }
+        Ok(Self::from(map))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -170,7 +233,7 @@ mod tests {
             WitnessName::from_str_unchecked("A"),
             Value::u16(42),
         )]));
-        match SatisfiedProgram::new(s, witness) {
+        match SatisfiedProgram::new(s, Arguments::default(), witness) {
             Ok(_) => panic!("Ill-typed witness assignment was falsely accepted"),
             Err(error) => assert_eq!(
                 "Witness `A` was declared with type `u32` but its assigned value is of type `u16`",
@@ -189,7 +252,7 @@ fn main() {
     assert!(jet::is_zero_32(f()));
 }"#;
 
-        match CompiledProgram::new(s) {
+        match CompiledProgram::new(s, Arguments::default()) {
             Ok(_) => panic!("Witness outside main was falsely accepted"),
             Err(error) => {
                 assert!(error

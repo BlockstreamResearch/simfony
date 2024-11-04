@@ -331,6 +331,8 @@ pub enum Error {
     WitnessOutsideMain,
     ModuleRequired(ModuleName),
     ModuleRedefined(ModuleName),
+    ArgumentMissing(WitnessName),
+    ArgumentTypeMismatch(WitnessName, ResolvedType, ResolvedType),
 }
 
 #[rustfmt::skip]
@@ -460,6 +462,14 @@ impl fmt::Display for Error {
             Error::ModuleRedefined(name) => write!(
                 f,
                 "Module `{name}` is defined twice"
+            ),
+            Error::ArgumentMissing(name) => write!(
+                f,
+                "Parameter `{name}` is missing an argument"
+            ),
+            Error::ArgumentTypeMismatch(name, declared, assigned) => write!(
+                f,
+                "Parameter `{name}` was declared with type `{declared}` but its assigned argument is of type `{assigned}`"
             ),
         }
     }
