@@ -779,6 +779,23 @@ trait PestParse: Sized {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError>;
 }
 
+macro_rules! impl_parse_wrapped_string {
+    ($wrapper: ident, $rule: ident) => {
+        impl PestParse for $wrapper {
+            const RULE: Rule = Rule::$rule;
+
+            fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
+                assert!(matches!(pair.as_rule(), Self::RULE));
+                Ok(Self::from_str_unchecked(pair.as_str()))
+            }
+        }
+    };
+}
+
+impl_parse_wrapped_string!(FunctionName, function_name);
+impl_parse_wrapped_string!(Identifier, identifier);
+impl_parse_wrapped_string!(WitnessName, witness_name);
+
 /// Copy of [`FromStr`] that internally uses the PEST parser.
 pub trait ParseFromStr: Sized {
     /// Parse a value from the string `s`.
@@ -864,15 +881,6 @@ impl PestParse for Function {
     }
 }
 
-impl PestParse for FunctionName {
-    const RULE: Rule = Rule::function_name;
-
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Self::RULE));
-        Ok(Self::from_str_unchecked(pair.as_str()))
-    }
-}
-
 impl PestParse for FunctionParam {
     const RULE: Rule = Rule::typed_identifier;
 
@@ -935,15 +943,6 @@ impl PestParse for Pattern {
 
         debug_assert!(output.len() == 1);
         Ok(output.pop().unwrap())
-    }
-}
-
-impl PestParse for Identifier {
-    const RULE: Rule = Rule::identifier;
-
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Self::RULE));
-        Ok(Self::from_str_unchecked(pair.as_str()))
     }
 }
 
@@ -1193,15 +1192,6 @@ impl PestParse for Hexadecimal {
         assert!(matches!(pair.as_rule(), Self::RULE));
         let hexadecimal = pair.as_str().strip_prefix("0x").unwrap().replace('_', "");
         Ok(Self::from_str_unchecked(hexadecimal.as_str()))
-    }
-}
-
-impl PestParse for WitnessName {
-    const RULE: Rule = Rule::witness_name;
-
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Self::RULE));
-        Ok(Self::from_str_unchecked(pair.as_str()))
     }
 }
 
