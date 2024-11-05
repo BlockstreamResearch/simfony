@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{de, ser::SerializeMap, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::parse::ParseFromStr;
 use crate::str::WitnessName;
@@ -121,22 +121,41 @@ impl<'de> Deserialize<'de> for WitnessName {
     }
 }
 
+struct WitnessMapSerializer<'a>(&'a BTreeMap<WitnessName, Value>);
+
+impl<'a> Serialize for WitnessMapSerializer<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+        for (name, value) in self.0.iter() {
+            map.serialize_entry(name.as_inner(), &ValueMapSerializer(value))?;
+        }
+        map.end()
+    }
+}
+
+struct ValueMapSerializer<'a>(&'a Value);
+
+impl<'a> Serialize for ValueMapSerializer<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(2))?;
+        map.serialize_entry("value", &self.0.to_string())?;
+        map.serialize_entry("type", &self.0.ty().to_string())?;
+        map.end()
+    }
+}
+
 impl Serialize for WitnessValues {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        use serde::ser::SerializeMap;
-
-        let mut map = serializer.serialize_map(Some(self.len()))?;
-        for (name, value) in self.iter() {
-            let value_map = BTreeMap::from([
-                ("value", value.to_string()),
-                ("type", value.ty().to_string()),
-            ]);
-            map.serialize_entry(name.as_inner(), &value_map)?;
-        }
-        map.end()
+        WitnessMapSerializer(self.as_inner()).serialize(serializer)
     }
 }
 

@@ -16,6 +16,12 @@ use crate::value::Value;
 pub struct WitnessValues(BTreeMap<WitnessName, Value>);
 
 impl WitnessValues {
+    #[cfg(feature = "serde")]
+    /// Access the inner map.
+    pub fn as_inner(&self) -> &BTreeMap<WitnessName, Value> {
+        &self.0
+    }
+
     /// Return the empty witness map.
     pub fn empty() -> Self {
         Self(BTreeMap::new())
