@@ -28,7 +28,8 @@ fn spend_utxo() {
             .sequence(elements::Sequence::ENABLE_LOCKTIME_NO_RBF),
         TestCase::new(&daemon, genesis_hash)
             .name("Pay to public key")
-            .program_path("../examples/p2pk.simf")
+            .template_path("../examples/p2pk.simf")
+            .arguments(p2pk_args())
             .witness(p2pk),
         TestCase::new(&daemon, genesis_hash)
             .name("Pay to public key hash")
@@ -73,6 +74,13 @@ fn hodl_vault(sighash_all: [u8; 32]) -> simfony::WitnessValues {
         Value::byte_array(util::sign_schnorr(2, sighash_all)),
     );
     simfony::WitnessValues::from(witness_values)
+}
+
+fn p2pk_args() -> simfony::Arguments {
+    simfony::Arguments::from(HashMap::from([(
+        WitnessName::from_str_unchecked("ALICE_PUBLIC_KEY"),
+        Value::byte_array(util::xonly_public_key(0).to_byte_array()),
+    )]))
 }
 
 fn p2pk(sighash_all: [u8; 32]) -> simfony::WitnessValues {

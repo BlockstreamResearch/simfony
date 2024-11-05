@@ -259,14 +259,14 @@ mod tests {
         sequence: elements::Sequence,
     }
 
-    impl<'a> TestCase<CompiledProgram> {
-        pub fn program_file<P: AsRef<Path>>(program_file_path: P) -> Self {
+    impl TestCase<TemplateProgram> {
+        pub fn template_file<P: AsRef<Path>>(program_file_path: P) -> Self {
             let program_text = std::fs::read_to_string(program_file_path).unwrap();
-            Self::program_text(Cow::Owned(program_text))
+            Self::template_text(Cow::Owned(program_text))
         }
 
-        pub fn program_text(program_text: Cow<'a, str>) -> Self {
-            let program = match CompiledProgram::new(program_text.as_ref(), Arguments::default()) {
+        pub fn template_text(program_text: Cow<str>) -> Self {
+            let program = match TemplateProgram::new(program_text.as_ref()) {
                 Ok(x) => x,
                 Err(error) => panic!("{error}"),
             };
@@ -275,6 +275,43 @@ mod tests {
                 lock_time: elements::LockTime::ZERO,
                 sequence: elements::Sequence::MAX,
             }
+        }
+
+        #[cfg(feature = "serde")]
+        pub fn with_argument_file<P: AsRef<Path>>(
+            self,
+            arguments_file_path: P,
+        ) -> TestCase<CompiledProgram> {
+            let arguments_text = std::fs::read_to_string(arguments_file_path).unwrap();
+            let arguments = match serde_json::from_str::<Arguments>(&arguments_text) {
+                Ok(x) => x,
+                Err(error) => panic!("{error}"),
+            };
+            self.with_arguments(arguments)
+        }
+
+        pub fn with_arguments(self, arguments: Arguments) -> TestCase<CompiledProgram> {
+            let program = match self.program.instantiate(arguments) {
+                Ok(x) => x,
+                Err(error) => panic!("{error}"),
+            };
+            TestCase {
+                program,
+                lock_time: self.lock_time,
+                sequence: self.sequence,
+            }
+        }
+    }
+
+    impl TestCase<CompiledProgram> {
+        pub fn program_file<P: AsRef<Path>>(program_file_path: P) -> Self {
+            TestCase::<TemplateProgram>::template_file(program_file_path)
+                .with_arguments(Arguments::default())
+        }
+
+        pub fn program_text(program_text: Cow<str>) -> Self {
+            TestCase::<TemplateProgram>::template_text(program_text)
+                .with_arguments(Arguments::default())
         }
 
         #[cfg(feature = "serde")]
@@ -432,7 +469,8 @@ mod tests {
     #[test]
     #[cfg(feature = "serde")]
     fn p2pk() {
-        TestCase::program_file("./examples/p2pk.simf")
+        TestCase::template_file("./examples/p2pk.simf")
+            .with_argument_file("./examples/p2pk.args")
             .print_sighash_all()
             .with_witness_file("./examples/p2pk.wit")
             .assert_run_success();
