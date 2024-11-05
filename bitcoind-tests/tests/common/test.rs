@@ -182,7 +182,7 @@ impl<'a> TestCase<'a> {
         };
         let witness_values = (self.witness)(sighash_all.to_byte_array());
         let satisfied_program = compiled
-            .satisfy(&witness_values)
+            .satisfy(witness_values)
             .expect("program should be satisfiable");
         let (program_bytes, witness_bytes) = satisfied_program.redeem().encode_to_vec();
         psbt.inputs_mut()[0].final_script_witness = Some(vec![

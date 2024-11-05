@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use elements::hashes::Hash;
 use elements::secp256k1_zkp as secp256k1;
 use secp256k1::hashes::{sha256, HashEngine};
@@ -47,77 +49,63 @@ fn spend_utxo() {
 }
 
 fn hodl_vault(sighash_all: [u8; 32]) -> simfony::WitnessValues {
-    let mut witness_values = simfony::WitnessValues::default();
+    let mut witness_values = HashMap::new();
     let oracle_height = 1000;
-    witness_values
-        .insert(
-            WitnessName::from_str_unchecked("ORACLE_HEIGHT"),
-            Value::u32(oracle_height),
-        )
-        .unwrap();
+    witness_values.insert(
+        WitnessName::from_str_unchecked("ORACLE_HEIGHT"),
+        Value::u32(oracle_height),
+    );
     let oracle_price = 100_000;
-    witness_values
-        .insert(
-            WitnessName::from_str_unchecked("ORACLE_PRICE"),
-            Value::u32(oracle_price),
-        )
-        .unwrap();
+    witness_values.insert(
+        WitnessName::from_str_unchecked("ORACLE_PRICE"),
+        Value::u32(oracle_price),
+    );
     let mut hasher = sha256::HashEngine::default();
     hasher.input(&oracle_height.to_be_bytes());
     hasher.input(&oracle_price.to_be_bytes());
     let oracle_hash = sha256::Hash::from_engine(hasher).to_byte_array();
-    witness_values
-        .insert(
-            WitnessName::from_str_unchecked("ORACLE_SIG"),
-            Value::byte_array(util::sign_schnorr(1, oracle_hash)),
-        )
-        .unwrap();
-    witness_values
-        .insert(
-            WitnessName::from_str_unchecked("OWNER_SIG"),
-            Value::byte_array(util::sign_schnorr(2, sighash_all)),
-        )
-        .unwrap();
-    witness_values
+    witness_values.insert(
+        WitnessName::from_str_unchecked("ORACLE_SIG"),
+        Value::byte_array(util::sign_schnorr(1, oracle_hash)),
+    );
+    witness_values.insert(
+        WitnessName::from_str_unchecked("OWNER_SIG"),
+        Value::byte_array(util::sign_schnorr(2, sighash_all)),
+    );
+    simfony::WitnessValues::from(witness_values)
 }
 
 fn p2pk(sighash_all: [u8; 32]) -> simfony::WitnessValues {
-    let mut witness_values = simfony::WitnessValues::default();
+    let mut witness_values = HashMap::new();
     witness_values
         .insert(
             WitnessName::from_str_unchecked("SIG"),
             Value::byte_array(util::sign_schnorr(1, sighash_all)),
         )
         .unwrap();
-    witness_values
+    simfony::WitnessValues::from(witness_values)
 }
 
 fn p2pkh(sighash_all: [u8; 32]) -> simfony::WitnessValues {
-    let mut witness_values = simfony::WitnessValues::default();
-    witness_values
-        .insert(
-            WitnessName::from_str_unchecked("PK"),
-            Value::u256(util::xonly_public_key(1)),
-        )
-        .unwrap();
-    witness_values
-        .insert(
-            WitnessName::from_str_unchecked("SIG"),
-            Value::byte_array(util::sign_schnorr(1, sighash_all)),
-        )
-        .unwrap();
-    witness_values
+    let mut witness_values = HashMap::new();
+    witness_values.insert(
+        WitnessName::from_str_unchecked("PK"),
+        Value::u256(util::xonly_public_key(1)),
+    );
+    witness_values.insert(
+        WitnessName::from_str_unchecked("SIG"),
+        Value::byte_array(util::sign_schnorr(1, sighash_all)),
+    );
+    simfony::WitnessValues::from(witness_values)
 }
 
 fn p2ms(sighash_all: [u8; 32]) -> simfony::WitnessValues {
-    let mut witness_values = simfony::WitnessValues::default();
+    let mut witness_values = HashMap::new();
     let sig1 = Value::some(Value::byte_array(util::sign_schnorr(1, sighash_all)));
     let sig2 = Value::none(ResolvedType::byte_array(64));
     let sig3 = Value::some(Value::byte_array(util::sign_schnorr(3, sighash_all)));
     let ty = sig1.ty().clone();
     let maybe_sigs = Value::array([sig1, sig2, sig3], ty);
-    witness_values
-        .insert(WitnessName::from_str_unchecked("MAYBE_SIGS"), maybe_sigs)
-        .unwrap();
-    witness_values
+    witness_values.insert(WitnessName::from_str_unchecked("MAYBE_SIGS"), maybe_sigs);
+    simfony::WitnessValues::from(witness_values)
 }

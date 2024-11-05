@@ -28,13 +28,12 @@ pub extern crate either;
 pub extern crate simplicity;
 pub use simplicity::elements;
 
-use crate::ast::WitnessTypes;
 use crate::debug::DebugSymbols;
 use crate::error::WithFile;
 use crate::parse::ParseFromStr;
 pub use crate::types::ResolvedType;
 pub use crate::value::Value;
-pub use crate::witness::WitnessValues;
+pub use crate::witness::{WitnessTypes, WitnessValues};
 
 /// A Simfony program, compiled to Simplicity.
 #[derive(Clone, Debug)]
@@ -67,7 +66,7 @@ impl CompiledProgram {
         let simplicity_named_construct = ast_program.compile().with_file(s)?;
         Ok(Self {
             simplicity: simplicity_named_construct,
-            witness_types: ast_program.witness_types().clone(),
+            witness_types: ast_program.witness_types().shallow_clone(),
             debug_symbols: ast_program.debug_symbols(s),
         })
     }
@@ -88,7 +87,7 @@ impl CompiledProgram {
     ///
     /// - Witness values have a different type than declared in the Simfony program.
     /// - There are missing witness values.
-    pub fn satisfy(&self, witness_values: &WitnessValues) -> Result<SatisfiedProgram, String> {
+    pub fn satisfy(&self, witness_values: WitnessValues) -> Result<SatisfiedProgram, String> {
         witness_values
             .is_consistent(&self.witness_types)
             .map_err(|e| e.to_string())?;
@@ -116,7 +115,7 @@ impl SatisfiedProgram {
     ///
     /// - [`CompiledProgram::new`]
     /// - [`CompiledProgram::satisfy`]
-    pub fn new(s: &str, witness_values: &WitnessValues) -> Result<Self, String> {
+    pub fn new(s: &str, witness_values: WitnessValues) -> Result<Self, String> {
         let compiled = CompiledProgram::new(s)?;
         compiled.satisfy(witness_values)
     }
@@ -239,12 +238,12 @@ mod tests {
                 Ok(x) => x,
                 Err(error) => panic!("{error}"),
             };
-            self.with_witness_values(&witness_values)
+            self.with_witness_values(witness_values)
         }
 
         pub fn with_witness_values(
             self,
-            witness_values: &WitnessValues,
+            witness_values: WitnessValues,
         ) -> TestCase<SatisfiedProgram> {
             let program = match self.program.satisfy(witness_values) {
                 Ok(x) => x,
@@ -315,14 +314,14 @@ mod tests {
     #[test]
     fn cat() {
         TestCase::program_file("./examples/cat.simf")
-            .with_witness_values(&WitnessValues::empty())
+            .with_witness_values(WitnessValues::default())
             .assert_run_success();
     }
 
     #[test]
     fn ctv() {
         TestCase::program_file("./examples/ctv.simf")
-            .with_witness_values(&WitnessValues::empty())
+            .with_witness_values(WitnessValues::default())
             .assert_run_success();
     }
 
@@ -339,7 +338,7 @@ mod tests {
     #[test]
     fn hash_loop() {
         TestCase::program_file("./examples/hash_loop.simf")
-            .with_witness_values(&WitnessValues::empty())
+            .with_witness_values(WitnessValues::default())
             .assert_run_success();
     }
 
@@ -442,7 +441,7 @@ mod tests {
 }
 "#;
         TestCase::program_text(Cow::Borrowed(prog_text))
-            .with_witness_values(&WitnessValues::empty())
+            .with_witness_values(WitnessValues::default())
             .assert_run_success();
     }
 
@@ -456,7 +455,7 @@ fn main() {
     jet_verify(my_true());
 }
 "#;
-        match SatisfiedProgram::new(prog_text, &WitnessValues::empty()) {
+        match SatisfiedProgram::new(prog_text, WitnessValues::default()) {
             Ok(_) => panic!("Accepted faulty program"),
             Err(error) => {
                 if !error.contains("Expected expression of type `bool`, found type `()`") {

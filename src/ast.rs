@@ -17,19 +17,8 @@ use crate::types::{
     AliasedType, ResolvedType, StructuralType, TypeConstructible, TypeDeconstructible, UIntType,
 };
 use crate::value::{UIntValue, Value};
-use crate::witness::WitnessValues;
+use crate::witness::{WitnessTypes, WitnessValues};
 use crate::{impl_eq_hash, parse};
-
-/// Map of witness names to their expected type, as declared in the program.
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
-pub struct WitnessTypes(HashMap<WitnessName, ResolvedType>);
-
-impl WitnessTypes {
-    /// Get the expected type of the given witness `name`.
-    pub fn get(&self, name: &WitnessName) -> Option<&ResolvedType> {
-        self.0.get(name)
-    }
-}
 
 /// A program consists of the main function.
 ///
@@ -605,7 +594,7 @@ impl Scope {
     /// 1. The map that assigns witness names to their expected type.
     /// 2. The function call tracker.
     pub fn destruct(self) -> (WitnessTypes, CallTracker) {
-        (WitnessTypes(self.witnesses), self.call_tracker)
+        (WitnessTypes::from(self.witnesses), self.call_tracker)
     }
 
     /// Insert a custom function into the global map.
@@ -1342,13 +1331,18 @@ impl WitnessValues {
         if iter.next().is_some() {
             return Err(Error::ModuleRedefined(ModuleName::witness())).with_span(from);
         }
-        let mut witness_values = Self::empty();
+        let mut map = HashMap::new();
         for assignment in witness_module.assignments() {
-            witness_values
-                .insert(assignment.name().clone(), assignment.value().clone())
-                .with_span(assignment)?;
+            if map.contains_key(assignment.name()) {
+                return Err(Error::WitnessReassigned(assignment.name().shallow_clone()))
+                    .with_span(assignment);
+            }
+            map.insert(
+                assignment.name().shallow_clone(),
+                assignment.value().clone(),
+            );
         }
-        Ok(witness_values)
+        Ok(Self::from(map))
     }
 }
 
