@@ -17,9 +17,11 @@ use crate::error::{Error, RichError, Span, WithSpan};
 use crate::named::{CoreExt, PairBuilder};
 use crate::num::{NonZeroPow2Usize, Pow2Usize};
 use crate::pattern::{BasePattern, Pattern};
+use crate::str::WitnessName;
 use crate::types::{StructuralType, TypeDeconstructible};
 use crate::value::StructuralValue;
-use crate::ProgNode;
+use crate::witness::Arguments;
+use crate::{ProgNode, Value};
 
 /// Each Simfony expression expects an _input value_.
 /// A Simfony expression is translated into a Simplicity expression
@@ -62,17 +64,25 @@ struct Scope {
     ctx: simplicity::types::Context,
     /// Tracker of function calls.
     call_tracker: Arc<CallTracker>,
+    /// Values for parameters inside the Simfony program.
+    arguments: Arguments,
 }
 
 impl Scope {
     /// Create the main scope.
     ///
     /// _This function should be called at the start of the compilation and then never again._
-    pub fn new(call_tracker: Arc<CallTracker>) -> Self {
+    ///
+    ///  ## Precondition
+    ///
+    /// The supplied `arguments` are consistent with the program's parameters.
+    /// Call [`Arguments::is_consistent`] before calling this method!
+    pub fn new(call_tracker: Arc<CallTracker>, arguments: Arguments) -> Self {
         Self {
             variables: vec![vec![Pattern::Ignore]],
             ctx: simplicity::types::Context::new(),
             call_tracker,
+            arguments,
         }
     }
 
@@ -82,6 +92,7 @@ impl Scope {
             variables: vec![vec![input]],
             ctx: self.ctx.shallow_clone(),
             call_tracker: Arc::clone(&self.call_tracker),
+            arguments: self.arguments.clone(),
         }
     }
 
@@ -190,6 +201,12 @@ impl Scope {
             None => args.comp(body).with_span(span),
         }
     }
+
+    pub fn get_argument(&self, name: &WitnessName) -> &Value {
+        self.arguments
+            .get(name)
+            .expect("Precondition: Arguments are consistent with parameters")
+    }
 }
 
 fn compile_blk(
@@ -223,8 +240,14 @@ fn compile_blk(
 }
 
 impl Program {
-    pub fn compile(&self) -> Result<ProgNode, RichError> {
-        let mut scope = Scope::new(Arc::clone(self.call_tracker()));
+    /// Compile the Simfony source code to Simplicity target code.
+    ///
+    /// ## Precondition
+    ///
+    /// The supplied `arguments` are consistent with the program's parameters.
+    /// Call [`Arguments::is_consistent`] before calling this method!
+    pub fn compile(&self, arguments: Arguments) -> Result<ProgNode, RichError> {
+        let mut scope = Scope::new(Arc::clone(self.call_tracker()), arguments);
         self.main().compile(&mut scope).map(PairBuilder::build)
     }
 }
@@ -251,6 +274,10 @@ impl SingleExpression {
                 PairBuilder::unit_scribe(scope.ctx(), value.as_ref())
             }
             SingleExpressionInner::Witness(name) => PairBuilder::witness(scope.ctx(), name.clone()),
+            SingleExpressionInner::Parameter(name) => {
+                let value = StructuralValue::from(scope.get_argument(name));
+                PairBuilder::unit_scribe(scope.ctx(), value.as_ref())
+            }
             SingleExpressionInner::Variable(identifier) => scope
                 .get(&BasePattern::Identifier(identifier.clone()))
                 .ok_or(Error::UndefinedVariable(identifier.clone()))

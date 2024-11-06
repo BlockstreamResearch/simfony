@@ -15,6 +15,7 @@ type FnWitness = fn([u8; 32]) -> simfony::WitnessValues;
 #[derive(Clone)]
 pub struct TestCase<'a> {
     pub name: &'static str,
+    template: Option<simfony::TemplateProgram>,
     compiled: Option<simfony::CompiledProgram>,
     witness: FnWitness,
     lock_time: elements::LockTime,
@@ -34,6 +35,7 @@ impl<'a> TestCase<'a> {
     pub fn new(daemon: &'a ElementsD, genesis_hash: elements::BlockHash) -> Self {
         Self {
             name: "test name is missing",
+            template: None,
             compiled: None,
             witness: empty_witness,
             lock_time: elements::LockTime::ZERO,
@@ -51,8 +53,27 @@ impl<'a> TestCase<'a> {
 
     pub fn program_path<P: AsRef<std::path::Path>>(mut self, path: P) -> Self {
         let text = std::fs::read_to_string(path).expect("path should be readable");
-        let compiled =
-            simfony::CompiledProgram::new(text.as_str()).expect("program should compile");
+        let compiled = simfony::CompiledProgram::new(text.as_str(), simfony::Arguments::default())
+            .expect("program should compile");
+        self.compiled = Some(compiled);
+        self
+    }
+
+    pub fn template_path<P: AsRef<std::path::Path>>(mut self, path: P) -> Self {
+        let text = std::fs::read_to_string(path).expect("path should be readable");
+        let template =
+            simfony::TemplateProgram::new(text.as_str()).expect("program should compile");
+        self.template = Some(template);
+        self
+    }
+
+    pub fn arguments(mut self, arguments: simfony::Arguments) -> Self {
+        let compiled = self
+            .template
+            .as_ref()
+            .expect("template should exist")
+            .instantiate(arguments)
+            .expect("arguments should be consistent with the program");
         self.compiled = Some(compiled);
         self
     }
@@ -182,7 +203,7 @@ impl<'a> TestCase<'a> {
         };
         let witness_values = (self.witness)(sighash_all.to_byte_array());
         let satisfied_program = compiled
-            .satisfy(&witness_values)
+            .satisfy(witness_values)
             .expect("program should be satisfiable");
         let (program_bytes, witness_bytes) = satisfied_program.redeem().encode_to_vec();
         psbt.inputs_mut()[0].final_script_witness = Some(vec![

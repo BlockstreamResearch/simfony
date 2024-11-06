@@ -15,7 +15,9 @@ use crate::error::{Error, RichError, Span, WithFile, WithSpan};
 use crate::impl_eq_hash;
 use crate::num::NonZeroPow2Usize;
 use crate::pattern::Pattern;
-use crate::str::{Binary, Decimal, FunctionName, Hexadecimal, Identifier, JetName, WitnessName};
+use crate::str::{
+    Binary, Decimal, FunctionName, Hexadecimal, Identifier, JetName, ModuleName, WitnessName,
+};
 use crate::types::{AliasedType, BuiltinAlias, TypeConstructible, UIntType};
 
 #[derive(Parser)]
@@ -291,8 +293,10 @@ pub enum SingleExpressionInner {
     Binary(Binary),
     /// Hexadecimal string literal.
     Hexadecimal(Hexadecimal),
-    /// Witness identifier expression
+    /// Witness value.
     Witness(WitnessName),
+    /// Parameter value.
+    Parameter(WitnessName),
     /// Variable identifier expression
     Variable(Identifier),
     /// Function call
@@ -410,49 +414,57 @@ impl MatchPattern {
     }
 }
 
+/// Program root when parsing modules.
 #[derive(Clone, Debug)]
-pub struct WitnessProgram {
-    items: Arc<[WitnessItem]>,
+pub struct ModuleProgram {
+    items: Arc<[ModuleItem]>,
     span: Span,
 }
 
-impl WitnessProgram {
+impl ModuleProgram {
     /// Access the items of the program.
-    pub fn items(&self) -> &[WitnessItem] {
+    pub fn items(&self) -> &[ModuleItem] {
         &self.items
     }
 }
 
-impl_eq_hash!(WitnessProgram; items);
+impl_eq_hash!(ModuleProgram; items);
 
+/// Item when parsing modules.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum WitnessItem {
+pub enum ModuleItem {
     Ignored,
-    WitnessModule(WitnessModule),
+    Module(Module),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct WitnessModule {
-    assignments: Arc<[WitnessAssignment]>,
+pub struct Module {
+    name: ModuleName,
+    assignments: Arc<[ModuleAssignment]>,
     span: Span,
 }
 
-impl WitnessModule {
+impl Module {
+    /// Access the name of the module.
+    pub fn name(&self) -> &ModuleName {
+        &self.name
+    }
+
     /// Access the assignments of the module.
-    pub fn assignments(&self) -> &[WitnessAssignment] {
+    pub fn assignments(&self) -> &[ModuleAssignment] {
         &self.assignments
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct WitnessAssignment {
+pub struct ModuleAssignment {
     name: WitnessName,
     ty: AliasedType,
     expression: Expression,
     span: Span,
 }
 
-impl WitnessAssignment {
+impl ModuleAssignment {
     /// Access the assigned witness name.
     pub fn name(&self) -> &WitnessName {
         &self.name
@@ -561,6 +573,7 @@ impl<'a> TreeLike for ExprTree<'a> {
                 | S::Hexadecimal(_)
                 | S::Variable(_)
                 | S::Witness(_)
+                | S::Parameter(_)
                 | S::Option(None) => Tree::Nullary,
                 S::Option(Some(l))
                 | S::Either(Either::Left(l))
@@ -611,6 +624,7 @@ impl<'a> fmt::Display for ExprTree<'a> {
                     S::Hexadecimal(hexadecimal) => write!(f, "0x{hexadecimal}")?,
                     S::Variable(name) => write!(f, "{name}")?,
                     S::Witness(name) => write!(f, "witness::{name}")?,
+                    S::Parameter(name) => write!(f, "param::{name}")?,
                     S::Option(None) => write!(f, "None")?,
                     S::Option(Some(_)) => match data.n_children_yielded {
                         0 => write!(f, "Some(")?,
@@ -779,6 +793,24 @@ trait PestParse: Sized {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError>;
 }
 
+macro_rules! impl_parse_wrapped_string {
+    ($wrapper: ident, $rule: ident) => {
+        impl PestParse for $wrapper {
+            const RULE: Rule = Rule::$rule;
+
+            fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
+                assert!(matches!(pair.as_rule(), Self::RULE));
+                Ok(Self::from_str_unchecked(pair.as_str()))
+            }
+        }
+    };
+}
+
+impl_parse_wrapped_string!(FunctionName, function_name);
+impl_parse_wrapped_string!(Identifier, identifier);
+impl_parse_wrapped_string!(WitnessName, witness_name);
+impl_parse_wrapped_string!(ModuleName, module_name);
+
 /// Copy of [`FromStr`] that internally uses the PEST parser.
 pub trait ParseFromStr: Sized {
     /// Parse a value from the string `s`.
@@ -864,15 +896,6 @@ impl PestParse for Function {
     }
 }
 
-impl PestParse for FunctionName {
-    const RULE: Rule = Rule::function_name;
-
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Self::RULE));
-        Ok(Self::from_str_unchecked(pair.as_str()))
-    }
-}
-
 impl PestParse for FunctionParam {
     const RULE: Rule = Rule::typed_identifier;
 
@@ -935,15 +958,6 @@ impl PestParse for Pattern {
 
         debug_assert!(output.len() == 1);
         Ok(output.pop().unwrap())
-    }
-}
-
-impl PestParse for Identifier {
-    const RULE: Rule = Rule::identifier;
-
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Self::RULE));
-        Ok(Self::from_str_unchecked(pair.as_str()))
     }
 }
 
@@ -1128,10 +1142,12 @@ impl PestParse for SingleExpression {
                 Hexadecimal::parse(inner_pair).map(SingleExpressionInner::Hexadecimal)?
             }
             Rule::dec_literal => Decimal::parse(inner_pair).map(SingleExpressionInner::Decimal)?,
-            Rule::witness_expr => {
-                let witness_pair = inner_pair.into_inner().next().unwrap();
-                SingleExpressionInner::Witness(WitnessName::parse(witness_pair)?)
-            }
+            Rule::witness_expr => SingleExpressionInner::Witness(WitnessName::parse(
+                inner_pair.into_inner().next().unwrap(),
+            )?),
+            Rule::param_expr => SingleExpressionInner::Parameter(WitnessName::parse(
+                inner_pair.into_inner().next().unwrap(),
+            )?),
             Rule::variable_expr => {
                 let identifier_pair = inner_pair.into_inner().next().unwrap();
                 SingleExpressionInner::Variable(Identifier::parse(identifier_pair)?)
@@ -1193,15 +1209,6 @@ impl PestParse for Hexadecimal {
         assert!(matches!(pair.as_rule(), Self::RULE));
         let hexadecimal = pair.as_str().strip_prefix("0x").unwrap().replace('_', "");
         Ok(Self::from_str_unchecked(hexadecimal.as_str()))
-    }
-}
-
-impl PestParse for WitnessName {
-    const RULE: Rule = Rule::witness_name;
-
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
-        assert!(matches!(pair.as_rule(), Self::RULE));
-        Ok(Self::from_str_unchecked(pair.as_str()))
     }
 }
 
@@ -1430,7 +1437,7 @@ impl PestParse for NonZeroPow2Usize {
     }
 }
 
-impl PestParse for WitnessProgram {
+impl PestParse for ModuleProgram {
     const RULE: Rule = Rule::program;
 
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
@@ -1439,44 +1446,49 @@ impl PestParse for WitnessProgram {
         let items = pair
             .into_inner()
             .filter_map(|pair| match pair.as_rule() {
-                Rule::item => Some(WitnessItem::parse(pair)),
+                Rule::item => Some(ModuleItem::parse(pair)),
                 _ => None,
             })
-            .collect::<Result<Arc<[WitnessItem]>, RichError>>()?;
+            .collect::<Result<Arc<[ModuleItem]>, RichError>>()?;
         Ok(Self { items, span })
     }
 }
 
-impl PestParse for WitnessItem {
+impl PestParse for ModuleItem {
     const RULE: Rule = Rule::item;
 
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Self::RULE));
         let pair = pair.into_inner().next().unwrap();
         match pair.as_rule() {
-            Rule::witness_module => WitnessModule::parse(pair).map(Self::WitnessModule),
+            Rule::module => Module::parse(pair).map(Self::Module),
             _ => Ok(Self::Ignored),
         }
     }
 }
 
-impl PestParse for WitnessModule {
-    const RULE: Rule = Rule::witness_module;
+impl PestParse for Module {
+    const RULE: Rule = Rule::module;
 
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Self::RULE));
         let span = Span::from(&pair);
         let mut it = pair.into_inner();
         let _mod_keyword = it.next().unwrap();
+        let name = ModuleName::parse(it.next().unwrap())?;
         let assignments = it
-            .map(WitnessAssignment::parse)
-            .collect::<Result<Arc<[WitnessAssignment]>, RichError>>()?;
-        Ok(Self { assignments, span })
+            .map(ModuleAssignment::parse)
+            .collect::<Result<Arc<[ModuleAssignment]>, RichError>>()?;
+        Ok(Self {
+            name,
+            assignments,
+            span,
+        })
     }
 }
 
-impl PestParse for WitnessAssignment {
-    const RULE: Rule = Rule::witness_assign;
+impl PestParse for ModuleAssignment {
+    const RULE: Rule = Rule::module_assign;
 
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, RichError> {
         assert!(matches!(pair.as_rule(), Self::RULE));
@@ -1600,19 +1612,19 @@ impl AsRef<Span> for Match {
     }
 }
 
-impl AsRef<Span> for WitnessProgram {
+impl AsRef<Span> for ModuleProgram {
     fn as_ref(&self) -> &Span {
         &self.span
     }
 }
 
-impl AsRef<Span> for WitnessModule {
+impl AsRef<Span> for Module {
     fn as_ref(&self) -> &Span {
         &self.span
     }
 }
 
-impl AsRef<Span> for WitnessAssignment {
+impl AsRef<Span> for ModuleAssignment {
     fn as_ref(&self) -> &Span {
         &self.span
     }

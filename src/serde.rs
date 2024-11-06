@@ -1,18 +1,18 @@
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::fmt;
 
-use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{de, ser::SerializeMap, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::parse::ParseFromStr;
 use crate::str::WitnessName;
 use crate::types::ResolvedType;
 use crate::value::Value;
-use crate::witness::WitnessValues;
+use crate::witness::{Arguments, WitnessValues};
 
 struct WitnessMapVisitor;
 
 impl<'de> de::Visitor<'de> for WitnessMapVisitor {
-    type Value = WitnessValues;
+    type Value = HashMap<WitnessName, Value>;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("a map with string keys and value-map values")
@@ -22,11 +22,13 @@ impl<'de> de::Visitor<'de> for WitnessMapVisitor {
     where
         M: de::MapAccess<'de>,
     {
-        let mut witness = WitnessValues::empty();
-        while let Some((key, value)) = access.next_entry()? {
-            witness.insert(key, value).map_err(de::Error::custom)?;
+        let mut map = HashMap::new();
+        while let Some((key, value)) = access.next_entry::<WitnessName, Value>()? {
+            if map.insert(key.shallow_clone(), value).is_some() {
+                return Err(de::Error::custom(format!("Name `{key}` is assigned twice")));
+            }
         }
-        Ok(witness)
+        Ok(map)
     }
 }
 
@@ -35,7 +37,20 @@ impl<'de> Deserialize<'de> for WitnessValues {
     where
         D: Deserializer<'de>,
     {
-        deserializer.deserialize_map(WitnessMapVisitor)
+        deserializer
+            .deserialize_map(WitnessMapVisitor)
+            .map(Self::from)
+    }
+}
+
+impl<'de> Deserialize<'de> for Arguments {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer
+            .deserialize_map(WitnessMapVisitor)
+            .map(Self::from)
     }
 }
 
@@ -121,22 +136,50 @@ impl<'de> Deserialize<'de> for WitnessName {
     }
 }
 
+struct WitnessMapSerializer<'a>(&'a HashMap<WitnessName, Value>);
+
+impl<'a> Serialize for WitnessMapSerializer<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+        for (name, value) in self.0.iter() {
+            map.serialize_entry(name.as_inner(), &ValueMapSerializer(value))?;
+        }
+        map.end()
+    }
+}
+
+struct ValueMapSerializer<'a>(&'a Value);
+
+impl<'a> Serialize for ValueMapSerializer<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(2))?;
+        map.serialize_entry("value", &self.0.to_string())?;
+        map.serialize_entry("type", &self.0.ty().to_string())?;
+        map.end()
+    }
+}
+
 impl Serialize for WitnessValues {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        use serde::ser::SerializeMap;
+        WitnessMapSerializer(self.as_inner()).serialize(serializer)
+    }
+}
 
-        let mut map = serializer.serialize_map(Some(self.len()))?;
-        for (name, value) in self.iter() {
-            let value_map = BTreeMap::from([
-                ("value", value.to_string()),
-                ("type", value.ty().to_string()),
-            ]);
-            map.serialize_entry(name.as_inner(), &value_map)?;
-        }
-        map.end()
+impl Serialize for Arguments {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        WitnessMapSerializer(self.as_inner()).serialize(serializer)
     }
 }
 
@@ -153,10 +196,7 @@ mod tests {
 
         match serde_json::from_str::<WitnessValues>(s) {
             Ok(_) => panic!("Duplicate witness assignment was falsely accepted"),
-            Err(error) => assert_eq!(
-                "Witness `A` has already been assigned a value at line 4 column 1",
-                &error.to_string()
-            ),
+            Err(error) => assert!(error.to_string().contains("Name `A` is assigned twice")),
         }
     }
 }

@@ -1,7 +1,7 @@
 use base64::display::Base64Display;
 use base64::engine::general_purpose::STANDARD;
 
-use simfony::CompiledProgram;
+use simfony::{Arguments, CompiledProgram};
 use std::env;
 
 // Directly returning Result<(), String> prints the error using Debug
@@ -29,7 +29,7 @@ fn run() -> Result<(), String> {
     let prog_file = &args[1];
     let prog_path = std::path::Path::new(prog_file);
     let prog_text = std::fs::read_to_string(prog_path).map_err(|e| e.to_string())?;
-    let compiled = CompiledProgram::new(&prog_text)?;
+    let compiled = CompiledProgram::new(prog_text, Arguments::default())?;
 
     if args.len() >= 3 {
         let wit_file = &args[2];
@@ -37,7 +37,7 @@ fn run() -> Result<(), String> {
         let wit_text = std::fs::read_to_string(wit_path).map_err(|e| e.to_string())?;
         let witness = serde_json::from_str::<simfony::WitnessValues>(&wit_text).unwrap();
 
-        let satisfied = compiled.satisfy(&witness)?;
+        let satisfied = compiled.satisfy(witness)?;
         let (program_bytes, witness_bytes) = satisfied.redeem().encode_to_vec();
         println!(
             "Program:\n{}",
@@ -73,7 +73,7 @@ fn run() -> Result<(), String> {
     let prog_file = &args[1];
     let prog_path = std::path::Path::new(prog_file);
     let prog_text = std::fs::read_to_string(prog_path).map_err(|e| e.to_string())?;
-    let compiled = CompiledProgram::new(&prog_text)?;
+    let compiled = CompiledProgram::new(prog_text, Arguments::default())?;
 
     let program_bytes = compiled.commit().encode_to_vec();
     println!(

@@ -647,7 +647,11 @@ impl Value {
             let size = data.node.n_children();
             match single.inner() {
                 S::Constant(value) => output.push(value.clone()),
-                S::Witness(..) | S::Variable(..) | S::Call(..) | S::Match(..) => return None, // not const
+                S::Witness(..)
+                | S::Parameter(..)
+                | S::Variable(..)
+                | S::Call(..)
+                | S::Match(..) => return None, // not const
                 S::Expression(..) => continue, // skip
                 S::Tuple(..) => {
                     let elements = output.split_off(output.len() - size);

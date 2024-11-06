@@ -1,8 +1,7 @@
-use std::collections::btree_map::Entry;
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::fmt;
+use std::sync::Arc;
 
-use crate::ast::WitnessTypes;
 use crate::error::{Error, RichError, WithFile, WithSpan};
 use crate::parse;
 use crate::parse::ParseFromStr;
@@ -10,47 +9,96 @@ use crate::str::WitnessName;
 use crate::types::{AliasedType, ResolvedType};
 use crate::value::Value;
 
-/// Mapping of witness names to their assigned values.
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-pub struct WitnessValues(BTreeMap<WitnessName, Value>);
+macro_rules! impl_name_type_map {
+    ($wrapper: ident) => {
+        impl $wrapper {
+            /// Get the type that is assigned to the given name.
+            pub fn get(&self, name: &WitnessName) -> Option<&ResolvedType> {
+                self.0.get(name)
+            }
 
-impl WitnessValues {
-    /// Return the empty witness map.
-    pub fn empty() -> Self {
-        Self(BTreeMap::new())
-    }
+            /// Create an iterator over all name-type pairs.
+            pub fn iter(&self) -> impl Iterator<Item = (&WitnessName, &ResolvedType)> {
+                self.0.iter()
+            }
 
-    /// Check if the map is empty.
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    /// Return the number of entries in the map.
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    /// Get the value that is assigned to the given name.
-    pub fn get(&self, name: &WitnessName) -> Option<&Value> {
-        self.0.get(name)
-    }
-
-    /// Assign a `value` to the given `name`.
-    ///
-    /// ## Errors
-    ///
-    /// There is already a value assigned to this `name`.
-    pub fn insert(&mut self, name: WitnessName, value: Value) -> Result<(), Error> {
-        match self.0.entry(name.clone()) {
-            Entry::Occupied(_) => Err(Error::WitnessReassigned(name)),
-            Entry::Vacant(entry) => {
-                entry.insert(value);
-                Ok(())
+            /// Make a cheap copy of the map.
+            pub fn shallow_clone(&self) -> Self {
+                Self(Arc::clone(&self.0))
             }
         }
-    }
 
+        impl From<HashMap<WitnessName, ResolvedType>> for $wrapper {
+            fn from(value: HashMap<WitnessName, ResolvedType>) -> Self {
+                Self(Arc::new(value))
+            }
+        }
+    };
+}
+
+macro_rules! impl_name_value_map {
+    ($wrapper: ident, $module_name: expr) => {
+        impl $wrapper {
+            /// Access the inner map.
+            #[cfg(feature = "serde")]
+            pub(crate) fn as_inner(&self) -> &HashMap<WitnessName, Value> {
+                &self.0
+            }
+
+            /// Get the value that is assigned to the given name.
+            pub fn get(&self, name: &WitnessName) -> Option<&Value> {
+                self.0.get(name)
+            }
+
+            /// Create an iterator over all name-value pairs.
+            pub fn iter(&self) -> impl Iterator<Item = (&WitnessName, &Value)> {
+                self.0.iter()
+            }
+
+            /// Make a cheap copy of the map.
+            pub fn shallow_clone(&self) -> Self {
+                Self(Arc::clone(&self.0))
+            }
+        }
+
+        impl From<HashMap<WitnessName, Value>> for $wrapper {
+            fn from(value: HashMap<WitnessName, Value>) -> Self {
+                Self(Arc::new(value))
+            }
+        }
+
+        impl ParseFromStr for $wrapper {
+            fn parse_from_str(s: &str) -> Result<Self, RichError> {
+                parse::ModuleProgram::parse_from_str(s).and_then(|x| Self::analyze(&x))
+            }
+        }
+
+        impl fmt::Display for $wrapper {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                writeln!(f, "mod {}{{", $module_name)?;
+                for (name, value) in self.iter() {
+                    writeln!(f, "    const {name}: {} = {value};", value.ty())?;
+                }
+                write!(f, "}}")
+            }
+        }
+    };
+}
+
+/// Map of witness types.
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub struct WitnessTypes(Arc<HashMap<WitnessName, ResolvedType>>);
+
+impl_name_type_map!(WitnessTypes);
+
+/// Map of witness values.
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct WitnessValues(Arc<HashMap<WitnessName, Value>>);
+
+impl_name_value_map!(WitnessValues, "witness");
+
+impl WitnessValues {
     /// Check if the witness values are consistent with the declared witness types.
     ///
     /// 1. Values that occur in the program are type checked.
@@ -79,20 +127,6 @@ impl WitnessValues {
 
         Ok(())
     }
-
-    /// Create an iterator over all name-value pairs.
-    pub fn iter(&self) -> impl Iterator<Item = (&WitnessName, &Value)> {
-        self.0.iter()
-    }
-}
-
-impl IntoIterator for WitnessValues {
-    type Item = (WitnessName, Value);
-    type IntoIter = <BTreeMap<WitnessName, Value> as IntoIterator>::IntoIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
 }
 
 impl ParseFromStr for ResolvedType {
@@ -106,19 +140,66 @@ impl ParseFromStr for ResolvedType {
     }
 }
 
-impl ParseFromStr for WitnessValues {
-    fn parse_from_str(s: &str) -> Result<Self, RichError> {
-        parse::WitnessProgram::parse_from_str(s).and_then(|x| Self::analyze(&x))
+/// Map of parameters.
+///
+/// A parameter is a named variable that resolves to a value of a given type.
+/// Parameters have a name and a type.
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub struct Parameters(Arc<HashMap<WitnessName, ResolvedType>>);
+
+impl_name_type_map!(Parameters);
+
+/// Map of arguments.
+///
+/// An argument is the value of a parameter.
+/// Arguments have a name and a value of a given type.
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct Arguments(Arc<HashMap<WitnessName, Value>>);
+
+impl_name_value_map!(Arguments, "param");
+
+impl Arguments {
+    /// Check if the arguments are consistent with the given parameters.
+    ///
+    /// 1. Each parameter must be supplied with an argument.
+    /// 2. The type of each parameter must match the type of its argument.
+    ///
+    /// Arguments without a corresponding parameter are ignored.
+    pub fn is_consistent(&self, parameters: &Parameters) -> Result<(), Error> {
+        for (name, parameter_ty) in parameters.iter() {
+            let argument = self
+                .get(name)
+                .ok_or_else(|| Error::ArgumentMissing(name.shallow_clone()))?;
+            if !argument.is_of_type(parameter_ty) {
+                return Err(Error::ArgumentTypeMismatch(
+                    name.clone(),
+                    parameter_ty.clone(),
+                    argument.ty().clone(),
+                ));
+            }
+        }
+
+        Ok(())
     }
 }
 
-impl fmt::Display for WitnessValues {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "mod witness{{")?;
-        for (name, value) in self.iter() {
-            writeln!(f, "    const {name}: {} = {value};", value.ty())?;
+#[cfg(feature = "arbitrary")]
+impl crate::ArbitraryOfType for Arguments {
+    type Type = Parameters;
+
+    fn arbitrary_of_type(
+        u: &mut arbitrary::Unstructured,
+        ty: &Self::Type,
+    ) -> arbitrary::Result<Self> {
+        let mut map = HashMap::new();
+        for (name, parameter_ty) in ty.iter() {
+            map.insert(
+                name.shallow_clone(),
+                Value::arbitrary_of_type(u, parameter_ty)?,
+            );
         }
-        write!(f, "}}")
+        Ok(Self::from(map))
     }
 }
 
@@ -148,28 +229,16 @@ mod tests {
     assert!(jet::is_zero_32(witness::A));
 }"#;
 
-        let mut witness = WitnessValues::empty();
-        let a = WitnessName::parse_from_str("A").unwrap();
-        witness.insert(a, Value::u16(42)).unwrap();
-
-        match SatisfiedProgram::new(s, &witness) {
+        let witness = WitnessValues::from(HashMap::from([(
+            WitnessName::from_str_unchecked("A"),
+            Value::u16(42),
+        )]));
+        match SatisfiedProgram::new(s, Arguments::default(), witness) {
             Ok(_) => panic!("Ill-typed witness assignment was falsely accepted"),
             Err(error) => assert_eq!(
                 "Witness `A` was declared with type `u32` but its assigned value is of type `u16`",
                 error
             ),
-        }
-    }
-
-    #[test]
-    fn witness_duplicate_assignment() {
-        let mut witness = WitnessValues::empty();
-        let a = WitnessName::parse_from_str("a").unwrap();
-        witness.insert(a.clone(), Value::u32(42)).unwrap();
-        match witness.insert(a, Value::u32(43)) {
-            Ok(_) => panic!("Duplicate witness assignment was falsely accepted"),
-            Err(Error::WitnessReassigned(..)) => {}
-            Err(error) => panic!("Unexpected error: {error}"),
         }
     }
 
@@ -183,7 +252,7 @@ fn main() {
     assert!(jet::is_zero_32(f()));
 }"#;
 
-        match CompiledProgram::new(s) {
+        match CompiledProgram::new(s, Arguments::default()) {
             Ok(_) => panic!("Witness outside main was falsely accepted"),
             Err(error) => {
                 assert!(error
