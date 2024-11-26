@@ -2,6 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use either::Either;
+use hex_conservative::DisplayHex;
 use miniscript::iter::{Tree, TreeLike};
 use simplicity::types::Final as SimType;
 use simplicity::{BitCollector, Value as SimValue};
@@ -48,8 +49,6 @@ impl fmt::Debug for UIntValue {
 
 impl fmt::Display for UIntValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use hex_conservative::DisplayHex;
-
         match self {
             UIntValue::U1(n) => <u8 as fmt::Display>::fmt(n, f),
             UIntValue::U2(n) => <u8 as fmt::Display>::fmt(n, f),
@@ -420,6 +419,7 @@ impl fmt::Debug for Value {
 
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut print_hex_byte_array = false;
         for data in self.verbose_pre_order_iter() {
             match &data.node.inner {
                 ValueInner::Either(either) => match data.n_children_yielded {
@@ -443,7 +443,10 @@ impl fmt::Display for Value {
                     }
                 },
                 ValueInner::Boolean(bit) => write!(f, "{bit}")?,
-                ValueInner::UInt(integer) => write!(f, "{integer}")?,
+                ValueInner::UInt(integer) => match print_hex_byte_array {
+                    false => write!(f, "{integer}")?,
+                    true => {} // bytes have already been printed
+                },
                 ValueInner::Tuple(tuple) => {
                     if data.n_children_yielded == 0 {
                         write!(f, "(")?;
@@ -454,7 +457,32 @@ impl fmt::Display for Value {
                         write!(f, ")")?;
                     }
                 }
-                ValueInner::Array(..) => {
+                ValueInner::Array(array) => {
+                    // Non-empty byte arrays are directly displayed as hex strings.
+                    // This means we need to skip the array elements during the iteration.
+                    // We use a Boolean variable to toggle the skipping.
+                    if print_hex_byte_array && 0 < data.n_children_yielded {
+                        if data.is_complete {
+                            print_hex_byte_array = false;
+                        }
+                        continue;
+                    }
+                    let maybe_bytes = array
+                        .iter()
+                        .map(|element| match element.inner() {
+                            ValueInner::UInt(UIntValue::U8(byte)) => Some(*byte),
+                            _ => None,
+                        })
+                        .collect::<Option<Vec<u8>>>();
+                    match maybe_bytes {
+                        Some(bytes) if !bytes.is_empty() => {
+                            write!(f, "0x{}", bytes.as_hex())?;
+                            print_hex_byte_array = true;
+                            continue;
+                        }
+                        _ => {}
+                    }
+
                     if data.n_children_yielded == 0 {
                         write!(f, "[")?;
                     } else if !data.is_complete {
@@ -1224,6 +1252,8 @@ mod tests {
         assert_eq!("[(), (), ()]", &array.to_string());
         let list = Value::list([Value::unit()], ResolvedType::unit(), NonZeroPow2Usize::TWO);
         assert_eq!("list![()]", &list.to_string());
+        let byte_array = Value::byte_array([0xde, 0xad, 0xbe, 0xef]);
+        assert_eq!("0xdeadbeef", &byte_array.to_string());
     }
 
     #[test]
