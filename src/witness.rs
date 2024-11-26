@@ -75,8 +75,11 @@ macro_rules! impl_name_value_map {
 
         impl fmt::Display for $wrapper {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                writeln!(f, "mod {}{{", $module_name)?;
-                for (name, value) in self.iter() {
+                use itertools::Itertools;
+
+                writeln!(f, "mod {} {{", $module_name)?;
+                for name in self.0.keys().sorted_unstable() {
+                    let value = self.0.get(name).unwrap();
                     writeln!(f, "    const {name}: {} = {value};", value.ty())?;
                 }
                 write!(f, "}}")
@@ -278,5 +281,20 @@ fn main() {
                 .to_string()
                 .contains("Module `witness` is defined twice")),
         }
+    }
+
+    #[test]
+    fn witness_to_string() {
+        let witness = WitnessValues::from(HashMap::from([
+            (WitnessName::from_str_unchecked("A"), Value::u32(1)),
+            (WitnessName::from_str_unchecked("B"), Value::u32(2)),
+            (WitnessName::from_str_unchecked("C"), Value::u32(3)),
+        ]));
+        let expected_string = r#"mod witness {
+    const A: u32 = 1;
+    const B: u32 = 2;
+    const C: u32 = 3;
+}"#;
+        assert_eq!(expected_string, witness.to_string());
     }
 }
