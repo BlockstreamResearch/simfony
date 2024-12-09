@@ -505,7 +505,7 @@ impl fmt::Display for Item {
 
 impl fmt::Display for TypeAlias {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "type {} = {}", self.name(), self.ty())
+        write!(f, "type {} = {};", self.name(), self.ty())
     }
 }
 
