@@ -553,11 +553,6 @@ fn main() {
     }
 
     #[test]
-    fn fuzz_regression_1() {
-        parse::Program::parse_from_str("type f=f").unwrap();
-    }
-
-    #[test]
     fn fuzz_regression_2() {
         parse::Program::parse_from_str("fn dbggscas(h: bool, asyxhaaaa: a) {\nfalse}\n\n").unwrap();
     }
@@ -566,5 +561,19 @@ fn main() {
     #[ignore]
     fn fuzz_slow_unit_1() {
         parse::Program::parse_from_str("fn fnnfn(MMet:(((sssss,((((((sssss,ssssss,ss,((((((sssss,ss,((((((sssss,ssssss,ss,((((((sssss,ssssss,((((((sssss,sssssssss,(((((((sssss,sssssssss,(((((ssss,((((((sssss,sssssssss,(((((((sssss,ssss,((((((sssss,ss,((((((sssss,ssssss,ss,((((((sssss,ssssss,((((((sssss,sssssssss,(((((((sssss,sssssssss,(((((ssss,((((((sssss,sssssssss,(((((((sssss,sssssssssssss,(((((((((((u|(").unwrap_err();
+    }
+
+    #[test]
+    fn type_alias() {
+        let prog_text = r#"type MyAlias = u32;
+
+fn main() {
+    let x: MyAlias = 32;
+    assert!(jet::eq_32(x, 32));
+}
+"#;
+        TestCase::program_text(Cow::Borrowed(prog_text))
+            .with_witness_values(WitnessValues::default())
+            .assert_run_success();
     }
 }

@@ -49,7 +49,7 @@ ty                =  { alias_name | builtin_alias | sum_type | option_type | boo
 builtin_alias     = @{ "Ctx8" | "Pubkey" | "Message64" | "Message" | "Signature" | "Scalar" | "Fe" | "Gej" | "Ge" | "Point" | "Height" | "Time" | "Distance" | "Duration" | "Lock" | "Outpoint" | "Confidential1" | "ExplicitAsset" | "Asset1" | "ExplicitAmount" | "Amount1" | "ExplicitNonce" | "Nonce" | "TokenAmount1" }
 alias_name        =  { !builtin_alias ~ identifier }
 type_keyword      = @{ "type" ~ !ASCII_ALPHANUMERIC }
-type_alias        =  { type_keyword ~ alias_name ~ "=" ~ ty }
+type_alias        =  { type_keyword ~ alias_name ~ "=" ~ ty ~ ";" }
 
 left_expr         =  { "Left(" ~ expression ~ ")" }
 right_expr        =  { "Right(" ~ expression ~ ")" }
