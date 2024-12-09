@@ -539,7 +539,7 @@ mod tests {
 }
 
 fn main() {
-    jet_verify(my_true());
+    assert!(my_true());
 }
 "#;
         match SatisfiedProgram::new(prog_text, Arguments::default(), WitnessValues::default()) {
