@@ -41,6 +41,7 @@
             pkgs.just
             pkgs.gdb
             pkgs.cargo-hack
+            pkgs.mdbook
           ] ++ (
             if with_elements then [ elementsd-simplicity ] else []
           );
@@ -90,6 +91,11 @@
           inherit CC_wasm32_unknown_unknown;
           inherit AR_wasm32_unknown_unknown;
           inherit CFLAGS_wasm32_unknown_unknown;
+        };
+        book = pkgs.mkShell {
+          buildInputs = [
+            pkgs.mdbook
+          ];
         };
       };
     }
