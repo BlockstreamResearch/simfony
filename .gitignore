@@ -15,3 +15,6 @@ target/
 
 # Vscode project files
 .vscode
+
+# mdbook HTML output dir
+book/book/
