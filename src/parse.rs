@@ -16,7 +16,8 @@ use crate::impl_eq_hash;
 use crate::num::NonZeroPow2Usize;
 use crate::pattern::Pattern;
 use crate::str::{
-    Binary, Decimal, FunctionName, Hexadecimal, Identifier, JetName, ModuleName, WitnessName,
+    AliasName, Binary, Decimal, FunctionName, Hexadecimal, Identifier, JetName, ModuleName,
+    WitnessName,
 };
 use crate::types::{AliasedType, BuiltinAlias, TypeConstructible, UIntType};
 
@@ -201,14 +202,14 @@ pub enum CallName {
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct TypeAlias {
-    name: Identifier,
+    name: AliasName,
     ty: AliasedType,
     span: Span,
 }
 
 impl TypeAlias {
     /// Access the name of the alias.
-    pub fn name(&self) -> &Identifier {
+    pub fn name(&self) -> &AliasName {
         &self.name
     }
 
@@ -809,6 +810,7 @@ macro_rules! impl_parse_wrapped_string {
 impl_parse_wrapped_string!(FunctionName, function_name);
 impl_parse_wrapped_string!(Identifier, identifier);
 impl_parse_wrapped_string!(WitnessName, witness_name);
+impl_parse_wrapped_string!(AliasName, alias_name);
 impl_parse_wrapped_string!(ModuleName, module_name);
 
 /// Copy of [`FromStr`] that internally uses the PEST parser.
@@ -1064,7 +1066,7 @@ impl PestParse for TypeAlias {
         let span = Span::from(&pair);
         let mut it = pair.into_inner();
         let _type_keyword = it.next().unwrap();
-        let name = Identifier::parse(it.next().unwrap().into_inner().next().unwrap())?;
+        let name = AliasName::parse(it.next().unwrap())?;
         let ty = AliasedType::parse(it.next().unwrap())?;
         Ok(Self { name, ty, span })
     }
@@ -1329,9 +1331,8 @@ impl PestParse for AliasedType {
         for data in pair.post_order_iter() {
             match data.node.0.as_rule() {
                 Rule::alias_name => {
-                    let pair = data.node.0.into_inner().next().unwrap();
-                    let identifier = Identifier::parse(pair)?;
-                    output.push(Item::Type(AliasedType::alias(identifier)));
+                    let name = AliasName::parse(data.node.0)?;
+                    output.push(Item::Type(AliasedType::alias(name)));
                 }
                 Rule::builtin_alias => {
                     let builtin = BuiltinAlias::parse(data.node.0)?;

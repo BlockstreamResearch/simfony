@@ -12,7 +12,7 @@ use crate::error::{Error, RichError, Span, WithSpan};
 use crate::num::{NonZeroPow2Usize, Pow2Usize};
 use crate::parse::MatchPattern;
 use crate::pattern::Pattern;
-use crate::str::{FunctionName, Identifier, ModuleName, WitnessName};
+use crate::str::{AliasName, FunctionName, Identifier, ModuleName, WitnessName};
 use crate::types::{
     AliasedType, ResolvedType, StructuralType, TypeConstructible, TypeDeconstructible, UIntType,
 };
@@ -485,7 +485,7 @@ impl<'a> TreeLike for ExprTree<'a> {
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 struct Scope {
     variables: Vec<HashMap<Identifier, ResolvedType>>,
-    aliases: HashMap<Identifier, ResolvedType>,
+    aliases: HashMap<AliasName, ResolvedType>,
     parameters: HashMap<WitnessName, ResolvedType>,
     witnesses: HashMap<WitnessName, ResolvedType>,
     functions: HashMap<FunctionName, CustomFunction>,
@@ -569,7 +569,7 @@ impl Scope {
     /// There are any undefined aliases.
     pub fn resolve(&self, ty: &AliasedType) -> Result<ResolvedType, Error> {
         let get_alias =
-            |name: &Identifier| -> Option<ResolvedType> { self.aliases.get(name).cloned() };
+            |name: &AliasName| -> Option<ResolvedType> { self.aliases.get(name).cloned() };
         ty.resolve(get_alias).map_err(Error::UndefinedAlias)
     }
 
@@ -578,9 +578,9 @@ impl Scope {
     /// ## Errors
     ///
     /// There are any undefined aliases.
-    pub fn insert_alias(&mut self, alias: Identifier, ty: AliasedType) -> Result<(), Error> {
+    pub fn insert_alias(&mut self, name: AliasName, ty: AliasedType) -> Result<(), Error> {
         let resolved_ty = self.resolve(&ty)?;
-        self.aliases.insert(alias, resolved_ty);
+        self.aliases.insert(name, resolved_ty);
         Ok(())
     }
 
@@ -1082,7 +1082,7 @@ impl AbstractSyntaxTree for Call {
                 let args_tys = crate::jet::source_type(jet)
                     .iter()
                     .map(AliasedType::resolve_builtin)
-                    .collect::<Result<Vec<ResolvedType>, Identifier>>()
+                    .collect::<Result<Vec<ResolvedType>, AliasName>>()
                     .map_err(Error::UndefinedAlias)
                     .with_span(from)?;
                 check_argument_types(from.args(), &args_tys).with_span(from)?;

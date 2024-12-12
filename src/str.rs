@@ -141,6 +141,69 @@ impl<'a> arbitrary::Arbitrary<'a> for JetName {
     }
 }
 
+/// The name of a type alias.
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct AliasName(Arc<str>);
+
+wrapped_string!(AliasName, "name of a type alias");
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for AliasName {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        const RESERVED_NAMES: [&str; 37] = [
+            "Either",
+            "Option",
+            "bool",
+            "List",
+            "u128",
+            "u256",
+            "u16",
+            "u32",
+            "u64",
+            "u1",
+            "u2",
+            "u4",
+            "u8",
+            "Ctx8",
+            "Pubkey",
+            "Message64",
+            "Message",
+            "Signature",
+            "Scalar",
+            "Fe",
+            "Gej",
+            "Ge",
+            "Point",
+            "Height",
+            "Time",
+            "Distance",
+            "Duration",
+            "Lock",
+            "Outpoint",
+            "Confidential1",
+            "ExplicitAsset",
+            "Asset1",
+            "ExplicitAmount",
+            "Amount1",
+            "ExplicitNonce",
+            "Nonce",
+            "TokenAmount1",
+        ];
+
+        let len = u.int_in_range(1..=10)?;
+        let mut string = String::with_capacity(len);
+        for _ in 0..len {
+            let offset = u.int_in_range(0..=25)?;
+            string.push((b'a' + offset) as char)
+        }
+        if RESERVED_NAMES.contains(&string.as_str()) {
+            string.push('_');
+        }
+
+        Ok(Self::from_str_unchecked(string.as_str()))
+    }
+}
+
 /// A string of decimal digits.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Decimal(Arc<str>);

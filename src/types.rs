@@ -7,7 +7,7 @@ use simplicity::types::{CompleteBound, Final};
 
 use crate::array::{BTreeSlice, Partition};
 use crate::num::{NonZeroPow2Usize, Pow2Usize};
-use crate::str::Identifier;
+use crate::str::AliasName;
 
 /// Primitives of the Simfony type system, excluding type aliases.
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
@@ -494,7 +494,7 @@ pub struct AliasedType(AliasedInner);
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 enum AliasedInner {
     /// Type alias.
-    Alias(Identifier),
+    Alias(AliasName),
     /// Builtin type alias.
     Builtin(BuiltinAlias),
     /// Type primitive.
@@ -533,9 +533,9 @@ pub enum BuiltinAlias {
 
 impl AliasedType {
     /// Access a user-defined alias.
-    pub const fn as_alias(&self) -> Option<&Identifier> {
+    pub const fn as_alias(&self) -> Option<&AliasName> {
         match &self.0 {
-            AliasedInner::Alias(identifier) => Some(identifier),
+            AliasedInner::Alias(name) => Some(name),
             _ => None,
         }
     }
@@ -549,8 +549,8 @@ impl AliasedType {
     }
 
     /// Create a type alias from the given `identifier`.
-    pub const fn alias(identifier: Identifier) -> Self {
-        Self(AliasedInner::Alias(identifier))
+    pub const fn alias(name: AliasName) -> Self {
+        Self(AliasedInner::Alias(name))
     }
 
     /// Create a builtin type alias.
@@ -559,15 +559,15 @@ impl AliasedType {
     }
 
     /// Resolve all aliases in the type based on the given map of `aliases` to types.
-    pub fn resolve<F>(&self, mut get_alias: F) -> Result<ResolvedType, Identifier>
+    pub fn resolve<F>(&self, mut get_alias: F) -> Result<ResolvedType, AliasName>
     where
-        F: FnMut(&Identifier) -> Option<ResolvedType>,
+        F: FnMut(&AliasName) -> Option<ResolvedType>,
     {
         let mut output = vec![];
         for data in self.post_order_iter() {
             match &data.node.0 {
-                AliasedInner::Alias(alias) => {
-                    let resolved = get_alias(alias).ok_or(alias.clone())?;
+                AliasedInner::Alias(name) => {
+                    let resolved = get_alias(name).ok_or(name.clone())?;
                     output.push(resolved);
                 }
                 AliasedInner::Builtin(builtin) => {
@@ -608,7 +608,7 @@ impl AliasedType {
     }
 
     /// Resolve all aliases in the type based on the builtin type aliases only.
-    pub fn resolve_builtin(&self) -> Result<ResolvedType, Identifier> {
+    pub fn resolve_builtin(&self) -> Result<ResolvedType, AliasName> {
         self.resolve(|_| None)
     }
 }
@@ -741,8 +741,8 @@ impl From<UIntType> for AliasedType {
     }
 }
 
-impl From<Identifier> for AliasedType {
-    fn from(value: Identifier) -> Self {
+impl From<AliasName> for AliasedType {
+    fn from(value: AliasName) -> Self {
         Self::alias(value)
     }
 }
@@ -760,14 +760,14 @@ impl crate::ArbitraryRec for AliasedType {
 
         match budget.checked_sub(1) {
             None => match u.int_in_range(0..=3)? {
-                0 => Identifier::arbitrary(u).map(Self::alias),
+                0 => AliasName::arbitrary(u).map(Self::alias),
                 1 => BuiltinAlias::arbitrary(u).map(Self::builtin),
                 2 => Ok(Self::boolean()),
                 3 => UIntType::arbitrary(u).map(Self::from),
                 _ => unreachable!(),
             },
             Some(new_budget) => match u.int_in_range(0..=8)? {
-                0 => Identifier::arbitrary(u).map(Self::alias),
+                0 => AliasName::arbitrary(u).map(Self::alias),
                 1 => BuiltinAlias::arbitrary(u).map(Self::builtin),
                 2 => Ok(Self::boolean()),
                 3 => UIntType::arbitrary(u).map(Self::from),
