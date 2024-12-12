@@ -6,7 +6,7 @@ use simplicity::hashes::{sha256, Hash, HashEngine};
 use simplicity::{elements, Cmr};
 
 use crate::parse::{MatchPattern, Rule};
-use crate::str::{FunctionName, Identifier, JetName, ModuleName, WitnessName};
+use crate::str::{AliasName, FunctionName, Identifier, JetName, ModuleName, WitnessName};
 use crate::types::{ResolvedType, UIntType};
 
 /// Position of an object inside a file.
@@ -323,7 +323,7 @@ pub enum Error {
     ExpressionNotConstant,
     IntegerOutOfBounds(UIntType),
     UndefinedVariable(Identifier),
-    UndefinedAlias(Identifier),
+    UndefinedAlias(AliasName),
     VariableReuseInPattern(Identifier),
     WitnessReused(WitnessName),
     WitnessTypeMismatch(WitnessName, ResolvedType, ResolvedType),

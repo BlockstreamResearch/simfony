@@ -21,7 +21,7 @@ jobs:
 
     - name: Build website
       run: |
-        nix develop .#book --command bash -c "mdbook build"
+        nix develop .#book --command bash -c "mdbook build book"
 
     - name: Deploy to GitHub pages
       uses: JamesIves/github-pages-deploy-action@v4
