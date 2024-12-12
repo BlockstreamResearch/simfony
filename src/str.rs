@@ -79,7 +79,37 @@ impl FunctionName {
 }
 
 wrapped_string!(FunctionName, "function name");
-impl_arbitrary_lowercase_alpha!(FunctionName);
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for FunctionName {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        const RESERVED_NAMES: [&str; 11] = [
+            "unwrap_left",
+            "unwrap_right",
+            "for_while",
+            "is_none",
+            "unwrap",
+            "assert",
+            "panic",
+            "match",
+            "into",
+            "fold",
+            "dbg",
+        ];
+
+        let len = u.int_in_range(1..=10)?;
+        let mut string = String::with_capacity(len);
+        for _ in 0..len {
+            let offset = u.int_in_range(0..=25)?;
+            string.push((b'a' + offset) as char)
+        }
+        if RESERVED_NAMES.contains(&string.as_str()) {
+            string.push('_');
+        }
+
+        Ok(Self::from_str_unchecked(string.as_str()))
+    }
+}
 
 /// The identifier of a variable.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
