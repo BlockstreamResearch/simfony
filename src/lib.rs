@@ -247,6 +247,7 @@ pub trait ArbitraryOfType: Sized {
 mod tests {
     use base64::display::Base64Display;
     use base64::engine::general_purpose::STANDARD;
+    use elements::LockTime;
     use simplicity::BitMachine;
     use std::borrow::Cow;
     use std::path::Path;
@@ -257,6 +258,7 @@ mod tests {
         program: T,
         lock_time: elements::LockTime,
         sequence: elements::Sequence,
+        include_fee_output: bool,
     }
 
     impl TestCase<TemplateProgram> {
@@ -274,6 +276,7 @@ mod tests {
                 program,
                 lock_time: elements::LockTime::ZERO,
                 sequence: elements::Sequence::MAX,
+                include_fee_output: false,
             }
         }
 
@@ -299,6 +302,7 @@ mod tests {
                 program,
                 lock_time: self.lock_time,
                 sequence: self.sequence,
+                include_fee_output: self.include_fee_output,
             }
         }
     }
@@ -339,6 +343,7 @@ mod tests {
                 program,
                 lock_time: self.lock_time,
                 sequence: self.sequence,
+                include_fee_output: self.include_fee_output,
             }
         }
     }
@@ -362,7 +367,7 @@ mod tests {
 
         #[allow(dead_code)]
         pub fn print_sighash_all(self) -> Self {
-            let env = dummy_env::dummy_with(self.lock_time, self.sequence);
+            let env = dummy_env::dummy_with(self.lock_time, self.sequence, self.include_fee_output);
             dbg!(env.c_tx_env().sighash_all());
             self
         }
@@ -385,7 +390,7 @@ mod tests {
 
         fn run(self) -> Result<(), simplicity::bit_machine::ExecutionError> {
             let mut mac = BitMachine::for_program(self.program.redeem());
-            let env = dummy_env::dummy_with(self.lock_time, self.sequence);
+            let env = dummy_env::dummy_with(self.lock_time, self.sequence, self.include_fee_output);
             mac.exec(self.program.redeem(), &env).map(|_| ())
         }
 
@@ -409,6 +414,17 @@ mod tests {
         TestCase::program_file("./examples/ctv.simf")
             .with_witness_values(WitnessValues::default())
             .assert_run_success();
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn sighash_non_interactive_fee_bump() {
+        let mut t = TestCase::program_file("./examples/non_interactive_fee_bump.simf")
+            .with_witness_file("./examples/non_interactive_fee_bump.wit");
+        t.sequence = elements::Sequence::ENABLE_LOCKTIME_NO_RBF;
+        t.lock_time = LockTime::from_time(1734967235 + 600).unwrap();
+        t.include_fee_output = true;
+        t.assert_run_success();
     }
 
     #[test]
