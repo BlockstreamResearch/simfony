@@ -193,7 +193,7 @@ impl fmt::Display for UIntType {
     }
 }
 
-impl<'a> TryFrom<&'a StructuralType> for UIntType {
+impl TryFrom<&StructuralType> for UIntType {
     type Error = ();
 
     fn try_from(value: &StructuralType) -> Result<Self, Self::Error> {
@@ -215,7 +215,7 @@ impl<'a> TryFrom<&'a StructuralType> for UIntType {
     }
 }
 
-impl<'a> TryFrom<&'a ResolvedType> for UIntType {
+impl TryFrom<&ResolvedType> for UIntType {
     type Error = ();
 
     fn try_from(value: &ResolvedType) -> Result<Self, Self::Error> {
@@ -402,7 +402,7 @@ impl TypeDeconstructible for ResolvedType {
     }
 }
 
-impl<'a> TreeLike for &'a ResolvedType {
+impl TreeLike for &ResolvedType {
     fn as_node(&self) -> Tree<Self> {
         match &self.0 {
             TypeInner::Boolean | TypeInner::UInt(..) => Tree::Nullary,
@@ -698,7 +698,7 @@ impl TypeDeconstructible for AliasedType {
     }
 }
 
-impl<'a> TreeLike for &'a AliasedType {
+impl TreeLike for &AliasedType {
     fn as_node(&self) -> Tree<Self> {
         match &self.0 {
             AliasedInner::Alias(_) | AliasedInner::Builtin(_) => Tree::Nullary,
@@ -974,7 +974,7 @@ impl From<UIntType> for StructuralType {
     }
 }
 
-impl<'a> From<&'a ResolvedType> for StructuralType {
+impl From<&ResolvedType> for StructuralType {
     fn from(value: &ResolvedType) -> Self {
         let mut output = vec![];
         for data in value.post_order_iter() {

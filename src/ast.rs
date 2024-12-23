@@ -426,7 +426,7 @@ pub enum ExprTree<'a> {
     Match(&'a Match),
 }
 
-impl<'a> TreeLike for ExprTree<'a> {
+impl TreeLike for ExprTree<'_> {
     fn as_node(&self) -> Tree<Self> {
         use SingleExpressionInner as S;
 

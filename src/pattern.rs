@@ -72,7 +72,7 @@ impl Pattern {
     }
 }
 
-impl<'a> TreeLike for &'a Pattern {
+impl TreeLike for &Pattern {
     fn as_node(&self) -> Tree<Self> {
         match self {
             Pattern::Identifier(_) | Pattern::Ignore => Tree::Nullary,
@@ -170,7 +170,7 @@ pub enum BasePattern {
     Product(Arc<Self>, Arc<Self>),
 }
 
-impl<'a> TreeLike for &'a BasePattern {
+impl TreeLike for &BasePattern {
     fn as_node(&self) -> Tree<Self> {
         match self {
             BasePattern::Ignore | BasePattern::Identifier(_) => Tree::Nullary,

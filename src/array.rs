@@ -20,7 +20,7 @@ impl<'a, A> BTreeSlice<'a, A> {
     }
 }
 
-impl<'a, A: Clone> BTreeSlice<'a, A> {
+impl<A: Clone> BTreeSlice<'_, A> {
     /// Fold the tree in post order, using the binary function `f`.
     ///
     /// Returns `None` if the tree is empty.
@@ -57,7 +57,7 @@ impl<'a, A: Clone> BTreeSlice<'a, A> {
     }
 }
 
-impl<'a, A: Clone> TreeLike for BTreeSlice<'a, A> {
+impl<A: Clone> TreeLike for BTreeSlice<'_, A> {
     fn as_node(&self) -> Tree<Self> {
         match self.0.len() {
             0 | 1 => Tree::Nullary,
@@ -169,7 +169,7 @@ impl<'a, A> Partition<'a, A> {
     }
 }
 
-impl<'a, A: Clone> Partition<'a, A> {
+impl<A: Clone> Partition<'_, A> {
     /// Check if the partition is complete.
     ///
     /// A complete partition contains no empty blocks.
@@ -213,7 +213,7 @@ impl<'a, A: Clone> Partition<'a, A> {
 }
 
 #[rustfmt::skip]
-impl<'a, A: Clone> TreeLike for Partition<'a, A> {
+impl<A: Clone> TreeLike for Partition<'_, A> {
     fn as_node(&self) -> Tree<Self> {
         match self {
             Self::Leaf {..} => Tree::Nullary,

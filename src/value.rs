@@ -395,7 +395,7 @@ pub struct Value {
     ty: ResolvedType,
 }
 
-impl<'a> TreeLike for &'a Value {
+impl TreeLike for &Value {
     fn as_node(&self) -> Tree<Self> {
         match &self.inner {
             ValueInner::Option(None) | ValueInner::Boolean(_) | ValueInner::UInt(_) => {
@@ -443,10 +443,11 @@ impl fmt::Display for Value {
                     }
                 },
                 ValueInner::Boolean(bit) => write!(f, "{bit}")?,
-                ValueInner::UInt(integer) => match print_hex_byte_array {
-                    false => write!(f, "{integer}")?,
-                    true => {} // bytes have already been printed
-                },
+                ValueInner::UInt(integer) => {
+                    if !print_hex_byte_array {
+                        write!(f, "{integer}")?
+                    }
+                }
                 ValueInner::Tuple(tuple) => {
                     if data.n_children_yielded == 0 {
                         write!(f, "(")?;
@@ -998,7 +999,7 @@ impl From<UIntValue> for StructuralValue {
     }
 }
 
-impl<'a> From<&'a Value> for StructuralValue {
+impl From<&Value> for StructuralValue {
     fn from(value: &Value) -> Self {
         let mut output = vec![];
         for data in value.post_order_iter() {
@@ -1110,7 +1111,7 @@ impl<'a> Destructor<'a> {
     }
 }
 
-impl<'a> TreeLike for Destructor<'a> {
+impl TreeLike for Destructor<'_> {
     fn as_node(&self) -> Tree<Self> {
         let (value, ty) = match self {
             Self::Ok { value, ty } => (value, ty),

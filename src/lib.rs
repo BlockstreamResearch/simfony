@@ -1,4 +1,4 @@
-/// Library for parsing and compiling simfony
+//! Library for parsing and compiling simfony
 
 pub type ProgNode = Arc<named::ConstructNode>;
 
@@ -247,6 +247,7 @@ pub trait ArbitraryOfType: Sized {
 mod tests {
     use base64::display::Base64Display;
     use base64::engine::general_purpose::STANDARD;
+    #[cfg(feature = "serde")]
     use elements::LockTime;
     use simplicity::BitMachine;
     use std::borrow::Cow;

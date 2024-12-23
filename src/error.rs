@@ -144,7 +144,7 @@ impl<'a> From<&'a pest::iterators::Pair<'_, Rule>> for Span {
     }
 }
 
-impl<'a> From<&'a str> for Span {
+impl From<&str> for Span {
     fn from(s: &str) -> Self {
         let start = Position::new(1, 1);
         let end_line = std::cmp::max(1, s.lines().count());
