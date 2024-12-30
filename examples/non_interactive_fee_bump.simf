@@ -1,0 +1,73 @@
+/*
+ * NON-INTERACTIVE FEE BUMPING
+ *
+ * This feature allows anyone, including miners, to increase a transaction's fee by reducing the change amount,
+ * following a predefined rule that adds 1 satoshi to the fee every second.
+ *
+ * Allowed modifications without affecting the signature:
+ * - Increase the transaction's nLockTime, delaying its inclusion in a block.
+ * - Decrease the change output or increase the fee output.
+ *
+ * This enables miners to maximize their fees from transactions without needing external fee bumping services like
+ * sponsors, Child-Pays-For-Parent (CPFP), or anchor outputs, simplifying fee management for transaction inclusion.
+ */
+
+// This function computes a signature hash for transactions that allows non-interactive fee bumping.
+// It omits certain fields from the transaction that can be modified by anyone,
+// specifically nLockTime and change/fee outputs amounts.
+fn sighash_tx_nifb() -> u256 {
+    let ctx: Ctx8 = jet::sha_256_ctx_8_init();
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_4(ctx, jet::version());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::inputs_hash());
+    // Note that nlocktime is not signed.
+    // Add the hash of the first output (assumed the ONLY non-change output)
+    let ctx: Ctx8 = match jet::output_hash(0) {
+        Some(sighash : u256) => jet::sha_256_ctx_8_add_32(ctx, sighash),
+        None => panic!(),
+    };
+    // Add all output script pubkeys to the hash, including change and fee outputs script pubkeys
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::output_scripts_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::input_utxos_hash());
+    jet::sha_256_ctx_8_finalize(ctx)
+}
+
+// Combines the transaction hash with additional taproot-related data to form the overall transaction signature hash.
+fn sighash_nifb() -> u256 {
+    let ctx: Ctx8 = jet::sha_256_ctx_8_init();
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::genesis_block_hash());
+    // Add the transaction-specific hash computed earlier
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, sighash_tx_nifb());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::tap_env_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_4(ctx, jet::current_index());
+    jet::sha_256_ctx_8_finalize(ctx)
+}
+
+// Helper function to ensure the provided boolean value is not negative.
+fn check_neg(v : bool) {
+    assert!(jet::eq_8(jet::left_pad_low_1_8(<bool>::into(v)), 0));
+}
+
+// Enforces a linear increase in transaction fee over time by adjusting the maximum fee allowed before a transaction is mined.
+fn total_fee_check() {
+    let curr_time : u32 = jet::tx_lock_time();
+    // [ELEMENTS]:Asset type for the transaction fee (explicitly specifying asset type, typically BTC asset)
+    let fee_asset : ExplicitAsset = 0x0000000000000000000000000000000000000000000000000000000000000000;
+    let fees : u64 = jet::total_fee(fee_asset);
+    let time_at_broadcast : u32 = 1734967235; // Dec 23 ~8:33am PST
+    let (carry, time_elapsed) : (bool, u32) = jet::subtract_32(curr_time, time_at_broadcast);
+    check_neg(carry); // Check for negative time difference, which shouldn't happen
+    let base_fee : u64 = 1000; // Base fee at the time of broadcast
+    // Calculate the maximum allowed fee as a function of elapsed time
+    let (carry, max_fee) : (bool, u64) = jet::add_64(base_fee, jet::left_pad_low_32_64(time_elapsed));
+    check_neg(carry); // Ensure there's no overflow in fee calculation
+    // Assert that the current fees are less than the maximum allowed fee
+    assert!(jet::lt_64(fees, max_fee));
+    // Optionally, you could limit the total fee here
+}
+
+fn main() {
+    let sighash : u256 = sighash_nifb();
+    total_fee_check();
+    let alice_pk : Pubkey = 0x9bef8d556d80e43ae7e0becb3a7e6838b95defe45896ed6075bb9035d06c9964;
+    jet::bip_0340_verify((alice_pk, sighash), witness::ALICE_SIGNATURE);
+}

@@ -544,7 +544,7 @@ pub enum ExprTree<'a> {
     Match(&'a Match),
 }
 
-impl<'a> TreeLike for ExprTree<'a> {
+impl TreeLike for ExprTree<'_> {
     fn as_node(&self) -> Tree<Self> {
         use SingleExpressionInner as S;
 
@@ -596,7 +596,7 @@ impl<'a> TreeLike for ExprTree<'a> {
     }
 }
 
-impl<'a> fmt::Display for ExprTree<'a> {
+impl fmt::Display for ExprTree<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use SingleExpressionInner as S;
 
@@ -1512,7 +1512,7 @@ impl PestParse for ModuleAssignment {
 #[derive(Clone, Debug)]
 struct PatternPair<'a>(pest::iterators::Pair<'a, Rule>);
 
-impl<'a> TreeLike for PatternPair<'a> {
+impl TreeLike for PatternPair<'_> {
     fn as_node(&self) -> Tree<Self> {
         let mut it = self.0.clone().into_inner();
         match self.0.as_rule() {
@@ -1534,7 +1534,7 @@ impl<'a> TreeLike for PatternPair<'a> {
 #[derive(Clone, Debug)]
 struct TyPair<'a>(pest::iterators::Pair<'a, Rule>);
 
-impl<'a> TreeLike for TyPair<'a> {
+impl TreeLike for TyPair<'_> {
     fn as_node(&self) -> Tree<Self> {
         let mut it = self.0.clone().into_inner();
         match self.0.as_rule() {
