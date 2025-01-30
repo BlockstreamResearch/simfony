@@ -530,6 +530,14 @@ mod tests {
 
     #[test]
     #[cfg(feature = "serde")]
+    fn sighash_single() {
+        TestCase::program_file("./examples/sighash_single.simf")
+            .with_witness_file("./examples/sighash_single.wit")
+            .assert_run_success();
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
     fn transfer_with_timeout_transfer() {
         TestCase::program_file("./examples/transfer_with_timeout.simf")
             .print_sighash_all()
