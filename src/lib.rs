@@ -137,7 +137,9 @@ impl CompiledProgram {
             .is_consistent(&self.witness_types)
             .map_err(|e| e.to_string())?;
         let simplicity_witness = named::to_witness_node(&self.simplicity, witness_values);
-        let simplicity_redeem = simplicity_witness.finalize().map_err(|e| e.to_string())?;
+        let simplicity_redeem = simplicity_witness
+            .finalize_unpruned()
+            .map_err(|e| e.to_string())?;
         Ok(SatisfiedProgram {
             simplicity: simplicity_redeem,
             debug_symbols: self.debug_symbols.clone(),
