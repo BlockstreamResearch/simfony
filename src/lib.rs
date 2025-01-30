@@ -514,6 +514,14 @@ mod tests {
 
     #[test]
     #[cfg(feature = "serde")]
+    fn sighash_all_anyprevout() {
+        TestCase::program_file("./examples/sighash_all_anyprevout.simf")
+            .with_witness_file("./examples/sighash_all_anyprevout.wit")
+            .assert_run_success();
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
     fn sighash_all_anyprevoutanyscript() {
         TestCase::program_file("./examples/sighash_all_anyprevoutanyscript.simf")
             .with_witness_file("./examples/sighash_all_anyprevoutanyscript.wit")
