@@ -514,6 +514,14 @@ mod tests {
 
     #[test]
     #[cfg(feature = "serde")]
+    fn sighash_all_anyonecanpay() {
+        TestCase::program_file("./examples/sighash_all_anyonecanpay.simf")
+            .with_witness_file("./examples/sighash_all_anyonecanpay.wit")
+            .assert_run_success();
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
     fn sighash_all_anyprevout() {
         TestCase::program_file("./examples/sighash_all_anyprevout.simf")
             .with_witness_file("./examples/sighash_all_anyprevout.wit")
