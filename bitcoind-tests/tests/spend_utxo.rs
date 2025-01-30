@@ -79,19 +79,15 @@ fn hodl_vault(sighash_all: [u8; 32]) -> simfony::WitnessValues {
 fn p2pk_args() -> simfony::Arguments {
     simfony::Arguments::from(HashMap::from([(
         WitnessName::from_str_unchecked("ALICE_PUBLIC_KEY"),
-        Value::byte_array(util::xonly_public_key(0).to_byte_array()),
+        Value::u256(util::xonly_public_key(1)),
     )]))
 }
 
 fn p2pk(sighash_all: [u8; 32]) -> simfony::WitnessValues {
-    let mut witness_values = HashMap::new();
-    witness_values
-        .insert(
-            WitnessName::from_str_unchecked("SIG"),
-            Value::byte_array(util::sign_schnorr(1, sighash_all)),
-        )
-        .unwrap();
-    simfony::WitnessValues::from(witness_values)
+    simfony::WitnessValues::from(HashMap::from([(
+        WitnessName::from_str_unchecked("ALICE_SIGNATURE"),
+        Value::byte_array(util::sign_schnorr(1, sighash_all)),
+    )]))
 }
 
 fn p2pkh(sighash_all: [u8; 32]) -> simfony::WitnessValues {
