@@ -11,7 +11,7 @@ fn main() {
     let ctx: Ctx8 = jet::sha_256_ctx_8_add_4(ctx, jet::version());
     let ctx: Ctx8 = jet::sha_256_ctx_8_add_4(ctx, jet::lock_time());
     let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::tap_env_hash());
-    // Current input without outpoint, amounts or scriptPubKey
+    // Current input without outpoint nor amounts nor scriptPubKey
     let ctx: Ctx8 = jet::sha_256_ctx_8_add_4(ctx, jet::current_sequence());
     let ctx: Ctx8 = jet::annex_hash(ctx, jet::current_annex_hash());
     // All outputs
@@ -20,8 +20,8 @@ fn main() {
     let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::output_surjection_proofs_hash());
     // No current index
     // Message
-    let msg: u256 = jet::sha_256_ctx_8_finalize(ctx);
+    let msg: u256 = dbg!(jet::sha_256_ctx_8_finalize(ctx));
 
-    let pk: Pubkey = 0xf9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9;
+    let pk: Pubkey = 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798;
     jet::bip_0340_verify((pk, msg), witness::SIG);
 }
