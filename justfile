@@ -49,6 +49,10 @@ build_fuzz:
 build_integration:
     cargo test --no-run --manifest-path ./bitcoind-tests/Cargo.toml
 
+# Run integration tests (requires custom elementsd)
+check_integration:
+    cargo test --manifest-path ./bitcoind-tests/Cargo.toml
+
 # Build code for the WASM target
 build_wasm:
     cargo check --target wasm32-unknown-unknown
