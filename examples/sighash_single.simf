@@ -1,6 +1,6 @@
 /*
  * This program verifies a Schnorr signature based on
- * SIGHASH_NONE.
+ * SIGHASH_SINGLE.
  */
 fn main() {
     let ctx: Ctx8 = jet::sha_256_ctx_8_init();
@@ -14,7 +14,8 @@ fn main() {
     // All inputs
     let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::inputs_hash());
     let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::input_utxos_hash());
-    // No outputs
+    // Current output
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, unwrap(jet::output_hash(jet::current_index())));
     // Current index
     let ctx: Ctx8 = jet::sha_256_ctx_8_add_4(ctx, jet::current_index());
     // Message

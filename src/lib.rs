@@ -514,6 +514,22 @@ mod tests {
 
     #[test]
     #[cfg(feature = "serde")]
+    fn sighash_all_anyonecanpay() {
+        TestCase::program_file("./examples/sighash_all_anyonecanpay.simf")
+            .with_witness_file("./examples/sighash_all_anyonecanpay.wit")
+            .assert_run_success();
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn sighash_all_anyprevout() {
+        TestCase::program_file("./examples/sighash_all_anyprevout.simf")
+            .with_witness_file("./examples/sighash_all_anyprevout.wit")
+            .assert_run_success();
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
     fn sighash_all_anyprevoutanyscript() {
         TestCase::program_file("./examples/sighash_all_anyprevoutanyscript.simf")
             .with_witness_file("./examples/sighash_all_anyprevoutanyscript.wit")
@@ -525,6 +541,14 @@ mod tests {
     fn sighash_none() {
         TestCase::program_file("./examples/sighash_none.simf")
             .with_witness_file("./examples/sighash_none.wit")
+            .assert_run_success();
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn sighash_single() {
+        TestCase::program_file("./examples/sighash_single.simf")
+            .with_witness_file("./examples/sighash_single.wit")
             .assert_run_success();
     }
 

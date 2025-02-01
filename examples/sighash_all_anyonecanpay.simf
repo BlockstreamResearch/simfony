@@ -1,6 +1,6 @@
 /*
  * This program verifies a Schnorr signature based on
- * SIGHASH_NONE.
+ * SIGHASH_ALL | SIGHASH_ANYONECANPAY.
  */
 fn main() {
     let ctx: Ctx8 = jet::sha_256_ctx_8_init();
@@ -11,12 +11,14 @@ fn main() {
     let ctx: Ctx8 = jet::sha_256_ctx_8_add_4(ctx, jet::version());
     let ctx: Ctx8 = jet::sha_256_ctx_8_add_4(ctx, jet::lock_time());
     let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::tap_env_hash());
-    // All inputs
-    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::inputs_hash());
-    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::input_utxos_hash());
-    // No outputs
-    // Current index
-    let ctx: Ctx8 = jet::sha_256_ctx_8_add_4(ctx, jet::current_index());
+    // Current input
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, unwrap(jet::input_hash(jet::current_index())));
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, unwrap(jet::input_utxo_hash(jet::current_index())));
+    // All outputs
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::outputs_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::issuances_hash());
+    let ctx: Ctx8 = jet::sha_256_ctx_8_add_32(ctx, jet::output_surjection_proofs_hash());
+    // No current index
     // Message
     let msg: u256 = dbg!(jet::sha_256_ctx_8_finalize(ctx));
 
