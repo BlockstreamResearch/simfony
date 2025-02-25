@@ -607,12 +607,12 @@ impl From<UIntValue> for Value {
 
 impl Value {
     /// Access the inner structure of the value.
-    pub fn inner(&self) -> &ValueInner {
+    pub const fn inner(&self) -> &ValueInner {
         &self.inner
     }
 
     /// Access the type of the value.
-    pub fn ty(&self) -> &ResolvedType {
+    pub const fn ty(&self) -> &ResolvedType {
         &self.ty
     }
 
