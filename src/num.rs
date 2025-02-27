@@ -225,14 +225,14 @@ impl U256 {
     /// Create a 256-bit unsigned integer from a byte array.
     ///
     /// The byte array is in Big Endian order.
-    pub fn from_byte_array(bytes: [u8; 32]) -> Self {
+    pub const fn from_byte_array(bytes: [u8; 32]) -> Self {
         Self(bytes)
     }
 
     /// Convert the integer to a byte array.
     ///
     /// The byte array is in Big Endian order.
-    pub fn to_byte_array(self) -> [u8; 32] {
+    pub const fn to_byte_array(self) -> [u8; 32] {
         self.0
     }
 }

@@ -155,7 +155,7 @@ impl UIntValue {
             let mut byte = 0u8;
             for _ in 0..8 {
                 let bit = padded_bits.next().unwrap();
-                byte = byte << 1 | if bit == '1' { 1 } else { 0 };
+                byte = (byte << 1) | if bit == '1' { 1 } else { 0 };
             }
             bytes.push(byte);
         }
@@ -607,12 +607,12 @@ impl From<UIntValue> for Value {
 
 impl Value {
     /// Access the inner structure of the value.
-    pub fn inner(&self) -> &ValueInner {
+    pub const fn inner(&self) -> &ValueInner {
         &self.inner
     }
 
     /// Access the type of the value.
-    pub fn ty(&self) -> &ResolvedType {
+    pub const fn ty(&self) -> &ResolvedType {
         &self.ty
     }
 
