@@ -7,7 +7,7 @@ homepage = "https://github.com/BlockstreamResearch/simfony/"
 repository = "https://github.com/BlockstreamResearch/simfony/"
 description = "Rust-like language that compiles to Simplicity bytecode."
 edition = "2021"
-rust-version = "1.63.0"
+rust-version = "1.78.0"
 
 [lib]
 name = "simfony"

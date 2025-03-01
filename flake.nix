@@ -68,7 +68,7 @@
         };
         msrv = pkgs.mkShell {
           buildInputs = [
-            (mkRust "stable" "1.63.0" "minimal" [] [])
+            (mkRust "stable" "1.78.0" "minimal" [] [])
             pkgs.just
           ];
         };
