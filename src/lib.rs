@@ -392,7 +392,8 @@ mod tests {
         }
 
         fn run(self) -> Result<(), simplicity::bit_machine::ExecutionError> {
-            let mut mac = BitMachine::for_program(self.program.redeem());
+            let mut mac = BitMachine::for_program(self.program.redeem())
+                .expect("program should be within reasonable bounds");
             let env = dummy_env::dummy_with(self.lock_time, self.sequence, self.include_fee_output);
             mac.exec(self.program.redeem(), &env).map(|_| ())
         }

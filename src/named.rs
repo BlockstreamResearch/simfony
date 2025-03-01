@@ -3,12 +3,12 @@ use std::sync::Arc;
 use simplicity::dag::{InternalSharing, PostOrderIterItem};
 use simplicity::jet::{Elements, Jet};
 use simplicity::node::{
-    self, CommitData, Constructible, Converter, CoreConstructible, Inner, JetConstructible,
-    NoDisconnect, NoWitness, Node, WitnessConstructible, WitnessData,
+    self, CommitData, ConstructData as WitnessData, Constructible, Converter, CoreConstructible,
+    Inner, JetConstructible, NoDisconnect, NoWitness, Node, WitnessConstructible,
 };
 use simplicity::types::arrow::Arrow;
 use simplicity::{types, CommitNode, FailEntropy};
-use simplicity::{Cmr, WitnessNode};
+use simplicity::{Cmr, ConstructNode as WitnessNode};
 
 use crate::str::WitnessName;
 use crate::value::StructuralValue;
@@ -105,7 +105,7 @@ pub fn to_witness_node(node: &ConstructNode, values: WitnessValues) -> Arc<Witne
         inference_context: types::Context,
     }
 
-    impl<J: Jet> Converter<Construct<J>, node::Witness<J>> for Populator {
+    impl<J: Jet> Converter<Construct<J>, node::Construct<J>> for Populator {
         type Error = ();
 
         fn convert_witness(
