@@ -390,10 +390,11 @@ mod tests {
         }
 
         fn run(self) -> Result<(), simplicity::bit_machine::ExecutionError> {
-            let mut mac = BitMachine::for_program(self.program.redeem())
-                .expect("program should be within reasonable bounds");
             let env = dummy_env::dummy_with(self.lock_time, self.sequence, self.include_fee_output);
-            mac.exec(self.program.redeem(), &env).map(|_| ())
+            let pruned = self.program.redeem().prune(&env)?;
+            let mut mac = BitMachine::for_program(&pruned)
+                .expect("program should be within reasonable bounds");
+            mac.exec(&pruned, &env).map(|_| ())
         }
 
         pub fn assert_run_success(self) {
