@@ -613,8 +613,22 @@ fn main() {
 fn main() {
     let x: MyAlias = 32;
     assert!(jet::eq_32(x, 32));
-}
-"#;
+}"#;
+        TestCase::program_text(Cow::Borrowed(prog_text))
+            .with_witness_values(WitnessValues::default())
+            .assert_run_success();
+    }
+
+    #[test]
+    fn type_error_regression() {
+        let prog_text = r#"fn main() {
+    let (a, b): (u32, u32) = (0, 1);
+    assert!(jet::eq_32(a, 0));
+
+    let (c, d): (u32, u32) = (2, 3);
+    assert!(jet::eq_32(c, 2));
+    assert!(jet::eq_32(d, 3));
+}"#;
         TestCase::program_text(Cow::Borrowed(prog_text))
             .with_witness_values(WitnessValues::default())
             .assert_run_success();
