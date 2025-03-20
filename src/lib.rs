@@ -249,8 +249,6 @@ pub trait ArbitraryOfType: Sized {
 mod tests {
     use base64::display::Base64Display;
     use base64::engine::general_purpose::STANDARD;
-    #[cfg(feature = "serde")]
-    use elements::LockTime;
     use simplicity::BitMachine;
     use std::borrow::Cow;
     use std::path::Path;
@@ -426,7 +424,7 @@ mod tests {
         let mut t = TestCase::program_file("./examples/non_interactive_fee_bump.simf")
             .with_witness_file("./examples/non_interactive_fee_bump.wit");
         t.sequence = elements::Sequence::ENABLE_LOCKTIME_NO_RBF;
-        t.lock_time = LockTime::from_time(1734967235 + 600).unwrap();
+        t.lock_time = elements::LockTime::from_time(1734967235 + 600).unwrap();
         t.include_fee_output = true;
         t.assert_run_success();
     }
