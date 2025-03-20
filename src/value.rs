@@ -2,7 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use either::Either;
-use hex_conservative::DisplayHex;
+use miniscript::bitcoin::hex::DisplayHex;
 use miniscript::iter::{Tree, TreeLike};
 use simplicity::types::Final as SimType;
 use simplicity::{BitCollector, Value as SimValue, ValueRef};
@@ -623,7 +623,7 @@ impl Value {
 
     /// Create a value from the given `hexadecimal` string and type.
     pub fn parse_hexadecimal(hexadecimal: &Hexadecimal, ty: &ResolvedType) -> Result<Self, Error> {
-        use hex_conservative::FromHex;
+        use miniscript::bitcoin::hex::FromHex;
 
         let expected_byte_len = match ty.as_inner() {
             TypeInner::UInt(int) => int.byte_width(),

@@ -22,7 +22,6 @@ serde = ["dep:serde", "dep:serde_json"]
 
 [dependencies]
 base64 = "0.21.2"
-hex-conservative = "0.1.1"
 pest = "2.1.3"
 pest_derive = "2.7.1"
 serde = { version = "1.0.188", features = ["derive"], optional = true }

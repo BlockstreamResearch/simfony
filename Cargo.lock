@@ -539,7 +539,6 @@ dependencies = [
  "base64",
  "either",
  "getrandom",
- "hex-conservative 0.1.1",
  "itertools",
  "miniscript",
  "pest",
