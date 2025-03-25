@@ -249,7 +249,8 @@ pub trait ArbitraryOfType: Sized {
 mod tests {
     use base64::display::Base64Display;
     use base64::engine::general_purpose::STANDARD;
-    use simplicity::BitMachine;
+    use simplicity::ffi::tests::ffi::SimplicityErr;
+    use simplicity::ffi::tests::{run_program, TestUpTo};
     use std::borrow::Cow;
     use std::path::Path;
 
@@ -389,12 +390,10 @@ mod tests {
             self
         }
 
-        fn run(self) -> Result<(), simplicity::bit_machine::ExecutionError> {
-            let env = dummy_env::dummy_with(self.lock_time, self.sequence, self.include_fee_output);
-            let pruned = self.program.redeem().prune(&env)?;
-            let mut mac = BitMachine::for_program(&pruned)
-                .expect("program should be within reasonable bounds");
-            mac.exec(&pruned, &env).map(|_| ())
+        fn run(self) -> Result<(), SimplicityErr> {
+            let (program_bytes, witness_bytes) = self.program.redeem().encode_to_vec();
+            let _ = run_program(&program_bytes, &witness_bytes, TestUpTo::Everything)?;
+            Ok(())
         }
 
         pub fn assert_run_success(self) {
