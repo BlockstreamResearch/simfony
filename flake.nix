@@ -14,11 +14,8 @@
   , rust-overlay
   , ...
   }:
-  flake-utils.lib.eachSystem [
-    "x86_64-linux"
-    "aarch64-linux"
-    "x86_64-darwin"
-  ] (system:
+  flake-utils.lib.eachDefaultSystem
+  (system:
     let
       overlays = [
         (import rust-overlay)
@@ -35,15 +32,17 @@
       CC_wasm32_unknown_unknown = "${pkgs.llvmPackages_16.clang-unwrapped}/bin/clang-16";
       AR_wasm32_unknown_unknown = "${pkgs.llvmPackages_16.libllvm}/bin/llvm-ar";
       CFLAGS_wasm32_unknown_unknown = "-I ${pkgs.llvmPackages_16.libclang.lib}/lib/clang/16/include/";
+      gdbSupported = !(pkgs.stdenv.isDarwin && pkgs.stdenv.isAarch64);
       default_shell = with_elements: pkgs.mkShell {
           buildInputs = [
             defaultRust
             pkgs.just
-            pkgs.gdb
             pkgs.cargo-hack
             pkgs.mdbook
           ] ++ (
             if with_elements then [ elementsd-simplicity ] else []
+          ) ++ (
+            if gdbSupported then [ pkgs.gdb ] else []
           );
           inherit CC_wasm32_unknown_unknown;
           inherit AR_wasm32_unknown_unknown;
@@ -51,7 +50,6 @@
           # Constants for IDE
           RUST_TOOLCHAIN = "${defaultRust}/bin";
           RUST_STDLIB = "${defaultRust}/lib/rustlib/src/rust";
-          DEBUGGER = "${pkgs.gdb}";
       };
     in
     {
@@ -68,7 +66,7 @@
         };
         msrv = pkgs.mkShell {
           buildInputs = [
-            (mkRust "stable" "1.63.0" "minimal" [] [])
+            (mkRust "stable" "1.78.0" "minimal" [] [])
             pkgs.just
           ];
         };

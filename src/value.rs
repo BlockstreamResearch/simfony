@@ -2,10 +2,10 @@ use std::fmt;
 use std::sync::Arc;
 
 use either::Either;
-use hex_conservative::DisplayHex;
+use miniscript::bitcoin::hex::DisplayHex;
 use miniscript::iter::{Tree, TreeLike};
 use simplicity::types::Final as SimType;
-use simplicity::{BitCollector, Value as SimValue};
+use simplicity::{BitCollector, Value as SimValue, ValueRef};
 
 use crate::array::{BTreeSlice, Combiner, Partition, Unfolder};
 use crate::error::{Error, RichError, WithSpan};
@@ -623,7 +623,7 @@ impl Value {
 
     /// Create a value from the given `hexadecimal` string and type.
     pub fn parse_hexadecimal(hexadecimal: &Hexadecimal, ty: &ResolvedType) -> Result<Self, Error> {
-        use hex_conservative::FromHex;
+        use miniscript::bitcoin::hex::FromHex;
 
         let expected_byte_len = match ty.as_inner() {
             TypeInner::UInt(int) => int.byte_width(),
@@ -730,11 +730,11 @@ impl Value {
     pub fn reconstruct(value: &StructuralValue, ty: &ResolvedType) -> Option<Self> {
         let mut output = vec![];
         for data in value.destruct(ty).post_order_iter() {
+            let size = data.node.n_children();
             let (value, ty) = match data.node {
                 Destructor::Ok { value, ty } => (value, ty),
                 Destructor::WrongType => return None,
             };
-            let size = data.node.n_children();
             match ty.as_inner() {
                 TypeInner::Boolean => {
                     let bit = destruct::as_bit(value)?;
@@ -877,10 +877,10 @@ impl TreeLike for StructuralValue {
     fn as_node(&self) -> Tree<Self> {
         use simplicity::dag::{Dag, DagLike};
 
-        match (&self.0).as_dag_node() {
+        match self.0.as_ref().as_dag_node() {
             Dag::Nullary => Tree::Nullary,
-            Dag::Unary(l) => Tree::Unary(Self(l.shallow_clone())),
-            Dag::Binary(l, r) => Tree::Binary(Self(l.shallow_clone()), Self(r.shallow_clone())),
+            Dag::Unary(l) => Tree::Unary(Self(l.to_value())),
+            Dag::Binary(l, r) => Tree::Binary(Self(l.to_value()), Self(r.to_value())),
         }
     }
 }
@@ -1059,7 +1059,7 @@ impl StructuralValue {
 
     fn destruct<'a>(&'a self, ty: &'a ResolvedType) -> Destructor<'a> {
         Destructor::Ok {
-            value: self.as_ref(),
+            value: self.0.as_ref(),
             ty,
         }
     }
@@ -1091,10 +1091,10 @@ impl StructuralValue {
 /// The leaf values (Boolean, unsigned integer, empty tuple, empty array) are not checked.
 /// Extraction of actual Simfony values (Boolean, unsigned integer, ...)
 /// from the leaf Simplicity values may fail, in which case the entire tree is, again, ill-typed.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug)]
 enum Destructor<'a> {
     Ok {
-        value: &'a SimValue,
+        value: ValueRef<'a>,
         ty: &'a ResolvedType,
     },
     WrongType,
@@ -1102,11 +1102,11 @@ enum Destructor<'a> {
 
 impl<'a> Destructor<'a> {
     /// Create a destructor for the given Simplicity `value` and the given Simfony type.
-    pub const fn new(value: &'a SimValue, ty: &'a ResolvedType) -> Self {
+    pub const fn new(value: ValueRef<'a>, ty: &'a ResolvedType) -> Self {
         Self::Ok { value, ty }
     }
 
-    const fn new_pair((value, ty): (&'a SimValue, &'a ResolvedType)) -> Self {
+    const fn new_pair((value, ty): (ValueRef<'a>, &'a ResolvedType)) -> Self {
         Self::Ok { value, ty }
     }
 }
@@ -1114,7 +1114,7 @@ impl<'a> Destructor<'a> {
 impl TreeLike for Destructor<'_> {
     fn as_node(&self) -> Tree<Self> {
         let (value, ty) = match self {
-            Self::Ok { value, ty } => (value, ty),
+            Self::Ok { value, ty } => (value.clone(), ty),
             Self::WrongType => return Tree::Nullary,
         };
         match ty.as_inner() {
@@ -1166,8 +1166,9 @@ impl TreeLike for Destructor<'_> {
 /// Functions for destructing Simplicity values alongside Simfony types.
 mod destruct {
     use super::*;
+    use simplicity::ValueRef;
 
-    pub fn as_bit(value: &SimValue) -> Option<bool> {
+    pub fn as_bit(value: ValueRef) -> Option<bool> {
         match value.as_left() {
             Some(unit) if unit.is_unit() => Some(false),
             _ => match value.as_right() {
@@ -1177,10 +1178,10 @@ mod destruct {
         }
     }
 
-    pub fn as_integer(value: &SimValue, ty: UIntType) -> Option<UIntValue> {
+    pub fn as_integer(value: ValueRef, ty: UIntType) -> Option<UIntValue> {
         let bit_len = ty.bit_width().get();
         let unfolder = Unfolder::new(value, bit_len);
-        let bit_values = unfolder.unfold(SimValue::as_product)?;
+        let bit_values = unfolder.unfold(|v| v.as_product())?;
         let (bytes, written_bits) = bit_values.into_iter().filter_map(as_bit).collect_bits();
         if bit_len != written_bits {
             return None;
@@ -1196,31 +1197,31 @@ mod destruct {
         }
     }
 
-    pub fn as_tuple(value: &SimValue, size: usize) -> Option<Vec<&SimValue>> {
-        Unfolder::new(value, size).unfold(SimValue::as_product)
+    pub fn as_tuple(value: ValueRef, size: usize) -> Option<Vec<ValueRef>> {
+        Unfolder::new(value, size).unfold(|v| v.as_product())
     }
 
-    pub fn as_array(value: &SimValue, size: usize) -> Option<Vec<&SimValue>> {
-        Unfolder::new(value, size).unfold(SimValue::as_product)
+    pub fn as_array(value: ValueRef, size: usize) -> Option<Vec<ValueRef>> {
+        Unfolder::new(value, size).unfold(|v| v.as_product())
     }
 
-    pub fn as_list<'a>(value: &'a SimValue, bound: NonZeroPow2Usize) -> Option<Vec<&'a SimValue>> {
-        let as_block = |value: &'a SimValue, size: usize| match as_option(value) {
+    pub fn as_list<'a>(value: ValueRef<'a>, bound: NonZeroPow2Usize) -> Option<Vec<ValueRef<'a>>> {
+        let as_block = |value: ValueRef<'a>, size: usize| match as_option(value) {
             Some(Some(folded)) => as_array(folded, size),
             Some(None) => Some(vec![]),
             None => None,
         };
-        Combiner::new(value, bound).unfold(as_block, SimValue::as_product)
+        Combiner::new(value, bound).unfold(as_block, |v| v.as_product())
     }
 
-    pub fn as_either(value: &SimValue) -> Option<Either<&SimValue, &SimValue>> {
+    pub fn as_either(value: ValueRef) -> Option<Either<ValueRef, ValueRef>> {
         match value.as_left() {
             Some(inner) => Some(Either::Left(inner)),
             None => value.as_right().map(Either::Right),
         }
     }
 
-    pub fn as_option(value: &SimValue) -> Option<Option<&SimValue>> {
+    pub fn as_option(value: ValueRef) -> Option<Option<ValueRef>> {
         match value.as_left() {
             Some(inner) if inner.is_unit() => Some(None),
             _ => value.as_right().map(Some),
