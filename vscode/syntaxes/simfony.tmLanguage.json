@@ -1,0 +1,347 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "name": "Simfony",
+    "patterns": [
+        {
+            "include": "#preprocessor"
+        },
+        {
+            "include": "#comments"
+        },
+        {
+            "include": "#macros"
+        },
+        {
+            "include": "#modules"
+        },
+        {
+            "include": "#keywords"
+        },
+        {
+            "include": "#functions"
+        },
+        {
+            "include": "#types"
+        },
+        {
+            "include": "#literals"
+        },
+        {
+            "include": "#expressions"
+        }
+    ],
+    "repository": {
+        "preprocessor": {
+            "patterns": [
+                {
+                    "name": "meta.preprocessor.simfony",
+                    "match": "^\\s*#\\s*(include|define|undef|if|ifdef|ifndef|else|elif|endif|line|error|pragma)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.other.preprocessor.directive.simfony"
+                        }
+                    }
+                },
+                {
+                    "name": "meta.preprocessor.include.simfony",
+                    "match": "^\\s*#\\s*include\\s+([\"<].*[\">])",
+                    "captures": {
+                        "1": {
+                            "name": "string.quoted.other.lt-gt.include.simfony"
+                        }
+                    }
+                },
+                {
+                    "name": "meta.preprocessor.define.simfony",
+                    "begin": "^\\s*#\\s*(define)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "keyword.other.preprocessor.directive.simfony"
+                        },
+                        "2": {
+                            "name": "entity.name.function.preprocessor.simfony"
+                        }
+                    },
+                    "end": "(?=(?://|/\\*))|$",
+                    "patterns": [
+                        {
+                            "include": "#preprocessor-expression"
+                        }
+                    ]
+                },
+                {
+                    "name": "meta.preprocessor.macro.simfony",
+                    "begin": "^\\s*#\\s*(define)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\(",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "keyword.other.preprocessor.directive.simfony"
+                        },
+                        "2": {
+                            "name": "entity.name.function.preprocessor.simfony"
+                        }
+                    },
+                    "end": "\\)|(?=(?://|/\\*))|$",
+                    "patterns": [
+                        {
+                            "name": "variable.parameter.preprocessor.simfony",
+                            "match": "[a-zA-Z_][a-zA-Z0-9_]*"
+                        },
+                        {
+                            "name": "punctuation.separator.parameters.simfony",
+                            "match": ","
+                        }
+                    ]
+                },
+                {
+                    "name": "meta.preprocessor.conditional.simfony",
+                    "begin": "^\\s*#\\s*(if|ifdef|ifndef|elif)\\b",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "keyword.other.preprocessor.directive.simfony"
+                        }
+                    },
+                    "end": "(?=(?://|/\\*))|$",
+                    "patterns": [
+                        {
+                            "include": "#preprocessor-expression"
+                        }
+                    ]
+                }
+            ]
+        },
+        "preprocessor-expression": {
+            "patterns": [
+                {
+                    "name": "constant.language.preprocessor.simfony",
+                    "match": "\\b(defined)\\b"
+                },
+                {
+                    "name": "entity.name.function.preprocessor.simfony",
+                    "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
+                },
+                {
+                    "include": "#literals"
+                },
+                {
+                    "name": "keyword.operator.preprocessor.simfony",
+                    "match": "&&|\\|\\||==|!=|<=|>=|<|>|!|&&|\\|\\||\\+|\\-|\\*|\\/|%|<<|>>|&|\\||\\^|~"
+                }
+            ]
+        },
+        "comments": {
+            "patterns": [
+                {
+                    "name": "comment.line.double-slash.simfony",
+                    "match": "//.*$"
+                },
+                {
+                    "name": "comment.block.simfony",
+                    "begin": "/\\*",
+                    "end": "\\*/"
+                }
+            ]
+        },
+        "keywords": {
+            "patterns": [
+                {
+                    "name": "storage.type.function.simfony",
+                    "match": "\\bfn\\b"
+                },
+                {
+                    "name": "storage.type.simfony",
+                    "match": "\\btype\\b"
+                },
+                {
+                    "name": "keyword.other.simfony",
+                    "match": "\\b(mod|const)\\b"
+                },
+                {
+                    "name": "storage.type.simfony",
+                    "match": "\\blet\\b"
+                },
+                {
+                    "name": "keyword.control.simfony",
+                    "match": "\\b(match|if|else|while|for|return)\\b"
+                },
+                {
+                    "name": "keyword.operator.simfony",
+                    "match": "(->|=>|=|:|,|;)"
+                }
+            ]
+        },
+        "macros": {
+            "patterns": [
+                {
+                    "match": "\\b(assert|panic)(!)(\\s*\\(|\\s|$)",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.other.preprocessor.directive.simfony"
+                        },
+                        "2": {
+                            "name": "keyword.other.preprocessor.directive.simfony"
+                        }
+                    }
+                },
+                {
+                    "match": "\\b([a-z][a-zA-Z0-9_]*)(!)(\\s*\\(|\\s|$)",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.other.preprocessor.directive.simfony"
+                        },
+                        "2": {
+                            "name": "keyword.other.preprocessor.directive.simfony"
+                        }
+                    }
+                }
+            ]
+        },
+        "functions": {
+            "patterns": [
+                {
+                    "name": "entity.name.function.simfony",
+                    "match": "\\b(unwrap_left|unwrap_right|for_while|is_none|unwrap|into|fold|dbg)\\b"
+                },
+                {
+                    "match": "\\b(fn)\\s+([a-zA-Z][a-zA-Z0-9_]*)\\s*\\(",
+                    "captures": {
+                        "1": {
+                            "name": "storage.type.function.simfony"
+                        },
+                        "2": {
+                            "name": "entity.name.function.simfony"
+                        }
+                    }
+                },
+                {
+                    "match": "\\b([a-zA-Z][a-zA-Z0-9_]*)(?!!\\s*)\\s*\\(",
+                    "captures": {
+                        "1": {
+                            "name": "entity.name.function.call.simfony"
+                        }
+                    }
+                }
+            ]
+        },
+        "types": {
+            "patterns": [
+                {
+                    "name": "entity.name.type.simfony",
+                    "match": "\\b(Either|Option|bool|List|u128|u256|u16|u32|u64|u1|u2|u4|u8)\\b"
+                },
+                {
+                    "name": "entity.name.type.simfony",
+                    "match": "\\b(Ctx8|Pubkey|Message64|Message|Signature|Scalar|Fe|Gej|Ge|Point|Height|Time|Distance|Duration|Lock|Outpoint|Confidential1|ExplicitAsset|Asset1|ExplicitAmount|Amount1|ExplicitNonce|Nonce|TokenAmount1)\\b"
+                },
+                {
+                    "match": "\\b(type)\\s+([A-Z][a-zA-Z0-9_]*)\\s*=",
+                    "captures": {
+                        "1": {
+                            "name": "storage.type.simfony"
+                        },
+                        "2": {
+                            "name": "entity.name.type.alias.simfony"
+                        }
+                    }
+                },
+                {
+                    "match": "\\b([A-Z][a-zA-Z0-9_]*)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "entity.name.type.simfony"
+                        }
+                    }
+                },
+                {
+                    "match": ":\\s*([a-zA-Z][a-zA-Z0-9_]*|Either<.*>|Option<.*>|\\(.*\\)|\\[.*\\]|List<.*>)",
+                    "captures": {
+                        "1": {
+                            "name": "entity.name.type.simfony"
+                        }
+                    }
+                }
+            ]
+        },
+        "literals": {
+            "patterns": [
+                {
+                    "name": "constant.numeric.decimal.simfony",
+                    "match": "\\b[0-9][0-9_]*\\b"
+                },
+                {
+                    "name": "constant.numeric.binary.simfony",
+                    "match": "\\b0b[01_]+\\b"
+                },
+                {
+                    "name": "constant.numeric.hex.simfony",
+                    "match": "\\b0x[0-9a-fA-F_]+\\b"
+                },
+                {
+                    "name": "constant.language.boolean.simfony",
+                    "match": "\\b(true|false)\\b"
+                },
+                {
+                    "name": "constant.language.simfony",
+                    "match": "\\b(None)\\b"
+                },
+                {
+                    "name": "string.quoted.double.simfony",
+                    "begin": "\"",
+                    "end": "\"",
+                    "patterns": [
+                        {
+                            "name": "constant.character.escape.simfony",
+                            "match": "\\\\."
+                        }
+                    ]
+                }
+            ]
+        },
+        "expressions": {
+            "patterns": [
+                {
+                    "match": "\\b(jet|witness|param)::(\\w+)",
+                    "captures": {
+                        "1": {
+                            "name": "entity.name.namespace.simfony"
+                        },
+                        "2": {
+                            "name": "entity.name.function.simfony"
+                        }
+                    }
+                },
+                {
+                    "name": "variable.other.simfony",
+                    "match": "\\b[a-z][a-zA-Z0-9_]*\\b"
+                },
+                {
+                    "match": "\\b(Left|Right|Some)\\s*\\(",
+                    "captures": {
+                        "1": {
+                            "name": "support.function.simfony"
+                        }
+                    }
+                }
+            ]
+        },
+        "modules": {
+            "patterns": [
+                {
+                    "match": "\\b(mod)\\s+(witness|param)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.other.simfony"
+                        },
+                        "2": {
+                            "name": "entity.name.namespace.simfony"
+                        }
+                    }
+                },
+                {
+                    "match": "\\b(jet)\\b",
+                    "name": "entity.name.namespace.simfony"
+                }
+            ]
+        }
+    },
+    "scopeName": "source.simfony"
+} 
