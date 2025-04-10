@@ -200,6 +200,7 @@ dependencies = [
  "bech32",
  "bitcoin",
  "secp256k1-zkp",
+ "serde_json",
 ]
 
 [[package]]
@@ -290,9 +291,9 @@ checksum = "8f232d6ef707e1956a43342693d2a31e72989554d58299d7a88738cc95b0d35c"
 
 [[package]]
 name = "miniscript"
-version = "12.2.0"
+version = "12.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "add2d4aee30e4291ce5cffa3a322e441ff4d4bc57b38c8d9bf0e94faa50ab626"
+checksum = "82911d2fb527bb9aacd2446d2f517aff3f8e3846ace1b3c24258b61ea3cce2bc"
 dependencies = [
  "bech32",
  "bitcoin",
@@ -550,8 +551,9 @@ dependencies = [
 
 [[package]]
 name = "simplicity-lang"
-version = "0.4.0"
-source = "git+https://github.com/BlockstreamResearch/rust-simplicity?rev=2f52e22483079ace09e76754222220b5c230a9d0#2f52e22483079ace09e76754222220b5c230a9d0"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d75c8fb4a18e63fbce4cf16026c36a6c38066e4f4a09ce5e81be817d0e36d8f8"
 dependencies = [
  "bitcoin",
  "bitcoin_hashes",
@@ -566,8 +568,9 @@ dependencies = [
 
 [[package]]
 name = "simplicity-sys"
-version = "0.4.0"
-source = "git+https://github.com/BlockstreamResearch/rust-simplicity?rev=2f52e22483079ace09e76754222220b5c230a9d0#2f52e22483079ace09e76754222220b5c230a9d0"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4cd2cc5d458a8032d328ea85e824f54f61664ab84c3d42b3b7f8804fb9b81572"
 dependencies = [
  "bitcoin_hashes",
  "cc",
