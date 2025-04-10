@@ -65,3 +65,7 @@ The compiler produces a base64-encoded Simplicity program. Witness data will be 
 ```bash
 ./target/debug/simc examples/test.simf examples/test.wit
 ```
+
+### VSCode extension
+
+See the installation [instructions](./vscode/README.md).

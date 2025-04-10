@@ -1,0 +1,31 @@
+{
+  "name": "simfony-language",
+  "displayName": "Simfony Language Support",
+  "description": "Syntax highlighting and autocompletion for Simfony language",
+  "version": "0.0.1",
+  "publisher": "blockstream",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BlockstreamResearch/simfony"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "simfony",
+      "aliases": ["Simfony", "simfony"],
+      "extensions": [".simf"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "simfony",
+      "scopeName": "source.simfony",
+      "path": "./syntaxes/simfony.tmLanguage.json"
+    }]
+  },
+  "license": "MIT"
+}
