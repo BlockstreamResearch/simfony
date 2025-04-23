@@ -145,7 +145,7 @@ impl UIntValue {
             return Err(Error::ExpressionTypeMismatch(ty.into(), bit_ty.into()));
         }
 
-        let byte_len = (bit_len.get() + 7) / 8;
+        let byte_len = bit_len.get().div_ceil(8);
         let mut bytes = Vec::with_capacity(byte_len);
         let padding_len = 8usize.saturating_sub(bit_len.get());
         let padding = std::iter::repeat('0').take(padding_len);
