@@ -21,7 +21,7 @@ fuzz_target!(|data: &[u8]| {
         Err(..) => return,
     };
     let simplicity_named_construct = ast_program
-        .compile(arguments)
+        .compile(arguments, false)
         .with_file("")
         .expect("AST should compile with given arguments");
     let _simplicity_commit = named::to_commit_node(&simplicity_named_construct)

@@ -66,6 +66,7 @@ struct Scope {
     call_tracker: Arc<CallTracker>,
     /// Values for parameters inside the Simfony program.
     arguments: Arguments,
+    include_debug_symbols: bool,
 }
 
 impl Scope {
@@ -77,12 +78,17 @@ impl Scope {
     ///
     /// The supplied `arguments` are consistent with the program's parameters.
     /// Call [`Arguments::is_consistent`] before calling this method!
-    pub fn new(call_tracker: Arc<CallTracker>, arguments: Arguments) -> Self {
+    pub fn new(
+        call_tracker: Arc<CallTracker>,
+        arguments: Arguments,
+        include_debug_symbols: bool,
+    ) -> Self {
         Self {
             variables: vec![vec![Pattern::Ignore]],
             ctx: simplicity::types::Context::new(),
             call_tracker,
             arguments,
+            include_debug_symbols,
         }
     }
 
@@ -93,6 +99,7 @@ impl Scope {
             ctx: self.ctx.shallow_clone(),
             call_tracker: Arc::clone(&self.call_tracker),
             arguments: self.arguments.clone(),
+            include_debug_symbols: self.include_debug_symbols,
         }
     }
 
@@ -193,12 +200,12 @@ impl Scope {
         span: &S,
     ) -> Result<PairBuilder<ProgNode>, RichError> {
         match self.call_tracker.get_cmr(span.as_ref()) {
-            Some(cmr) => {
+            Some(cmr) if self.include_debug_symbols => {
                 let false_and_args = ProgNode::bit(self.ctx(), false).pair(args);
                 let nop_assert = ProgNode::assertl_drop(body, cmr);
                 false_and_args.comp(&nop_assert).with_span(span)
             }
-            None => args.comp(body).with_span(span),
+            _ => args.comp(body).with_span(span),
         }
     }
 
@@ -246,8 +253,16 @@ impl Program {
     ///
     /// The supplied `arguments` are consistent with the program's parameters.
     /// Call [`Arguments::is_consistent`] before calling this method!
-    pub fn compile(&self, arguments: Arguments) -> Result<ProgNode, RichError> {
-        let mut scope = Scope::new(Arc::clone(self.call_tracker()), arguments);
+    pub fn compile(
+        &self,
+        arguments: Arguments,
+        include_debug_symbols: bool,
+    ) -> Result<ProgNode, RichError> {
+        let mut scope = Scope::new(
+            Arc::clone(self.call_tracker()),
+            arguments,
+            include_debug_symbols,
+        );
         self.main().compile(&mut scope).map(PairBuilder::build)
     }
 }

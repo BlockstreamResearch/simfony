@@ -71,7 +71,11 @@ impl TemplateProgram {
     ///
     /// The arguments are not consistent with the parameters of the program.
     /// Use [`TemplateProgram::parameters`] to see which parameters the program has.
-    pub fn instantiate(&self, arguments: Arguments) -> Result<CompiledProgram, String> {
+    pub fn instantiate(
+        &self,
+        arguments: Arguments,
+        include_debug_symbols: bool,
+    ) -> Result<CompiledProgram, String> {
         arguments
             .is_consistent(self.simfony.parameters())
             .map_err(|error| error.to_string())?;
@@ -79,7 +83,7 @@ impl TemplateProgram {
             debug_symbols: self.simfony.debug_symbols(self.file.as_ref()),
             simplicity: self
                 .simfony
-                .compile(arguments)
+                .compile(arguments, include_debug_symbols)
                 .with_file(Arc::clone(&self.file))?,
             witness_types: self.simfony.witness_types().shallow_clone(),
         })
@@ -112,8 +116,13 @@ impl CompiledProgram {
     ///
     /// - [`TemplateProgram::new`]
     /// - [`TemplateProgram::instantiate`]
-    pub fn new<Str: Into<Arc<str>>>(s: Str, arguments: Arguments) -> Result<Self, String> {
-        TemplateProgram::new(s).and_then(|template| template.instantiate(arguments))
+    pub fn new<Str: Into<Arc<str>>>(
+        s: Str,
+        arguments: Arguments,
+        include_debug_symbols: bool,
+    ) -> Result<Self, String> {
+        TemplateProgram::new(s)
+            .and_then(|template| template.instantiate(arguments, include_debug_symbols))
     }
 
     /// Access the debug symbols for the Simplicity target code.
@@ -166,8 +175,9 @@ impl SatisfiedProgram {
         s: Str,
         arguments: Arguments,
         witness_values: WitnessValues,
+        include_debug_symbols: bool,
     ) -> Result<Self, String> {
-        let compiled = CompiledProgram::new(s, arguments)?;
+        let compiled = CompiledProgram::new(s, arguments, include_debug_symbols)?;
         compiled.satisfy(witness_values)
     }
 
@@ -295,7 +305,7 @@ mod tests {
         }
 
         pub fn with_arguments(self, arguments: Arguments) -> TestCase<CompiledProgram> {
-            let program = match self.program.instantiate(arguments) {
+            let program = match self.program.instantiate(arguments, true) {
                 Ok(x) => x,
                 Err(error) => panic!("{error}"),
             };
@@ -585,7 +595,12 @@ fn main() {
     assert!(my_true());
 }
 "#;
-        match SatisfiedProgram::new(prog_text, Arguments::default(), WitnessValues::default()) {
+        match SatisfiedProgram::new(
+            prog_text,
+            Arguments::default(),
+            WitnessValues::default(),
+            false,
+        ) {
             Ok(_) => panic!("Accepted faulty program"),
             Err(error) => {
                 if !error.contains("Expected expression of type `bool`, found type `()`") {
