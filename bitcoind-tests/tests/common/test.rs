@@ -53,7 +53,7 @@ impl<'a> TestCase<'a> {
 
     pub fn program_path<P: AsRef<std::path::Path>>(mut self, path: P) -> Self {
         let text = std::fs::read_to_string(path).expect("path should be readable");
-        let compiled = simfony::CompiledProgram::new(text.as_str(), simfony::Arguments::default())
+        let compiled = simfony::CompiledProgram::new(text.as_str(), simfony::Arguments::default(), false)
             .expect("program should compile");
         self.compiled = Some(compiled);
         self
@@ -72,7 +72,7 @@ impl<'a> TestCase<'a> {
             .template
             .as_ref()
             .expect("template should exist")
-            .instantiate(arguments)
+            .instantiate(arguments, false)
             .expect("arguments should be consistent with the program");
         self.compiled = Some(compiled);
         self

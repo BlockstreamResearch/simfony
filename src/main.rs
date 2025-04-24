@@ -29,7 +29,7 @@ fn run() -> Result<(), String> {
     let prog_file = &args[1];
     let prog_path = std::path::Path::new(prog_file);
     let prog_text = std::fs::read_to_string(prog_path).map_err(|e| e.to_string())?;
-    let compiled = CompiledProgram::new(prog_text, Arguments::default())?;
+    let compiled = CompiledProgram::new(prog_text, Arguments::default(), false)?;
 
     if args.len() >= 3 {
         let wit_file = &args[2];
@@ -73,7 +73,7 @@ fn run() -> Result<(), String> {
     let prog_file = &args[1];
     let prog_path = std::path::Path::new(prog_file);
     let prog_text = std::fs::read_to_string(prog_path).map_err(|e| e.to_string())?;
-    let compiled = CompiledProgram::new(prog_text, Arguments::default())?;
+    let compiled = CompiledProgram::new(prog_text, Arguments::default(), false)?;
 
     let program_bytes = compiled.commit().encode_to_vec();
     println!(

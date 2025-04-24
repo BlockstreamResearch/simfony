@@ -55,7 +55,7 @@ impl<A> TypeInner<A> {
             TypeInner::Tuple(elements) => match n_children_yielded {
                 0 => {
                     f.write_str("(")?;
-                    if 0 == elements.len() {
+                    if elements.is_empty() {
                         f.write_str(")")?;
                     }
                     Ok(())

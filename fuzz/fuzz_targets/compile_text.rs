@@ -46,7 +46,7 @@ fuzz_target!(|data: &[u8]| -> Corpus {
         Ok(arguments) => arguments,
         Err(..) => return Corpus::Reject,
     };
-    let _ = template.instantiate(arguments);
+    let _ = template.instantiate(arguments, false);
 
     Corpus::Keep
 });
