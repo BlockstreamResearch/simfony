@@ -259,7 +259,7 @@ impl BasePattern {
 
     /// Get an iterator over all identifiers inside the pattern.
     pub fn identifiers(&self) -> impl Iterator<Item = &Identifier> {
-        self.pre_order_iter().flat_map(BasePattern::as_identifier)
+        self.pre_order_iter().filter_map(BasePattern::as_identifier)
     }
 
     /// Check if all `identifiers` are contained inside the pattern.
