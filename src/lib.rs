@@ -22,6 +22,7 @@ mod witness;
 
 use std::sync::Arc;
 
+use simplicity::jet::elements::ElementsEnv;
 use simplicity::{jet::Elements, CommitNode, RedeemNode};
 
 pub extern crate either;
@@ -133,15 +134,31 @@ impl CompiledProgram {
     /// - Witness values have a different type than declared in the Simfony program.
     /// - There are missing witness values.
     pub fn satisfy(&self, witness_values: WitnessValues) -> Result<SatisfiedProgram, String> {
+        self.satisfy_with_env(witness_values, None)
+    }
+
+    /// Satisfy the Simfony program with the given `witness_values`.
+    /// If `env` is `None`, the program is not pruned, otherwise it is pruned with the given environment.
+    ///
+    /// ## Errors
+    ///
+    /// - Witness values have a different type than declared in the Simfony program.
+    /// - There are missing witness values.
+    pub fn satisfy_with_env(
+        &self,
+        witness_values: WitnessValues,
+        env: Option<&ElementsEnv<Arc<elements::Transaction>>>,
+    ) -> Result<SatisfiedProgram, String> {
         witness_values
             .is_consistent(&self.witness_types)
             .map_err(|e| e.to_string())?;
         let simplicity_witness = named::to_witness_node(&self.simplicity, witness_values);
-        let simplicity_redeem = simplicity_witness
-            .finalize_unpruned()
-            .map_err(|e| e.to_string())?;
+        let simplicity_redeem = match env {
+            Some(env) => simplicity_witness.finalize_pruned(env),
+            None => simplicity_witness.finalize_unpruned(),
+        };
         Ok(SatisfiedProgram {
-            simplicity: simplicity_redeem,
+            simplicity: simplicity_redeem.map_err(|e| e.to_string())?,
             debug_symbols: self.debug_symbols.clone(),
         })
     }
