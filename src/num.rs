@@ -298,7 +298,7 @@ impl fmt::Display for U256 {
             is_zero = true;
 
             // Divide by 10, starting at the most significant bytes
-            for byte in bytes.iter_mut() {
+            for byte in &mut bytes {
                 let value = carry * 256 + u32::from(*byte);
                 *byte = (value / 10) as u8;
                 carry = value % 10;
