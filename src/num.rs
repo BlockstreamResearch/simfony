@@ -299,7 +299,7 @@ impl fmt::Display for U256 {
 
             // Divide by 10, starting at the most significant bytes
             for byte in bytes.iter_mut() {
-                let value = carry * 256 + *byte as u32;
+                let value = carry * 256 + u32::from(*byte);
                 *byte = (value / 10) as u8;
                 carry = value % 10;
 
@@ -334,7 +334,7 @@ impl FromStr for U256 {
 
             // Add to the least significant bytes first
             for byte in bytes.iter_mut().rev() {
-                let value = *byte as u32 * 10 + carry;
+                let value = u32::from(*byte) * 10 + carry;
                 *byte = (value % 256) as u8;
                 carry = value / 256;
             }
