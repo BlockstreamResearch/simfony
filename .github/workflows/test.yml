@@ -62,6 +62,26 @@ jobs:
       run: |
         nix develop .#msrv --command bash -c "just test"
 
+  test-windows:
+    name: Test - stable toolchain (windows-latest)
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Checkout Toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Enable Rust cache
+      uses: Swatinem/rust-cache@v2
+
+    - name: Install just
+      uses: extractions/setup-just@v2
+
+    - name: Run unit tests
+      run: just test
+
   test-fuzz:
     name: Test - fuzzer
     runs-on: ubuntu-latest
