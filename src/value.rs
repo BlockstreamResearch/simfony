@@ -155,7 +155,7 @@ impl UIntValue {
             let mut byte = 0u8;
             for _ in 0..8 {
                 let bit = padded_bits.next().unwrap();
-                byte = (byte << 1) | if bit == '1' { 1 } else { 0 };
+                byte = (byte << 1) | u8::from(bit == '1');
             }
             bytes.push(byte);
         }

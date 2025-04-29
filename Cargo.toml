@@ -54,7 +54,7 @@ cast_possible_wrap = "allow"
 cast_sign_loss = "allow"
 # Exhaustive list of pedantic clippy lints
 assigning_clones = "warn"
-bool_to_int_with_if = "allow"
+bool_to_int_with_if = "warn"
 borrow_as_ptr = "warn"
 case_sensitive_file_extension_comparisons = "warn"
 cast_lossless = "allow"
