@@ -144,7 +144,7 @@ impl<'a> Serialize for WitnessMapSerializer<'a> {
         S: Serializer,
     {
         let mut map = serializer.serialize_map(Some(self.0.len()))?;
-        for (name, value) in self.0.iter() {
+        for (name, value) in self.0 {
             map.serialize_entry(name.as_inner(), &ValueMapSerializer(value))?;
         }
         map.end()

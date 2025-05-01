@@ -155,7 +155,7 @@ impl UIntValue {
             let mut byte = 0u8;
             for _ in 0..8 {
                 let bit = padded_bits.next().unwrap();
-                byte = (byte << 1) | if bit == '1' { 1 } else { 0 };
+                byte = (byte << 1) | u8::from(bit == '1');
             }
             bytes.push(byte);
         }
@@ -934,7 +934,7 @@ impl ValueConstructible for StructuralValue {
 
     fn array<I: IntoIterator<Item = Self>>(elements: I, ty: Self::Type) -> Self {
         let elements: Vec<Self> = elements.into_iter().collect();
-        for element in elements.iter() {
+        for element in &elements {
             assert!(
                 element.is_of_type(&ty),
                 "Element {element} is not of expected type {ty}"
@@ -954,7 +954,7 @@ impl ValueConstructible for StructuralValue {
             elements.len() < bound.get(),
             "There must be fewer list elements than the bound {bound}"
         );
-        for element in elements.iter() {
+        for element in &elements {
             assert!(
                 element.is_of_type(&ty),
                 "Element {element} is not of expected type {ty}"

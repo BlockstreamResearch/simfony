@@ -1039,13 +1039,13 @@ impl AbstractSyntaxTree for Call {
             parse_args: &[parse::Expression],
             expected_tys: &[ResolvedType],
         ) -> Result<(), Error> {
-            if parse_args.len() != expected_tys.len() {
+            if parse_args.len() == expected_tys.len() {
+                Ok(())
+            } else {
                 Err(Error::InvalidNumberOfArguments(
                     expected_tys.len(),
                     parse_args.len(),
                 ))
-            } else {
-                Ok(())
             }
         }
 
@@ -1053,13 +1053,13 @@ impl AbstractSyntaxTree for Call {
             observed_ty: &ResolvedType,
             expected_ty: &ResolvedType,
         ) -> Result<(), Error> {
-            if observed_ty != expected_ty {
+            if observed_ty == expected_ty {
+                Ok(())
+            } else {
                 Err(Error::ExpressionTypeMismatch(
                     expected_ty.clone(),
                     observed_ty.clone(),
                 ))
-            } else {
-                Ok(())
             }
         }
 
