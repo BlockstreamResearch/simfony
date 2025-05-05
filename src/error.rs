@@ -195,7 +195,7 @@ impl<T> WithFile<T> for Result<T, RichError> {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct RichError {
     /// The error that occurred.
-    error: Error,
+    error: Box<Error>,
     /// Area that the error spans inside the file.
     span: Span,
     /// File in which the error occurred.
@@ -208,7 +208,7 @@ impl RichError {
     /// Create a new error with context.
     pub fn new(error: Error, span: Span) -> RichError {
         RichError {
-            error,
+            error: Box::new(error),
             span,
             file: None,
         }
@@ -266,7 +266,7 @@ impl std::error::Error for RichError {}
 
 impl From<RichError> for Error {
     fn from(error: RichError) -> Self {
-        error.error
+        *error.error
     }
 }
 

@@ -51,7 +51,7 @@ impl TemplateProgram {
     /// ## Errors
     ///
     /// The string is not a valid Simfony program.
-    pub fn new<Str: Into<Arc<str>>>(s: Str) -> Result<Self, String> {
+    pub fn new<Str: Into<Arc<str>>>(s: Str) -> anyhow::Result<Self> {
         let file = s.into();
         let parse_program = parse::Program::parse_from_str(&file)?;
         let ast_program = ast::Program::analyze(&parse_program).with_file(Arc::clone(&file))?;
@@ -76,10 +76,9 @@ impl TemplateProgram {
         &self,
         arguments: Arguments,
         include_debug_symbols: bool,
-    ) -> Result<CompiledProgram, String> {
+    ) -> anyhow::Result<CompiledProgram> {
         arguments
-            .is_consistent(self.simfony.parameters())
-            .map_err(|error| error.to_string())?;
+            .is_consistent(self.simfony.parameters())?;
         Ok(CompiledProgram {
             debug_symbols: self.simfony.debug_symbols(self.file.as_ref()),
             simplicity: self
@@ -121,7 +120,7 @@ impl CompiledProgram {
         s: Str,
         arguments: Arguments,
         include_debug_symbols: bool,
-    ) -> Result<Self, String> {
+    ) -> anyhow::Result<Self> {
         TemplateProgram::new(s)
             .and_then(|template| template.instantiate(arguments, include_debug_symbols))
     }
@@ -142,7 +141,7 @@ impl CompiledProgram {
     ///
     /// - Witness values have a different type than declared in the Simfony program.
     /// - There are missing witness values.
-    pub fn satisfy(&self, witness_values: WitnessValues) -> Result<SatisfiedProgram, String> {
+    pub fn satisfy(&self, witness_values: WitnessValues) -> anyhow::Result<SatisfiedProgram> {
         self.satisfy_with_env(witness_values, None)
     }
 
@@ -157,17 +156,16 @@ impl CompiledProgram {
         &self,
         witness_values: WitnessValues,
         env: Option<&ElementsEnv<Arc<elements::Transaction>>>,
-    ) -> Result<SatisfiedProgram, String> {
+    ) -> anyhow::Result<SatisfiedProgram> {
         witness_values
-            .is_consistent(&self.witness_types)
-            .map_err(|e| e.to_string())?;
+            .is_consistent(&self.witness_types)?;
         let simplicity_witness = named::to_witness_node(&self.simplicity, witness_values);
         let simplicity_redeem = match env {
-            Some(env) => simplicity_witness.finalize_pruned(env),
-            None => simplicity_witness.finalize_unpruned(),
+            Some(env) => simplicity_witness.finalize_pruned(env)?,
+            None => simplicity_witness.finalize_unpruned()?,
         };
         Ok(SatisfiedProgram {
-            simplicity: simplicity_redeem.map_err(|e| e.to_string())?,
+            simplicity: simplicity_redeem,
             debug_symbols: self.debug_symbols.clone(),
         })
     }
@@ -193,7 +191,7 @@ impl SatisfiedProgram {
         arguments: Arguments,
         witness_values: WitnessValues,
         include_debug_symbols: bool,
-    ) -> Result<Self, String> {
+    ) -> anyhow::Result<Self> {
         let compiled = CompiledProgram::new(s, arguments, include_debug_symbols)?;
         compiled.satisfy(witness_values)
     }
@@ -620,7 +618,7 @@ fn main() {
         ) {
             Ok(_) => panic!("Accepted faulty program"),
             Err(error) => {
-                if !error.contains("Expected expression of type `bool`, found type `()`") {
+                if !error.to_string().contains("Expected expression of type `bool`, found type `()`") {
                     panic!("Unexpected error: {error}")
                 }
             }

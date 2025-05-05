@@ -1,20 +1,12 @@
 use base64::display::Base64Display;
 use base64::engine::general_purpose::STANDARD;
 use clap::{Arg, ArgAction, Command};
+use anyhow::Context;
 
 use simfony::{Arguments, CompiledProgram};
 use std::env;
 
-// Directly returning Result<(), String> prints the error using Debug
-// Add indirection via run() to print errors using Display
-fn main() {
-    if let Err(error) = run() {
-        eprintln!("{error}");
-        std::process::exit(1);
-    }
-}
-
-fn run() -> Result<(), String> {
+fn main() -> anyhow::Result<()> {
     let command = {
         Command::new(env!("CARGO_BIN_NAME"))
         .about(
@@ -56,7 +48,10 @@ fn run() -> Result<(), String> {
 
     let prog_file = matches.get_one::<String>("prog_file").unwrap();
     let prog_path = std::path::Path::new(prog_file);
-    let prog_text = std::fs::read_to_string(prog_path).map_err(|e| e.to_string())?;
+    let prog_text = {
+        std::fs::read_to_string(prog_path)
+        .with_context(|| format!("Failed to read {}", prog_path.display()))?
+    };
     let include_debug_symbols = matches.get_flag("debug");
 
     let compiled = CompiledProgram::new(prog_text, Arguments::default(), include_debug_symbols)?;
@@ -65,10 +60,16 @@ fn run() -> Result<(), String> {
     let witness_opt = {
         matches
         .get_one::<String>("wit_file")
-        .map(|wit_file| -> Result<simfony::WitnessValues, String> {
+        .map(|wit_file| -> anyhow::Result<simfony::WitnessValues> {
             let wit_path = std::path::Path::new(wit_file);
-            let wit_text = std::fs::read_to_string(wit_path).map_err(|e| e.to_string())?;
-            let witness = serde_json::from_str::<simfony::WitnessValues>(&wit_text).unwrap();
+            let wit_text = {
+                std::fs::read_to_string(wit_path)
+                .with_context(|| format!("Failed to read {}", wit_path.display()))?
+            };
+            let witness = {
+                serde_json::from_str::<simfony::WitnessValues>(&wit_text)
+                .with_context(|| format!("Failed to parse file {}", wit_path.display()))?
+            };
             Ok(witness)
         })
         .transpose()?
