@@ -233,7 +233,7 @@ impl fmt::Display for RichError {
                 writeln!(f, "{:width$} |", " ", width = line_num_width)?;
 
                 let mut lines = file.lines().skip(start_line_index).peekable();
-                let start_line_len = lines.peek().map(|l| l.len()).unwrap_or(0);
+                let start_line_len = lines.peek().map_or(0, |l| l.len());
 
                 for (relative_line_index, line_str) in lines.take(n_spanned_lines).enumerate() {
                     let line_num = start_line_index + relative_line_index + 1;
