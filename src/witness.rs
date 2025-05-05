@@ -240,7 +240,7 @@ mod tests {
             Ok(_) => panic!("Ill-typed witness assignment was falsely accepted"),
             Err(error) => assert_eq!(
                 "Witness `A` was declared with type `u32` but its assigned value is of type `u16`",
-                error
+                error.to_string(),
             ),
         }
     }
@@ -259,6 +259,7 @@ fn main() {
             Ok(_) => panic!("Witness outside main was falsely accepted"),
             Err(error) => {
                 assert!(error
+                    .to_string()
                     .contains("Witness expressions are not allowed outside the `main` function"))
             }
         }
