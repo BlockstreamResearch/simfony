@@ -35,14 +35,11 @@ impl Position {
     ///
     /// Line or column are zero.
     pub const fn new(line: usize, col: usize) -> Self {
-        if line == 0 {
-            panic!("Line must not be zero");
-        }
+        // assert_ne not available in constfn
+        assert!(line != 0, "line must not be zero",);
         // Safety: Checked above
         let line = unsafe { NonZeroUsize::new_unchecked(line) };
-        if col == 0 {
-            panic!("Column must not be zero");
-        }
+        assert!(col != 0, "column must not be zero",);
         // Safety: Checked above
         let col = unsafe { NonZeroUsize::new_unchecked(col) };
         Self { line, col }

@@ -620,9 +620,10 @@ fn main() {
         ) {
             Ok(_) => panic!("Accepted faulty program"),
             Err(error) => {
-                if !error.contains("Expected expression of type `bool`, found type `()`") {
-                    panic!("Unexpected error: {error}")
-                }
+                assert!(
+                    error.contains("Expected expression of type `bool`, found type `()`"),
+                    "Unexpected error: {error}",
+                );
             }
         }
     }
