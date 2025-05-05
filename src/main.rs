@@ -17,41 +17,41 @@ fn main() {
 fn run() -> Result<(), String> {
     let command = {
         Command::new(env!("CARGO_BIN_NAME"))
-        .about(
-            "\
-            Compile the given Simfony program and print the resulting Simplicity base64 string.\n\
-            If a Simfony witness is provided, then use it to satisfy the program (requires \
-            feature 'serde' to be enabled).\
-            "
-        )
-        .arg(
-            Arg::new("prog_file")
-            .required(true)
-            .value_name("PROGRAM_FILE")
-            .action(ArgAction::Set)
-            .help("Simfony program file to build")
-        )
+            .about(
+                "\
+                Compile the given Simfony program and print the resulting Simplicity base64 string.\n\
+                If a Simfony witness is provided, then use it to satisfy the program (requires \
+                feature 'serde' to be enabled).\
+                ",
+            )
+            .arg(
+                Arg::new("prog_file")
+                    .required(true)
+                    .value_name("PROGRAM_FILE")
+                    .action(ArgAction::Set)
+                    .help("Simfony program file to build"),
+            )
     };
 
     #[cfg(feature = "serde")]
     let command = {
         command.arg(
             Arg::new("wit_file")
-            .value_name("WITNESS_FILE")
-            .action(ArgAction::Set)
-            .help("File containing the witness data")
+                .value_name("WITNESS_FILE")
+                .action(ArgAction::Set)
+                .help("File containing the witness data"),
         )
     };
 
     let matches = {
         command
-        .arg(
-            Arg::new("debug")
-            .long("debug")
-            .action(ArgAction::SetTrue)
-            .help("Include debug symbols in the output")
-        )
-        .get_matches()
+            .arg(
+                Arg::new("debug")
+                    .long("debug")
+                    .action(ArgAction::SetTrue)
+                    .help("Include debug symbols in the output"),
+            )
+            .get_matches()
     };
 
     let prog_file = matches.get_one::<String>("prog_file").unwrap();
@@ -64,14 +64,14 @@ fn run() -> Result<(), String> {
     #[cfg(feature = "serde")]
     let witness_opt = {
         matches
-        .get_one::<String>("wit_file")
-        .map(|wit_file| -> Result<simfony::WitnessValues, String> {
-            let wit_path = std::path::Path::new(wit_file);
-            let wit_text = std::fs::read_to_string(wit_path).map_err(|e| e.to_string())?;
-            let witness = serde_json::from_str::<simfony::WitnessValues>(&wit_text).unwrap();
-            Ok(witness)
-        })
-        .transpose()?
+            .get_one::<String>("wit_file")
+            .map(|wit_file| -> Result<simfony::WitnessValues, String> {
+                let wit_path = std::path::Path::new(wit_file);
+                let wit_text = std::fs::read_to_string(wit_path).map_err(|e| e.to_string())?;
+                let witness = serde_json::from_str::<simfony::WitnessValues>(&wit_text).unwrap();
+                Ok(witness)
+            })
+            .transpose()?
     };
     #[cfg(not(feature = "serde"))]
     let witness_opt: Option<simfony::WitnessValues> = None;
@@ -97,4 +97,3 @@ fn run() -> Result<(), String> {
 
     Ok(())
 }
-
