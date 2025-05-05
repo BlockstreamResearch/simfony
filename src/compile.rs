@@ -438,19 +438,6 @@ impl Call {
 /// takes the list of type `E^(<2^n)` and an initial accumulator of type `A`,
 /// and it produces the final accumulator of type `A`.
 fn list_fold(bound: NonZeroPow2Usize, f: &ProgNode) -> Result<ProgNode, simplicity::types::Error> {
-    /* f_0 :  E × A → A
-     * f_0 := f
-     */
-    let mut f_array = f.clone();
-
-    /* (fold f)_1 :  E^<2 × A → A
-     * (fold f)_1 := case IH f_0
-     */
-    let ctx = f.inference_context();
-    let ioh = ProgNode::i().h(ctx);
-    let mut f_fold = ProgNode::case(ioh.as_ref(), &f_array)?;
-    let mut i = NonZeroPow2Usize::TWO;
-
     fn next_f_array(f_array: &ProgNode) -> Result<ProgNode, simplicity::types::Error> {
         /* f_(n + 1) :  E^(2^(n + 1)) × A → A
          * f_(n + 1) := OIH ▵ (OOH ▵ IH; f_n); f_n
@@ -486,6 +473,19 @@ fn list_fold(bound: NonZeroPow2Usize, f: &ProgNode) -> Result<ProgNode, simplici
             .comp(&ProgNode::case(&case_left, case_right.as_ref())?)
             .map(PairBuilder::build)
     }
+
+    /* f_0 :  E × A → A
+     * f_0 := f
+     */
+    let mut f_array = f.clone();
+
+    /* (fold f)_1 :  E^<2 × A → A
+     * (fold f)_1 := case IH f_0
+     */
+    let ctx = f.inference_context();
+    let ioh = ProgNode::i().h(ctx);
+    let mut f_fold = ProgNode::case(ioh.as_ref(), &f_array)?;
+    let mut i = NonZeroPow2Usize::TWO;
 
     while i < bound {
         f_array = next_f_array(&f_array)?;
