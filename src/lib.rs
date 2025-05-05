@@ -426,7 +426,7 @@ mod tests {
 
         pub fn assert_run_success(self) {
             match self.run() {
-                Ok(_) => {}
+                Ok(()) => {}
                 Err(error) => panic!("Unexpected error: {error}"),
             }
         }
