@@ -238,7 +238,7 @@ macro_rules! impl_eq_hash {
 /// the initial budget. The budget prevents the generated structure from becoming too deep, which
 /// could cause issues in the code that processes these structures.
 ///
-/// https://github.com/rust-fuzz/arbitrary/issues/78
+/// <https://github.com/rust-fuzz/arbitrary/issues/78>
 #[cfg(feature = "arbitrary")]
 trait ArbitraryRec: Sized {
     /// Generate a recursive structure from unstructured data.
