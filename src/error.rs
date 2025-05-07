@@ -35,14 +35,11 @@ impl Position {
     ///
     /// Line or column are zero.
     pub const fn new(line: usize, col: usize) -> Self {
-        if line == 0 {
-            panic!("Line must not be zero");
-        }
+        // assert_ne not available in constfn
+        assert!(line != 0, "line must not be zero",);
         // Safety: Checked above
         let line = unsafe { NonZeroUsize::new_unchecked(line) };
-        if col == 0 {
-            panic!("Column must not be zero");
-        }
+        assert!(col != 0, "column must not be zero",);
         // Safety: Checked above
         let col = unsafe { NonZeroUsize::new_unchecked(col) };
         Self { line, col }
@@ -236,7 +233,7 @@ impl fmt::Display for RichError {
                 writeln!(f, "{:width$} |", " ", width = line_num_width)?;
 
                 let mut lines = file.lines().skip(start_line_index).peekable();
-                let start_line_len = lines.peek().map(|l| l.len()).unwrap_or(0);
+                let start_line_len = lines.peek().map_or(0, |l| l.len());
 
                 for (relative_line_index, line_str) in lines.take(n_spanned_lines).enumerate() {
                     let line_num = start_line_index + relative_line_index + 1;

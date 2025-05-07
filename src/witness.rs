@@ -114,9 +114,8 @@ impl WitnessValues {
     /// witnesses will be pruned and which won't be pruned. This check skips unassigned witnesses.
     pub fn is_consistent(&self, witness_types: &WitnessTypes) -> Result<(), Error> {
         for name in self.0.keys() {
-            let declared_ty = match witness_types.get(name) {
-                Some(ty) => ty,
-                None => continue,
+            let Some(declared_ty) = witness_types.get(name) else {
+                continue;
             };
             let assigned_ty = self.0[name].ty();
             if assigned_ty != declared_ty {
