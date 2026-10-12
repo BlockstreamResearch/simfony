@@ -1,9 +1,5 @@
 pub mod core;
-#[cfg(feature = "external-jets")]
-mod dynlib;
 pub mod elements;
-#[cfg(feature = "external-jets")]
-pub mod external;
 
 use crate::num::NonZeroPow2Usize;
 use crate::num::Pow2Usize;
