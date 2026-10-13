@@ -27,7 +27,14 @@
         inherit targets;
         inherit extensions;
       };
-      defaultRust = mkRust "stable" "latest" "default" ["wasm32-unknown-unknown"] ["rust-src"];
+      # Use the same toolchains as `cargo rbmt` (and so CI): stable and nightly
+      # from the rbmt pins, MSRV from `rust-version`.
+      cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
+      rbmtToolchains = cargoToml.workspace.metadata.rbmt.toolchains;
+      stableVersion = rbmtToolchains.stable;
+      nightlyDate = pkgs.lib.removePrefix "nightly-" rbmtToolchains.nightly;
+      msrvVersion = cargoToml.package.rust-version;
+      defaultRust = mkRust "stable" stableVersion "default" ["wasm32-unknown-unknown"] ["rust-src"];
       elementsd-simplicity = pkgs.callPackage ./bitcoind-tests/elementsd-simplicity.nix {};
       CC_wasm32_unknown_unknown = "${pkgs.llvmPackages_16.clang-unwrapped}/bin/clang-16";
       AR_wasm32_unknown_unknown = "${pkgs.llvmPackages_16.libllvm}/bin/llvm-ar";
@@ -59,14 +66,14 @@
         # Temporary shells until CI has its nix derivations
         ci = pkgs.mkShell {
           buildInputs = [
-            (mkRust "stable" "latest" "default" [] [])
+            (mkRust "stable" stableVersion "default" [] [])
             pkgs.just
             pkgs.cargo-hack
           ];
         };
         msrv = pkgs.mkShell {
           buildInputs = [
-            (mkRust "stable" "1.79.0" "minimal" [] [])
+            (mkRust "stable" msrvVersion "minimal" [] [])
             pkgs.just
           ];
         };
@@ -74,7 +81,7 @@
           stdenv = pkgs.clang16Stdenv;
         } {
           buildInputs = [
-            (mkRust "nightly" "2024-07-01" "minimal" [] ["llvm-tools-preview"])
+            (mkRust "nightly" nightlyDate "minimal" [] ["llvm-tools-preview"])
             pkgs.just
             pkgs.cargo-fuzz
             pkgs.cargo-binutils
@@ -83,7 +90,7 @@
         };
         wasm = pkgs.mkShell {
           buildInputs = [
-            (mkRust "stable" "latest" "default" ["wasm32-unknown-unknown"] [])
+            (mkRust "stable" stableVersion "default" ["wasm32-unknown-unknown"] [])
             pkgs.just
           ];
           inherit CC_wasm32_unknown_unknown;
