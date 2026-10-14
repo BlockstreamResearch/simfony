@@ -2,6 +2,8 @@ mod analyze;
 mod jet_hinter;
 mod recovery;
 mod scope;
+#[cfg(test)]
+mod tests;
 
 pub use self::jet_hinter::{CoreJetHinter, ElementsJetHinter, JetHinter};
 
@@ -720,17 +722,6 @@ impl AsRef<Span> for EnumMatchArm {
 }
 
 #[cfg(test)]
-fn analyze(src: &str) -> Result<(), String> {
-    crate::TemplateAst::new_with_unstable(
-        src,
-        &crate::UnstableFeatures::all(),
-        Box::new(ElementsJetHinter::new()),
-    )
-    .map(|_| ())
-    .map_err(|e| e.to_string())
-}
-
-#[cfg(test)]
 mod multi_error_tests {
     use crate::test_utils::assert_errors;
 
@@ -1186,31 +1177,7 @@ mod multi_error_tests {
 
 #[cfg(test)]
 mod scope_resolution_tests {
-    use crate::driver::tests::setup_graph;
-
-    use super::{analyze, ElementsJetHinter, Program};
-
-    pub(super) fn analyze_multifile(files: Vec<(&str, &str)>) -> Result<(), String> {
-        let (graph, _ids, _dir, mut diagnostics) = setup_graph(files);
-
-        let Some(driver_program) = graph.linearize_and_assemble(&mut diagnostics) else {
-            return Err(diagnostics.render_to_string());
-        };
-
-        match Program::analyze(
-            &driver_program,
-            Box::new(ElementsJetHinter),
-            &mut diagnostics,
-        ) {
-            Some(_) => Ok(()),
-            None => Err(diagnostics
-                .diagnostics()
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join("\n")),
-        }
-    }
+    use crate::ast::tests::{analyze, analyze_multifile};
 
     #[test]
     fn duplicate_function_parameter_is_rejected() {
@@ -1525,7 +1492,7 @@ mod scope_resolution_tests {
 
 #[cfg(test)]
 mod module_tests {
-    use crate::ast::scope_resolution_tests::analyze_multifile;
+    use crate::ast::tests::analyze_multifile;
 
     #[test]
     fn test_public_nested_modules_are_accessible() {
@@ -1721,10 +1688,9 @@ mod module_tests {
 
 #[cfg(test)]
 mod enum_tests {
+    use crate::ast::tests::analyze;
     use crate::ast::ElementsJetHinter;
     use crate::{TemplateAst, UnstableFeatures};
-
-    use super::analyze;
 
     #[test]
     fn enum_declaration_registers_type_alias() {
@@ -1801,7 +1767,7 @@ mod enum_tests {
 
     #[test]
     fn enum_declaration_in_dependency_errors() {
-        use crate::ast::scope_resolution_tests::analyze_multifile;
+        use crate::ast::tests::analyze_multifile;
 
         // FIXME: An enum's declared name is its identity in the ABI, so enums may only be declared in the program's own files.
         let result = analyze_multifile(vec![
@@ -2319,48 +2285,5 @@ mod enum_tests {
             Box::new(ElementsJetHinter::new()),
         );
         assert!(result.is_err(), "enum syntax is gated behind -Z enums");
-    }
-}
-
-#[cfg(feature = "fmt")]
-#[cfg(test)]
-mod literal_tests {
-    use crate::parse::{self, ParseFromStr};
-    use crate::types::UIntType;
-    use crate::value::{UIntValue, Value};
-
-    use super::*;
-
-    #[test]
-    fn analyzed_numeric_literals_accept_digit_separators() {
-        let cases = [
-            ("1_337", UIntType::U16, Value::from(UIntValue::U16(1_337))),
-            (
-                "0b1010_0101",
-                UIntType::U8,
-                Value::from(UIntValue::U8(0b1010_0101)),
-            ),
-            (
-                "0xDE_AD_BE_EF",
-                UIntType::U32,
-                Value::from(UIntValue::U32(0xdead_beef)),
-            ),
-        ];
-
-        for (source, integer_type, expected) in cases {
-            let parsed = parse::Expression::parse_from_str(source).expect("literal parses");
-            let analyzed =
-                Expression::analyze_const(&parsed, &integer_type.into()).expect("literal analyzes");
-
-            let ExpressionInner::Single(single) = analyzed.inner() else {
-                panic!("expected a single expression")
-            };
-            let SingleExpressionInner::Constant(value) = single.inner() else {
-                panic!("expected a constant expression")
-            };
-
-            assert_eq!(value, &expected, "unexpected value for {source:?}");
-            assert_eq!(single.span().to_slice(source), Some(source));
-        }
     }
 }
