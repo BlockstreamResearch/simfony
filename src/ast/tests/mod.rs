@@ -1,3 +1,4 @@
+mod enums;
 #[cfg(feature = "fmt")]
 mod literals;
 
