@@ -1,3 +1,4 @@
+mod program;
 mod statement;
 
 use crate::types::ResolvedType;
