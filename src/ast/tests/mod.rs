@@ -2,6 +2,7 @@ mod enums;
 #[cfg(feature = "fmt")]
 mod literals;
 mod modules;
+mod scope_resolution;
 
 use crate::ast::{ElementsJetHinter, Program};
 use crate::driver::tests::setup_graph;
