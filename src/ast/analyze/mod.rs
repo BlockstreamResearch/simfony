@@ -1,3 +1,5 @@
+mod statement;
+
 use crate::types::ResolvedType;
 
 use super::recovery::Failure;
