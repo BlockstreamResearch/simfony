@@ -1,4 +1,5 @@
 mod jet_hinter;
+mod recovery;
 
 pub use self::jet_hinter::{CoreJetHinter, ElementsJetHinter, JetHinter};
 
@@ -11,6 +12,7 @@ use std::sync::Arc;
 use either::Either;
 use miniscript::iter::{Tree, TreeLike};
 
+use crate::ast::recovery::{mentions_never, Failure};
 use crate::compile::{RawHashJets, RawHashJetsError};
 use crate::debug::{CallTracker, DebugSymbols, TrackedCallName};
 use crate::driver::{CRATE_STR, MAIN_STR};
@@ -1391,35 +1393,6 @@ impl Scope {
     /// Track a call expression with its span.
     pub fn track_call<S: AsRef<Span>>(&mut self, span: &S, name: TrackedCallName) {
         self.call_tracker.track_call(*span.as_ref(), name);
-    }
-}
-
-/// Why the analysis of a node failed.
-#[derive(Debug)]
-enum Failure {
-    /// A new error that was not reported yet.
-    New(Diagnostic),
-    /// The error was already reported to the scope.
-    Reported,
-}
-
-impl From<Diagnostic> for Failure {
-    fn from(diagnostic: Diagnostic) -> Self {
-        Self::New(diagnostic)
-    }
-}
-
-/// Check whether an error mentions a type that contains `!`.
-fn mentions_never(error: &Error) -> bool {
-    match error {
-        Error::ExpressionUnexpectedType { ty } | Error::RawHashUnsupportedType { ty } => {
-            ty.contains_never()
-        }
-        Error::ExpressionTypeMismatch { expected, found } => {
-            expected.contains_never() || found.contains_never()
-        }
-        Error::InvalidCast { source, target } => source.contains_never() || target.contains_never(),
-        _ => false,
     }
 }
 
