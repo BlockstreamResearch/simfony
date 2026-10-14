@@ -1008,87 +1008,89 @@ impl Expression {
     }
 }
 
-/// Analyze the construction of an enum variant, e.g. `Action::Refresh(sig, 3)`.
-///
-/// Analysis is type-directed. The expected type must be an enum, and the written enum name must name it.
-/// In program source that means an alias in lexical scope, the same rule
-/// matches follow. In witness and argument files, which are parsed without
-/// a scope ([`Scope::unscoped_enum_names`]), the enum's declared name
-/// itself also matches.
-fn analyze_enum_construction(
-    construction: &parse::EnumConstruction,
-    ty: &ResolvedType,
-    scope: &mut Scope,
-) -> Result<EnumConstruction, Failure> {
-    let span = *construction.span();
-    let Some(info) = ty.as_enum() else {
-        return Err(Error::ExpressionUnexpectedType { ty: ty.clone() }).with_span(span)?;
-    };
+impl AbstractSyntaxTree for EnumConstruction {
+    type From = parse::EnumConstruction;
 
-    // The written name must be the expected enum's.
-    // Enums are declared at the top level, so only a single identifier can name one.
-    // An alias in scope must resolve to the expected type.
-    // Without a scope (witness and argument files) the declared name itself matches.
-    let written = construction.enum_path_string();
-    let names_expected_enum = match construction.enum_path() {
-        [single] => {
-            let alias = AliasName::from_ident(single);
+    /// Analyze the construction of an enum variant, e.g. `Action::Refresh(sig, 3)`.
+    ///
+    /// Analysis is type-directed. The expected type must be an enum, and the written enum name must name it.
+    /// In program source that means an alias in lexical scope, the same rule
+    /// matches follow. In witness and argument files, which are parsed without
+    /// a scope ([`Scope::unscoped_enum_names`]), the enum's declared name
+    /// itself also matches.
+    fn analyze(from: &Self::From, ty: &ResolvedType, scope: &mut Scope) -> Result<Self, Failure> {
+        let span = *from.span();
+        let Some(info) = ty.as_enum() else {
+            return Err(Error::ExpressionUnexpectedType { ty: ty.clone() }).with_span(span)?;
+        };
 
-            match scope.get_alias(&alias) {
-                // The written enum is broken, so its variants and payloads are unknown.
-                Ok(resolved) if resolved.is_never() => {
-                    let _ = scope.analyze_all(construction.args(), |arg, scope| {
-                        Expression::analyze(arg, &resolved, scope)
-                    });
-                    return Err(Failure::Reported);
+        // The written name must be the expected enum's.
+        // Enums are declared at the top level, so only a single identifier can name one.
+        // An alias in scope must resolve to the expected type.
+        // Without a scope (witness and argument files) the declared name itself matches.
+        let written = from.enum_path_string();
+        let names_expected_enum = match from.enum_path() {
+            [single] => {
+                let alias = AliasName::from_ident(single);
+
+                match scope.get_alias(&alias) {
+                    // The written enum is broken, so its variants and payloads are unknown.
+                    Ok(resolved) if resolved.is_never() => {
+                        let _ = scope.analyze_all(from.args(), |arg, scope| {
+                            Expression::analyze(arg, &resolved, scope)
+                        });
+                        return Err(Failure::Reported);
+                    }
+                    Ok(resolved) if resolved.compatible(ty) => true,
+                    Ok(resolved) => Err(Error::ExpressionTypeMismatch {
+                        expected: ty.clone(),
+                        found: resolved,
+                    })
+                    .with_span(span)?,
+                    Err(_) => scope.unscoped_enum_names && written == info.name(),
                 }
-                Ok(resolved) if resolved.compatible(ty) => true,
-                Ok(resolved) => Err(Error::ExpressionTypeMismatch {
-                    expected: ty.clone(),
-                    found: resolved,
-                })
-                .with_span(span)?,
-                Err(_) => scope.unscoped_enum_names && written == info.name(),
             }
+            _ => false,
+        };
+        if !names_expected_enum {
+            Err(Error::Grammar {
+                msg: format!("`{written}` does not name enum `{}`", info.name()),
+            })
+            .with_span(span)?;
         }
-        _ => false,
-    };
-    if !names_expected_enum {
-        Err(Error::Grammar {
-            msg: format!("`{written}` does not name enum `{}`", info.name()),
+
+        let (variant_index, variant) = info
+            .variant(from.variant())
+            .ok_or_else(|| enum_variant_error(from.variant().as_str(), info))
+            .with_span(span)?;
+        if from.args().len() != variant.payload().len() {
+            Err(Error::Grammar {
+                msg: format!(
+                    "variant `{}` of enum `{}` carries {} payload value(s), found {}",
+                    from.variant(),
+                    info.name(),
+                    variant.payload().len(),
+                    from.args().len()
+                ),
+            })
+            .with_span(span)?;
+        }
+
+        let payload = scope
+            .analyze_all(
+                from.args().iter().zip(variant.payload()),
+                |(arg, payload_ty), scope| {
+                    Expression::analyze(arg, payload_ty, scope).map(Arc::new)
+                },
+            )
+            .map(Arc::from)?;
+
+        Ok(EnumConstruction {
+            variant_index,
+            payload,
+            span,
         })
-        .with_span(span)?;
     }
-
-    let (variant_index, variant) = info
-        .variant(construction.variant())
-        .ok_or_else(|| enum_variant_error(construction.variant().as_str(), info))
-        .with_span(span)?;
-    if construction.args().len() != variant.payload().len() {
-        Err(Error::Grammar {
-            msg: format!(
-                "variant `{}` of enum `{}` carries {} payload value(s), found {}",
-                construction.variant(),
-                info.name(),
-                variant.payload().len(),
-                construction.args().len()
-            ),
-        })
-        .with_span(span)?;
-    }
-
-    let payload = scope
-        .analyze_all(
-            construction.args().iter().zip(variant.payload()),
-            |(arg, payload_ty), scope| Expression::analyze(arg, payload_ty, scope).map(Arc::new),
-        )
-        .map(Arc::from)?;
-
-    Ok(EnumConstruction {
-        variant_index,
-        payload,
-        span,
-    })
 }
 
 /// Do `a` and `b` carry the same enum at every corresponding position?
@@ -1375,7 +1377,7 @@ impl AbstractSyntaxTree for SingleExpression {
                 Match::analyze(match_, ty, scope).map(SingleExpressionInner::Match)?
             }
             parse::SingleExpressionInner::EnumConstruction(construction) => {
-                analyze_enum_construction(construction, ty, scope)
+                EnumConstruction::analyze(construction, ty, scope)
                     .map(SingleExpressionInner::EnumConstruction)?
             }
             parse::SingleExpressionInner::EnumMatch(enum_match) => {
