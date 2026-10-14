@@ -65,7 +65,7 @@ impl Default for Scope {
 }
 
 impl Scope {
-    pub fn new(jet_hinter: Box<dyn JetHinter>) -> Self {
+    pub(super) fn new(jet_hinter: Box<dyn JetHinter>) -> Self {
         Self {
             module_path: Vec::new(),
             root: ModuleScope::default(),
@@ -138,12 +138,12 @@ impl Scope {
         }
     }
 
-    pub fn is_outside_function(&self) -> bool {
+    pub(super) fn is_outside_function(&self) -> bool {
         self.variables.is_empty()
     }
 
     /// Enter a new block inside the current function.
-    pub fn enter_block(&mut self) {
+    fn enter_block(&mut self) {
         self.variables.push(HashMap::new());
     }
 
@@ -188,7 +188,7 @@ impl Scope {
     ///
     /// - Already inside the main function.
     /// - Already inside a function body.
-    pub fn enter_main(&mut self) {
+    fn enter_main(&mut self) {
         assert!(!self.is_main, "Already inside main function");
         assert!(self.is_outside_function(), "Already inside a function body");
         self.enter_block();
@@ -199,12 +199,14 @@ impl Scope {
     pub(super) fn in_main<T>(&mut self, analyze: impl FnOnce(&mut Self) -> T) -> T {
         self.enter_main();
         let result = analyze(self);
+
         debug_assert!(self.is_main, "Main scope was exited during analysis");
         debug_assert_eq!(
             self.variables.len(),
             1,
             "Unbalanced nested blocks in main scope"
         );
+
         self.exit_main();
         debug_assert!(!self.is_main, "Main scope was not restored");
         debug_assert!(
@@ -219,7 +221,7 @@ impl Scope {
     /// ## Panics
     ///
     /// - No acive block to exit.
-    pub fn exit_block(&mut self) {
+    fn exit_block(&mut self) {
         self.variables.pop().expect("No active block to exit");
     }
 
@@ -229,7 +231,7 @@ impl Scope {
     ///
     /// - Not inside the main function.
     /// - Unclosed nested blocks remain.
-    pub fn exit_main(&mut self) {
+    fn exit_main(&mut self) {
         assert!(self.is_main, "Current scope is not inside main function");
         self.exit_block();
         self.is_main = false;
@@ -244,7 +246,7 @@ impl Scope {
     /// ## Errors
     ///
     /// * [`Error::ModuleRedefined`] A module with this name is already defined in the current scope.
-    pub fn enter_module(&mut self, name: ModuleName, visibility: Visibility) -> Result<(), Error> {
+    fn enter_module(&mut self, name: ModuleName, visibility: Visibility) -> Result<(), Error> {
         let current = self.current_module_mut();
         if current.submodules.contains_key(&name) {
             return Err(Error::ModuleRedefined { name });
@@ -291,7 +293,7 @@ impl Scope {
     /// ## Panics
     ///
     /// Not inside any module.
-    pub fn exit_module(&mut self) {
+    fn exit_module(&mut self) {
         self.module_path.pop().expect("Not inside any module");
     }
 
@@ -322,7 +324,7 @@ impl Scope {
     /// ## Panics
     ///
     /// - No active block.
-    pub fn insert_variable(&mut self, identifier: Identifier, ty: ResolvedType) {
+    pub(super) fn insert_variable(&mut self, identifier: Identifier, ty: ResolvedType) {
         self.variables
             .last_mut()
             .expect("Stack is empty")
@@ -330,7 +332,7 @@ impl Scope {
     }
 
     /// Get the type of the variable.
-    pub fn get_variable(&self, identifier: &Identifier) -> Option<&ResolvedType> {
+    pub(super) fn get_variable(&self, identifier: &Identifier) -> Option<&ResolvedType> {
         self.variables
             .iter()
             .rev()
@@ -355,7 +357,7 @@ impl Scope {
     /// ## Errors
     ///
     /// * [`Error::UndefinedAlias`]: The alias is not found in the global registry.
-    pub fn resolve(&self, ty: &AliasedType) -> Result<ResolvedType, Error> {
+    pub(super) fn resolve(&self, ty: &AliasedType) -> Result<ResolvedType, Error> {
         ty.resolve(|name| self.get_alias(name))
     }
 
@@ -399,7 +401,7 @@ impl Scope {
     /// ## Errors
     ///
     /// * [`Error::RedefinedAlias`]: The alias name is already defined in the current scope.
-    pub fn insert_alias(&mut self, alias: parse::TypeAlias) -> Result<(), Error> {
+    pub(super) fn insert_alias(&mut self, alias: parse::TypeAlias) -> Result<(), Error> {
         self.check_alias_free(alias.name())?;
 
         let resolved = self.resolve_or_never(alias.ty(), &alias);
@@ -423,7 +425,7 @@ impl Scope {
     /// ## Errors
     ///
     /// * [`Error::RedefinedAlias`]: The name is already defined in the current module.
-    pub fn insert_enum(
+    pub(super) fn insert_enum(
         &mut self,
         name: AliasName,
         visibility: Visibility,
@@ -446,7 +448,7 @@ impl Scope {
     /// ## Errors
     ///
     /// * [`Error::ExpressionTypeMismatch`] A parameter of the same name has already been defined as a different type.
-    pub fn insert_parameter(
+    pub(super) fn insert_parameter(
         &mut self,
         name: TemplateProgramWitness,
         ty: ResolvedType,
@@ -476,7 +478,7 @@ impl Scope {
     ///
     /// * [`Error::WitnessOutsideMain`] The current scope is not inside the main function.
     /// * [`Error::WitnessReused`] A witness with the same name has already been defined.
-    pub fn insert_witness(
+    pub(super) fn insert_witness(
         &mut self,
         name: TemplateProgramWitness,
         ty: ResolvedType,
@@ -495,7 +497,7 @@ impl Scope {
     }
 
     /// Consume the scope and build the analyzed program with the given `main` body.
-    pub(crate) fn try_into_program(
+    pub(super) fn try_into_program(
         mut self,
         main: Result<Expression, Failure>,
         diagnostics: &mut DiagnosticManager,
@@ -520,7 +522,7 @@ impl Scope {
     /// ## Errors
     ///
     /// * [`Error::FunctionRedefined`] The function has already been defined.
-    pub fn insert_function(
+    pub(super) fn insert_function(
         &mut self,
         name: FunctionName,
         visibility: Visibility,
@@ -541,7 +543,7 @@ impl Scope {
     /// ## Errors
     ///
     /// * [`Error::FunctionUndefined`]: The function is not found in the global registry.
-    pub fn get_function(&self, name: &FunctionName) -> Result<CustomFunction, Error> {
+    pub(super) fn get_function(&self, name: &FunctionName) -> Result<CustomFunction, Error> {
         self.current_module()
             .functions
             .get(name)
@@ -550,7 +552,7 @@ impl Scope {
     }
 
     /// Track a call expression with its span.
-    pub fn track_call<S: AsRef<Span>>(&mut self, span: &S, name: TrackedCallName) {
+    pub(super) fn track_call<S: AsRef<Span>>(&mut self, span: &S, name: TrackedCallName) {
         self.call_tracker.track_call(*span.as_ref(), name);
     }
 }

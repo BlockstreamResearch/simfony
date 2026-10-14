@@ -10,7 +10,7 @@ use super::recovery::Failure;
 use super::scope::Scope;
 
 /// Part of the abstract syntax tree that can be generated from a precursor in the parse tree.
-pub(super) trait AbstractSyntaxTree: Sized {
+trait AbstractSyntaxTree: Sized {
     /// Component of the parse tree.
     type From;
 

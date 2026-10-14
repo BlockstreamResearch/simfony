@@ -20,7 +20,7 @@ impl Scope {
     /// * [`Error::ModuleIsPrivate`] Attempted to navigate into a private module from an unauthorized scope.
     /// * [`Error::MainCannotBeAlias`] Attempted to alias an imported item to the reserved `main` identifier.
     /// * May also return errors propagated from item collection and insertion, such as [`Error::PrivateItem`] or [`Error::RedefinedItem`].
-    pub fn resolve_use(&mut self, use_decl: &UseDecl) -> Result<(), Error> {
+    pub(in crate::ast) fn resolve_use(&mut self, use_decl: &UseDecl) -> Result<(), Error> {
         let path = use_decl.path();
         if path.first().map(|id| id.as_str()) != Some(CRATE_STR) {
             return Err(Error::MissingCrateKeyword);
