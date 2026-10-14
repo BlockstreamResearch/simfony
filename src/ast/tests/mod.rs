@@ -2,6 +2,7 @@ mod enums;
 #[cfg(feature = "fmt")]
 mod literals;
 mod modules;
+mod multi_error;
 mod scope_resolution;
 
 use crate::ast::{ElementsJetHinter, Program};
