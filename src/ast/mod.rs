@@ -5,8 +5,6 @@ mod scope;
 #[cfg(test)]
 mod tests;
 
-pub use self::jet_hinter::{CoreJetHinter, ElementsJetHinter, JetHinter};
-
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
@@ -26,6 +24,8 @@ use crate::types::{ResolvedType, TypeConstructible};
 use crate::value::Value;
 use crate::witness::{Parameters, WitnessTypes};
 use crate::TemplateProgramWitness;
+
+pub use self::jet_hinter::{CoreJetHinter, ElementsJetHinter, JetHinter};
 
 /// A program consists of the main function.
 ///
@@ -549,18 +549,6 @@ impl EnumConstruction {
 
 impl_eq_hash!(EnumConstruction; variant_index, payload);
 
-impl AsRef<Span> for EnumConstruction {
-    fn as_ref(&self) -> &Span {
-        &self.span
-    }
-}
-
-impl AsRef<Span> for EnumMatch {
-    fn as_ref(&self) -> &Span {
-        &self.span
-    }
-}
-
 /// Arm of a [`Match`] expression.
 #[derive(Clone, Debug)]
 pub struct MatchArm {
@@ -664,6 +652,18 @@ impl TreeLike for ExprTree<'_> {
                     .collect(),
             ),
         }
+    }
+}
+
+impl AsRef<Span> for EnumConstruction {
+    fn as_ref(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl AsRef<Span> for EnumMatch {
+    fn as_ref(&self) -> &Span {
+        &self.span
     }
 }
 
