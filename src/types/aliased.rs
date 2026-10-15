@@ -369,7 +369,7 @@ impl BuiltinAlias {
         use BuiltinAlias as B;
         use UIntType::*;
 
-        match self {
+        let resolved = match self {
             B::Ctx8 => ResolvedType::tuple([
                 ResolvedType::list(U8.into(), NonZeroPow2Usize::new(64).unwrap()),
                 ResolvedType::tuple([U64.into(), U256.into()]),
@@ -393,7 +393,9 @@ impl BuiltinAlias {
             B::Amount1 | B::TokenAmount1 => {
                 ResolvedType::either(ResolvedType::tuple([U1.into(), U256.into()]), U64.into())
             }
-        }
+        };
+
+        resolved.with_builtin_alias(self)
     }
 }
 
