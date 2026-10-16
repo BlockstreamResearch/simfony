@@ -61,7 +61,7 @@ mod lossless_test {
 }
 
     test_lex_coverage! {
-        array_fold_2n_lossless: "array_fold_2n.simf",
+        array_fold_2n_lossless: "../fixtures/array_fold_2n.simf",
         array_fold_lossless: "array_fold.simf",
         cat_lossless: "cat.simf",
         ctv_lossless: "ctv.simf",
