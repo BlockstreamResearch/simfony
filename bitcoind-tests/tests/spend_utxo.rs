@@ -4,7 +4,9 @@ use elements::secp256k1_zkp as secp256k1;
 use secp256k1::hashes::{sha256, Hash, HashEngine};
 use simplicityhl::types::TypeConstructible;
 use simplicityhl::value::ValueConstructible;
-use simplicityhl::{elements, ResolvedType, TemplateProgramWitness, Value, WitnessNameToValueMap};
+use simplicityhl::{
+    elements, ResolvedType, TemplateProgramWitness, UnstableFeatures, Value, WitnessNameToValueMap,
+};
 
 mod common;
 use common::daemon::{self, Call};
@@ -37,14 +39,70 @@ fn spend_utxo() {
             .name("Pay to multisig")
             .program_path("../examples/p2ms.simf")
             .witness(p2ms),
+        // Pruned spends: the node rejects programs with unexecuted branches or unread
+        // witness data, so these check what pruning produces against the real node.
+        TestCase::new(&daemon, genesis_hash)
+            .name("OP_CAT (pruned)")
+            .program_path("../examples/cat.simf")
+            .pruned(),
+        TestCase::new(&daemon, genesis_hash)
+            .name("HODL vault (pruned)")
+            .program_path("../examples/hodl_vault.simf")
+            .witness(hodl_vault)
+            .lock_time(elements::LockTime::from_consensus(1000))
+            .sequence(elements::Sequence::ENABLE_LOCKTIME_NO_RBF)
+            .pruned(),
+        TestCase::new(&daemon, genesis_hash)
+            .name("Pay to public key (pruned)")
+            .template_path("../examples/p2pk.simf")
+            .arguments(p2pk_args())
+            .witness(p2pk)
+            .pruned(),
+        TestCase::new(&daemon, genesis_hash)
+            .name("Pay to public key hash (pruned)")
+            .program_path("../examples/p2pkh.simf")
+            .witness(p2pkh)
+            .pruned(),
+        TestCase::new(&daemon, genesis_hash)
+            .name("Pay to multisig (pruned)")
+            .program_path("../examples/p2ms.simf")
+            .witness(p2ms)
+            .pruned(),
+        TestCase::new(&daemon, genesis_hash)
+            .name("Kitchen sink (pruned)")
+            .template_path_with_unstable("../examples/kitchen_sink.simf", &UnstableFeatures::all())
+            .arguments_file("../examples/kitchen_sink.args")
+            .witness_file("../examples/kitchen_sink.wit")
+            .pruned(),
+        TestCase::new(&daemon, genesis_hash)
+            .name("Witness read only by a hidden branch (pruned)")
+            .program_path("../fixtures/pruning_hidden_witness.simf")
+            .witness_file("../fixtures/pruning_hidden_witness.none.wit")
+            .pruned(),
+        TestCase::new(&daemon, genesis_hash)
+            .name("Witness read by the taken branch (pruned)")
+            .program_path("../fixtures/pruning_hidden_witness.simf")
+            .witness_file("../fixtures/pruning_hidden_witness.eq.wit")
+            .pruned(),
+        TestCase::new(&daemon, genesis_hash)
+            .name("Identical case nodes taking different branches (pruned)")
+            .program_path("../fixtures/pruning_twin_cases.simf")
+            .pruned(),
     ];
     tests.iter_mut().for_each(TestCase::create_utxo);
     daemon.generate(1000); // satisfies lock time of all test cases
+    let mut rejected = vec![];
     for test in tests {
         println!("⏳ {}", test.name);
-        test.spend_utxo();
-        println!("✅ {}", test.name);
+        match test.spend_utxo() {
+            Ok(()) => println!("✅ {}", test.name),
+            Err(error) => {
+                println!("❌ {}: {error}", test.name);
+                rejected.push(test.name);
+            }
+        }
     }
+    assert!(rejected.is_empty(), "rejected spends: {rejected:?}");
 }
 
 fn hodl_vault(sighash_all: [u8; 32]) -> simplicityhl::WitnessValues {

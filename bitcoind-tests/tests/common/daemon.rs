@@ -51,7 +51,7 @@ pub trait Call {
     fn get_new_address(&self) -> elements::Address;
     fn send_to_address(&self, addr: &elements::Address, amt: &str) -> elements::Txid;
     fn get_transaction(&self, txid: &elements::Txid) -> elements::Transaction;
-    fn send_raw_transaction(&self, hex: &elements::Transaction) -> elements::Txid;
+    fn send_raw_transaction(&self, hex: &elements::Transaction) -> Result<elements::Txid, String>;
     fn generate(&self, blocks: u32);
 }
 
@@ -89,14 +89,16 @@ impl Call for ElementsD {
         elements::Txid::from_str(&tx_id).unwrap()
     }
 
-    fn send_raw_transaction(&self, tx: &elements::Transaction) -> elements::Txid {
+    // Returns the node's rejection reason instead of panicking, so that one rejected
+    // spend does not stop the remaining test cases.
+    fn send_raw_transaction(&self, tx: &elements::Transaction) -> Result<elements::Txid, String> {
         let tx_id = self
-            .call("sendrawtransaction", &[serialize_hex(tx).into()])
-            .as_str()
-            .unwrap()
-            .to_string();
+            .client()
+            .call::<Value>("sendrawtransaction", &[serialize_hex(tx).into()])
+            .map_err(|error| error.to_string())?;
+        let tx_id = tx_id.as_str().unwrap();
 
-        elements::Txid::from_str(&tx_id).unwrap()
+        Ok(elements::Txid::from_str(tx_id).unwrap())
     }
 
     fn generate(&self, blocks: u32) {
