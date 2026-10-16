@@ -1,0 +1,14 @@
+{
+    "FIRST": {
+        "value": "None",
+        "type": "Option<u256>"
+    },
+    "SECOND": {
+        "value": "Some(0x0000000000000000000000000000000000000000000000000000000000000000)",
+        "type": "Option<u256>"
+    },
+    "CHECK_NONE": {
+        "value": "true",
+        "type": "bool"
+    }
+}

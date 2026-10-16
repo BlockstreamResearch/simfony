@@ -1,0 +1,32 @@
+/*
+ * PRUNING: WITNESS READ ONLY BY A HIDDEN BRANCH
+ *
+ * Pruning fixture, not a meaningful contract. `SECOND` is bound outside the
+ * `match` and read only by the `false` branch. When `CHECK_NONE` is true,
+ * pruning hides that branch and must shrink `SECOND` to the bits the rest of
+ * the program reads; otherwise the node finds unread witness data and
+ * rejects the spend.
+ *
+ * Regression test for https://github.com/BlockstreamResearch/rust-simplicity/pull/379
+ */
+fn assert_eq_256(a: u256, b: u256) {
+    assert!(jet::eq_256(a, b));
+}
+
+fn assert_none_256(value: Option<u256>) {
+    assert!(is_none::<u256>(value));
+}
+
+fn assert_none_or_eq_256(check_none: bool, first: Option<u256>, second: Option<u256>) {
+    match check_none {
+        true => assert_none_256(first),
+        false => assert_eq_256(unwrap(first), unwrap(second)),
+    };
+}
+
+fn main() {
+    let first: Option<u256> = witness::FIRST;
+    let second: Option<u256> = witness::SECOND;
+    let check_none: bool = witness::CHECK_NONE;
+    assert_none_or_eq_256(check_none, first, second);
+}

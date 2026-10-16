@@ -1,0 +1,40 @@
+/*
+ * PRUNING: IDENTICAL CASE NODES THAT TAKE DIFFERENT BRANCHES
+ *
+ * Pruning fixture, not a meaningful contract. `step` is called twice, so the
+ * compiled program holds identical copies of its `match` nodes, and the two
+ * calls take different branches. The encoding merges identical nodes, so
+ * pruning must leave each merged node with only the branches some copy
+ * takes; otherwise the node rejects the spend with an anti-DoS error.
+ *
+ * Regression test for https://github.com/BlockstreamResearch/SimplicityHL/issues/391
+ */
+fn nested(a: bool, b: bool) -> bool {
+    match a {
+        false => match b {
+            false => false,
+            true => true,
+        },
+        true => false,
+    }
+}
+
+fn step(cur: Option<bool>) -> (bool, Option<bool>) {
+    match cur {
+        None => (false, None),
+        Some(x: bool) => match nested(x, true) {
+            false => (false, Some(true)),
+            true => (true, None),
+        },
+    }
+}
+
+fn main() {
+    let (f0, n0): (bool, Option<bool>) = step(Some(false));
+    let (f1, _n1): (bool, Option<bool>) = step(n0);
+    let hit: bool = match f0 {
+        true => f0,
+        false => f1,
+    };
+    assert!(hit);
+}

@@ -569,7 +569,6 @@ pub(crate) mod tests {
     use crate::test_utils::TempWorkspace;
     use base64::display::Base64Display;
     use base64::engine::general_purpose::STANDARD;
-    use simplicity::BitMachine;
     use std::borrow::Cow;
     use std::path::{Path, PathBuf};
 
@@ -855,19 +854,41 @@ pub(crate) mod tests {
             self
         }
 
-        fn run(self) -> Result<(), simplicity::bit_machine::ExecutionError> {
+        /// Prune the program and panic unless an Elements node would accept the result.
+        fn run(self) -> Result<Arc<RedeemNode>, simplicity::bit_machine::ExecutionError> {
             let env = dummy_env::dummy_with(self.lock_time, self.sequence, self.include_fee_output);
             let pruned = self.program.redeem().prune(&env)?;
-            let mut mac = BitMachine::for_program(&pruned)
-                .expect("program should be within reasonable bounds");
-            mac.exec(&pruned, &env).map(|_| ())
+            let violations = crate::test_utils::consensus_violations(&pruned, &env);
+            assert!(
+                violations.is_empty(),
+                "pruned program would be rejected by an Elements node:\n- {}",
+                violations.join("\n- ")
+            );
+            Ok(pruned)
         }
 
         pub fn assert_run_success(self) {
             match self.run() {
-                Ok(()) => {}
+                Ok(_) => {}
                 Err(error) => panic!("Unexpected error: {error}"),
             }
+        }
+
+        /// Like [`Self::assert_run_success`], and compare the pruned encoding with
+        /// `test-data/pruned/<name>.json` (only with the `serde` feature).
+        ///
+        /// Set `SIMPLICITYHL_BLESS=1` to rewrite the fixture instead. The fixture is only
+        /// rewritten once the pruned program passes the consensus checks of [`Self::run`],
+        /// so blessing cannot record an encoding that a node would reject.
+        pub fn assert_run_success_with_pruned_fixture(self, name: &str) {
+            let pruned = match self.run() {
+                Ok(pruned) => pruned,
+                Err(error) => panic!("Unexpected error: {error}"),
+            };
+            #[cfg(feature = "serde")]
+            assert_pruned_fixture(name, &pruned);
+            #[cfg(not(feature = "serde"))]
+            let _ = (name, pruned);
         }
 
         #[cfg(feature = "serde")]
@@ -878,6 +899,44 @@ pub(crate) mod tests {
                 Base64Display::new(&witness_bytes, &STANDARD).to_string(),
             )
         }
+    }
+
+    #[cfg(feature = "serde")]
+    fn assert_pruned_fixture(name: &str, pruned: &RedeemNode) {
+        use base64::Engine;
+
+        #[derive(::serde::Serialize, ::serde::Deserialize, PartialEq, Eq)]
+        struct Encoding {
+            program: String,
+            witness: String,
+        }
+
+        let (program_bytes, witness_bytes) = pruned.to_vec_with_witness();
+        let actual = Encoding {
+            program: STANDARD.encode(&program_bytes),
+            witness: STANDARD.encode(&witness_bytes),
+        };
+
+        let path = format!("./test-data/pruned/{name}.json");
+        if std::env::var_os("SIMPLICITYHL_BLESS").is_some() {
+            let json = serde_json::to_string_pretty(&actual).unwrap();
+            std::fs::create_dir_all("./test-data/pruned").unwrap();
+            std::fs::write(&path, json + "\n").unwrap();
+            return;
+        }
+        let expected = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("{path}: {error}; bless with SIMPLICITYHL_BLESS=1"));
+        let expected = serde_json::from_str::<Encoding>(&expected).unwrap();
+        let len = |b64: &str| STANDARD.decode(b64).unwrap().len();
+        assert!(
+            expected == actual,
+            "pruned encoding differs from {path}: program {} -> {} bytes, witness {} -> {} bytes; \
+             if this is intended, bless with SIMPLICITYHL_BLESS=1",
+            len(&expected.program),
+            program_bytes.len(),
+            len(&expected.witness),
+            witness_bytes.len(),
+        );
     }
 
     /// THE DEFAULT HELPER
@@ -1103,42 +1162,42 @@ pub(crate) mod tests {
     fn cat() {
         TestCase::program_file("./examples/cat.simf")
             .with_witness_values(WitnessValues::default())
-            .assert_run_success();
+            .assert_run_success_with_pruned_fixture("cat");
     }
 
     #[test]
     fn modules() {
         TestCase::program_file_with_unstable("./examples/modules.simf", UnstableFeatures::all())
             .with_witness_values(WitnessValues::default())
-            .assert_run_success();
+            .assert_run_success_with_pruned_fixture("modules");
     }
 
     #[test]
     fn ctv() {
         TestCase::program_file("./examples/ctv.simf")
             .with_witness_values(WitnessValues::default())
-            .assert_run_success();
+            .assert_run_success_with_pruned_fixture("ctv");
     }
 
     #[test]
     fn raw_hash() {
         TestCase::program_file_with_unstable("./examples/raw_hash.simf", UnstableFeatures::all())
             .with_witness_values(WitnessValues::default())
-            .assert_run_success();
+            .assert_run_success_with_pruned_fixture("raw_hash");
     }
 
     #[test]
     fn regression_153() {
         TestCase::program_file("./examples/array_fold_2n.simf")
             .with_witness_values(WitnessValues::default())
-            .assert_run_success();
+            .assert_run_success_with_pruned_fixture("array_fold_2n");
     }
 
     #[test]
     fn pattern_matching() {
         TestCase::program_file("./examples/pattern_matching.simf")
             .with_witness_values(WitnessValues::default())
-            .assert_run_success();
+            .assert_run_success_with_pruned_fixture("pattern_matching");
     }
 
     #[test]
@@ -1149,7 +1208,7 @@ pub(crate) mod tests {
         t.sequence = elements::Sequence::ENABLE_LOCKTIME_NO_RBF;
         t.lock_time = elements::LockTime::from_time(1734967235 + 600).unwrap();
         t.include_fee_output = true;
-        t.assert_run_success();
+        t.assert_run_success_with_pruned_fixture("non_interactive_fee_bump");
     }
 
     #[test]
@@ -1159,14 +1218,14 @@ pub(crate) mod tests {
             .with_sequence(1000)
             .print_sighash_all()
             .with_witness_file("./examples/escrow_with_delay.timeout.wit")
-            .assert_run_success();
+            .assert_run_success_with_pruned_fixture("escrow_with_delay.timeout");
     }
 
     #[test]
     fn hash_loop() {
         TestCase::program_file("./examples/hash_loop.simf")
             .with_witness_values(WitnessValues::default())
-            .assert_run_success();
+            .assert_run_success_with_pruned_fixture("hash_loop");
     }
 
     #[test]
@@ -1176,7 +1235,7 @@ pub(crate) mod tests {
             .with_lock_time(1000)
             .print_sighash_all()
             .with_witness_file("./examples/hodl_vault.wit")
-            .assert_run_success();
+            .assert_run_success_with_pruned_fixture("hodl_vault");
     }
 
     #[test]
@@ -1185,7 +1244,7 @@ pub(crate) mod tests {
         TestCase::program_file("./examples/htlc.simf")
             .print_sighash_all()
             .with_witness_file("./examples/htlc.complete.wit")
-            .assert_run_success();
+            .assert_run_success_with_pruned_fixture("htlc.complete");
     }
 
     #[test]
@@ -1197,7 +1256,7 @@ pub(crate) mod tests {
         )
         .with_argument_file("./examples/kitchen_sink.args")
         .with_witness_file("./examples/kitchen_sink.wit")
-        .assert_run_success();
+        .assert_run_success_with_pruned_fixture("kitchen_sink");
     }
 
     #[test]
@@ -1207,7 +1266,7 @@ pub(crate) mod tests {
             .with_sequence(25920)
             .print_sighash_all()
             .with_witness_file("./examples/last_will.inherit.wit")
-            .assert_run_success();
+            .assert_run_success_with_pruned_fixture("last_will.inherit");
     }
 
     #[test]
@@ -1321,11 +1380,34 @@ pub(crate) mod tests {
 
     #[test]
     #[cfg(feature = "serde")]
+    fn pruning_hidden_witness_none() {
+        TestCase::program_file("./fixtures/pruning_hidden_witness.simf")
+            .with_witness_file("./fixtures/pruning_hidden_witness.none.wit")
+            .assert_run_success_with_pruned_fixture("pruning_hidden_witness.none");
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn pruning_hidden_witness_eq() {
+        TestCase::program_file("./fixtures/pruning_hidden_witness.simf")
+            .with_witness_file("./fixtures/pruning_hidden_witness.eq.wit")
+            .assert_run_success_with_pruned_fixture("pruning_hidden_witness.eq");
+    }
+
+    #[test]
+    fn pruning_twin_cases() {
+        TestCase::program_file("./fixtures/pruning_twin_cases.simf")
+            .with_witness_values(WitnessValues::default())
+            .assert_run_success_with_pruned_fixture("pruning_twin_cases");
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
     fn p2ms() {
         TestCase::program_file("./examples/p2ms.simf")
             .print_sighash_all()
             .with_witness_file("./examples/p2ms.wit")
-            .assert_run_success();
+            .assert_run_success_with_pruned_fixture("p2ms");
     }
 
     #[test]
@@ -1335,7 +1417,7 @@ pub(crate) mod tests {
             .with_argument_file("./examples/p2pk.args")
             .print_sighash_all()
             .with_witness_file("./examples/p2pk.wit")
-            .assert_run_success();
+            .assert_run_success_with_pruned_fixture("p2pk");
     }
 
     #[test]
@@ -1344,7 +1426,7 @@ pub(crate) mod tests {
         TestCase::program_file("./examples/p2pkh.simf")
             .print_sighash_all()
             .with_witness_file("./examples/p2pkh.wit")
-            .assert_run_success();
+            .assert_run_success_with_pruned_fixture("p2pkh");
     }
 
     #[test]
@@ -1354,7 +1436,7 @@ pub(crate) mod tests {
             .with_sequence(1000)
             .print_sighash_all()
             .with_witness_file("./examples/presigned_vault.complete.wit")
-            .assert_run_success();
+            .assert_run_success_with_pruned_fixture("presigned_vault.complete");
     }
 
     #[test]
@@ -1362,7 +1444,7 @@ pub(crate) mod tests {
     fn sighash_all_anyonecanpay() {
         TestCase::program_file("./examples/sighash_all_anyonecanpay.simf")
             .with_witness_file("./examples/sighash_all_anyonecanpay.wit")
-            .assert_run_success();
+            .assert_run_success_with_pruned_fixture("sighash_all_anyonecanpay");
     }
 
     #[test]
@@ -1370,7 +1452,7 @@ pub(crate) mod tests {
     fn sighash_all_anyprevout() {
         TestCase::program_file("./examples/sighash_all_anyprevout.simf")
             .with_witness_file("./examples/sighash_all_anyprevout.wit")
-            .assert_run_success();
+            .assert_run_success_with_pruned_fixture("sighash_all_anyprevout");
     }
 
     #[test]
@@ -1378,7 +1460,7 @@ pub(crate) mod tests {
     fn sighash_all_anyprevoutanyscript() {
         TestCase::program_file("./examples/sighash_all_anyprevoutanyscript.simf")
             .with_witness_file("./examples/sighash_all_anyprevoutanyscript.wit")
-            .assert_run_success();
+            .assert_run_success_with_pruned_fixture("sighash_all_anyprevoutanyscript");
     }
 
     #[test]
@@ -1386,7 +1468,7 @@ pub(crate) mod tests {
     fn sighash_none() {
         TestCase::program_file("./examples/sighash_none.simf")
             .with_witness_file("./examples/sighash_none.wit")
-            .assert_run_success();
+            .assert_run_success_with_pruned_fixture("sighash_none");
     }
 
     #[test]
@@ -1394,7 +1476,7 @@ pub(crate) mod tests {
     fn sighash_single() {
         TestCase::program_file("./examples/sighash_single.simf")
             .with_witness_file("./examples/sighash_single.wit")
-            .assert_run_success();
+            .assert_run_success_with_pruned_fixture("sighash_single");
     }
 
     #[test]
@@ -1403,7 +1485,7 @@ pub(crate) mod tests {
         TestCase::program_file("./examples/transfer_with_timeout.simf")
             .print_sighash_all()
             .with_witness_file("./examples/transfer_with_timeout.transfer.wit")
-            .assert_run_success();
+            .assert_run_success_with_pruned_fixture("transfer_with_timeout.transfer");
     }
 
     #[test]

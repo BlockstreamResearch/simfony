@@ -1,12 +1,15 @@
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::Arc;
 
 use elements::pset::PartiallySignedTransaction as Psbt;
 use elements::{confidential, secp256k1_zkp as secp256k1};
+use elementsd::bitcoincore_rpc::jsonrpc::serde_json;
 use elementsd::ElementsD;
 use secp256k1::XOnlyPublicKey;
 use simplicity::jet::elements::{ElementsEnv, ElementsUtxo};
 use simplicityhl::ast::ElementsJetHinter;
-use simplicityhl::{elements, simplicity};
+use simplicityhl::{elements, simplicity, UnresolvedValues, UnstableFeatures};
 
 use crate::common::daemon::Call;
 
@@ -17,6 +20,8 @@ pub struct TestCase<'a> {
     template: Option<simplicityhl::TemplateAst>,
     compiled: Option<simplicityhl::CompiledProgram>,
     witness: FnWitness,
+    witness_file: Option<PathBuf>,
+    pruned: bool,
     lock_time: elements::LockTime,
     sequence: elements::Sequence,
     daemon: &'a ElementsD,
@@ -37,6 +42,8 @@ impl<'a> TestCase<'a> {
             template: None,
             compiled: None,
             witness: empty_witness,
+            witness_file: None,
+            pruned: false,
             lock_time: elements::LockTime::ZERO,
             sequence: elements::Sequence::ZERO,
             daemon,
@@ -50,10 +57,8 @@ impl<'a> TestCase<'a> {
         self
     }
 
-    pub fn program_path<P: AsRef<std::path::Path>>(mut self, path: P) -> Self {
-        let text =
-            std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(path))
-                .expect("path should be readable");
+    pub fn program_path<P: AsRef<Path>>(mut self, path: P) -> Self {
+        let text = read_file(path);
         let compiled = simplicityhl::CompiledProgram::new(
             text.as_str(),
             simplicityhl::Arguments::default(),
@@ -65,15 +70,36 @@ impl<'a> TestCase<'a> {
         self
     }
 
-    pub fn template_path<P: AsRef<std::path::Path>>(mut self, path: P) -> Self {
-        let text =
-            std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(path))
-                .expect("path should be readable");
-        let template =
-            simplicityhl::TemplateAst::new(text.as_str(), Box::new(ElementsJetHinter::new()))
-                .expect("program should compile");
+    pub fn template_path<P: AsRef<Path>>(self, path: P) -> Self {
+        self.template_path_with_unstable(path, &UnstableFeatures::none())
+    }
+
+    pub fn template_path_with_unstable<P: AsRef<Path>>(
+        mut self,
+        path: P,
+        unstable_features: &UnstableFeatures,
+    ) -> Self {
+        let text = read_file(path);
+        let template = simplicityhl::TemplateAst::new_with_unstable(
+            text.as_str(),
+            unstable_features,
+            Box::new(ElementsJetHinter::new()),
+        )
+        .expect("program should compile");
         self.template = Some(template);
         self
+    }
+
+    pub fn arguments_file<P: AsRef<Path>>(self, path: P) -> Self {
+        let parameters = self
+            .template
+            .as_ref()
+            .expect("template should exist")
+            .parameters();
+        let arguments = read_values(path)
+            .resolve(parameters)
+            .expect("arguments should be consistent with the program");
+        self.arguments(arguments)
     }
 
     pub fn arguments(mut self, arguments: simplicityhl::Arguments) -> Self {
@@ -89,6 +115,18 @@ impl<'a> TestCase<'a> {
 
     pub fn witness(mut self, witness: FnWitness) -> Self {
         self.witness = witness;
+        self
+    }
+
+    /// Read the witness from a file. Use this for witnesses that do not sign the transaction.
+    pub fn witness_file<P: AsRef<Path>>(mut self, path: P) -> Self {
+        self.witness_file = Some(path.as_ref().to_path_buf());
+        self
+    }
+
+    /// Prune the program against the spending transaction before it is broadcast.
+    pub fn pruned(mut self) -> Self {
+        self.pruned = true;
         self
     }
 
@@ -162,7 +200,9 @@ impl<'a> TestCase<'a> {
         self.funding = Some(Funding { address, txid });
     }
 
-    pub fn spend_utxo(&self) {
+    /// Spend the funding output, returning the reason if the program cannot be satisfied
+    /// or the node rejects the spend.
+    pub fn spend_utxo(&self) -> Result<(), String> {
         let compiled = self.compiled.as_ref().expect("test program is missing");
         let (outpoint, utxo) = self.get_vout();
         let mut psbt = Psbt::from_tx(elements::Transaction {
@@ -192,28 +232,32 @@ impl<'a> TestCase<'a> {
         let control_block = info
             .control_block(&script_ver)
             .expect("control block should exist");
-        let sighash_all = {
+        let env = {
             let tx = psbt
                 .extract_tx()
                 .expect("transaction should be extractable");
             let utxos = vec![ElementsUtxo::from(utxo)];
             let index = 0;
             let annex = None;
-            let env = ElementsEnv::new(
-                &tx,
+            ElementsEnv::new(
+                Arc::new(tx),
                 utxos,
                 index,
                 compiled.commit().cmr(),
                 control_block.clone(),
                 annex,
                 self.genesis_hash,
-            );
-            env.c_tx_env().sighash_all()
+            )
         };
-        let witness_values = (self.witness)(sighash_all.to_byte_array());
+        let witness_values = match &self.witness_file {
+            Some(path) => read_values(path)
+                .resolve(compiled.witness_types())
+                .expect("witness should be consistent with the program"),
+            None => (self.witness)(env.c_tx_env().sighash_all().to_byte_array()),
+        };
         let satisfied_program = compiled
-            .satisfy(witness_values)
-            .expect("program should be satisfiable");
+            .satisfy_with_env(witness_values, self.pruned.then_some(&env))
+            .map_err(|error| format!("program is not satisfiable: {error}"))?;
         let (program_bytes, witness_bytes) = satisfied_program.redeem().to_vec_with_witness();
         psbt.inputs_mut()[0].final_script_witness = Some(elements::Witness::from(vec![
             witness_bytes,
@@ -225,10 +269,19 @@ impl<'a> TestCase<'a> {
             .extract_tx()
             .expect("transaction should be extractable");
 
-        let _txid = self.daemon.send_raw_transaction(&tx);
+        self.daemon.send_raw_transaction(&tx).map(|_txid| ())
     }
 }
 
 fn empty_witness(_sighash_all: [u8; 32]) -> simplicityhl::WitnessValues {
     simplicityhl::WitnessValues::default()
+}
+
+fn read_file<P: AsRef<Path>>(path: P) -> String {
+    std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(path))
+        .expect("path should be readable")
+}
+
+fn read_values<P: AsRef<Path>>(path: P) -> UnresolvedValues {
+    serde_json::from_str(&read_file(path)).expect("values file should be valid JSON")
 }

@@ -1,11 +1,104 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use simplicity::bit_machine::{PruneTracker, SetTracker};
+use simplicity::dag::{DagLike, InternalSharing};
+use simplicity::jet::elements::ElementsEnv;
+use simplicity::jet::Elements;
+use simplicity::node::Inner;
+use simplicity::{BitIter, BitMachine, RedeemNode};
+
 use crate::ast::ElementsJetHinter;
-use crate::{TemplateAst, UnstableFeatures};
+use crate::{elements, TemplateAst, UnstableFeatures};
+
+/// Check that a pruned program would pass the checks an Elements node runs on a spend.
+///
+/// The node only sees bytes, so the program is encoded and decoded again first. Decoding
+/// rejects witness data that the program does not read, and programs that are not maximally
+/// shared. The decoded program must keep its CMR, run, and take every case branch that is not
+/// hidden; otherwise the node rejects it with an anti-DoS error. Pruning must also be
+/// idempotent, or the first pass left work undone.
+///
+/// Return a description of each violation.
+pub fn consensus_violations(
+    pruned: &Arc<RedeemNode>,
+    env: &ElementsEnv<Arc<elements::Transaction>>,
+) -> Vec<String> {
+    let mut violations = Vec::new();
+    let (program_bytes, witness_bytes) = pruned.to_vec_with_witness();
+
+    match pruned.prune(env) {
+        Ok(twice)
+            if twice.to_vec_with_witness() != (program_bytes.clone(), witness_bytes.clone()) =>
+        {
+            let (twice_program, twice_witness) = twice.to_vec_with_witness();
+            violations.push(format!(
+                "pruning is not idempotent: pruning again changes the encoding from {} + {} bytes to {} + {} bytes (program + witness)",
+                program_bytes.len(),
+                witness_bytes.len(),
+                twice_program.len(),
+                twice_witness.len(),
+            ));
+        }
+        Ok(_) => {}
+        Err(error) => violations.push(format!("pruning again failed: {error}")),
+    }
+
+    let decoded = match RedeemNode::decode::<_, _, Elements>(
+        BitIter::from(program_bytes.as_slice()),
+        BitIter::from(witness_bytes.as_slice()),
+    ) {
+        Ok(decoded) => decoded,
+        Err(error) => {
+            violations.push(format!("encoding does not decode: {error}"));
+            return violations;
+        }
+    };
+    if decoded.cmr() != pruned.cmr() {
+        violations.push(format!(
+            "decoding changes the CMR from {} to {}",
+            pruned.cmr(),
+            decoded.cmr()
+        ));
+    }
+
+    let mut tracker = SetTracker::default();
+    let executed = BitMachine::for_program(&decoded)
+        .map_err(|error| error.to_string())
+        .and_then(|mut mac| {
+            mac.exec_with_tracker(&decoded, env, &mut tracker)
+                .map_err(|error| error.to_string())
+        });
+    if let Err(error) = executed {
+        violations.push(format!("decoded program fails to run: {error}"));
+        return violations;
+    }
+
+    // Decoding guarantees maximal sharing, so each IHR names exactly one node and the
+    // IHR-keyed tracker says exactly which branches of that node ran.
+    for data in decoded.as_ref().post_order_iter::<InternalSharing>() {
+        let ihr = data.node.ihr();
+        let (left, right) = (tracker.contains_left(ihr), tracker.contains_right(ihr));
+        let unexecuted = match data.node.inner() {
+            Inner::Case(..) => !left || !right,
+            Inner::AssertL(..) => !left,
+            Inner::AssertR(..) => !right,
+            _ => false,
+        };
+        if unexecuted {
+            violations.push(format!(
+                "anti-DoS: case node {} has a branch that is neither executed nor hidden (left executed: {left}, right executed: {right})",
+                data.node.cmr()
+            ));
+        }
+    }
+
+    violations
+}
 
 /// Compile `src` up to and including analysis, with all unstable features enabled.
 /// Return the message of every reported error, in the order they are presented to the user.
