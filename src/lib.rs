@@ -1129,7 +1129,7 @@ pub(crate) mod tests {
 
     #[test]
     fn regression_153() {
-        TestCase::program_file("./examples/array_fold_2n.simf")
+        TestCase::program_file("./fixtures/array_fold_2n.simf")
             .with_witness_values(WitnessValues::default())
             .assert_run_success();
     }
@@ -1192,11 +1192,11 @@ pub(crate) mod tests {
     #[cfg(feature = "serde")]
     fn kitchen_sink() {
         TestCase::template_file_with_unstable(
-            "./examples/kitchen_sink.simf",
+            "./fixtures/kitchen_sink.simf",
             UnstableFeatures::all(),
         )
-        .with_argument_file("./examples/kitchen_sink.args")
-        .with_witness_file("./examples/kitchen_sink.wit")
+        .with_argument_file("./fixtures/kitchen_sink.args")
+        .with_witness_file("./fixtures/kitchen_sink.wit")
         .assert_run_success();
     }
 
@@ -1586,6 +1586,11 @@ fn main() {
         }
 
         fn regression_test_with_features(name: &str, features: crate::UnstableFeatures) {
+            regression_test_in("./examples", name, features);
+        }
+
+        /// Compare the encoding of `<dir>/<name>.simf` with `test-data/<name>.json`.
+        fn regression_test_in(dir: &str, name: &str, features: crate::UnstableFeatures) {
             let program = serde_json::from_str::<Program>(
                 std::fs::read_to_string(format!("./test-data/{}.json", name))
                     .unwrap()
@@ -1593,11 +1598,9 @@ fn main() {
             )
             .unwrap();
 
-            let template = TestCase::template_file_with_unstable(
-                format!("./examples/{}.simf", name),
-                features,
-            );
-            let arguments_path = format!("./examples/{}.args", name);
+            let template =
+                TestCase::template_file_with_unstable(format!("{dir}/{name}.simf"), features);
+            let arguments_path = format!("{dir}/{name}.args");
             let test_case = if std::path::Path::new(&arguments_path).exists() {
                 template.with_argument_file(arguments_path)
             } else {
@@ -1606,7 +1609,7 @@ fn main() {
             match program.witness {
                 Some(wit) => {
                     let (new_program, new_witness) = test_case
-                        .with_witness_file(format!("./examples/{}.wit", name))
+                        .with_witness_file(format!("{dir}/{name}.wit"))
                         .get_encoding_with_witness();
                     assert_eq!(
                         program.program, new_program,
@@ -1630,7 +1633,11 @@ fn main() {
 
         #[test]
         fn array_fold_2n_regression() {
-            regression_test("array_fold_2n");
+            regression_test_in(
+                "./fixtures",
+                "array_fold_2n",
+                crate::UnstableFeatures::none(),
+            );
         }
 
         #[test]
@@ -1670,7 +1677,7 @@ fn main() {
 
         #[test]
         fn kitchen_sink_regression() {
-            regression_test_with_features("kitchen_sink", crate::UnstableFeatures::all());
+            regression_test_in("./fixtures", "kitchen_sink", crate::UnstableFeatures::all());
         }
 
         #[test]

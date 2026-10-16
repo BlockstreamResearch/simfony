@@ -2,6 +2,4 @@
 
 ### Checklist
 
-- [ ] If this PR adds or changes a language feature, it is used in
-      `examples/kitchen_sink.simf`, and `test-data/kitchen_sink.json` is
-      regenerated.
+- [ ] New or changed language features are used in `fixtures/kitchen_sink.simf` (see its header).

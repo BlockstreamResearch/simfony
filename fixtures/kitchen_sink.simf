@@ -8,9 +8,14 @@ simc ">=0.8.0";
  * the `kitchen_sink` regression test.
  *
  * This program is not a meaningful contract. When adding a language feature,
- * extend this file and regenerate `test-data/kitchen_sink.json`.
+ * extend this file and regenerate `test-data/kitchen_sink.json`, adding a `-Z`
+ * flag for any new unstable feature:
  *
- * Requires -Z imports -Z enums -Z raw_hash.
+ *     simc fixtures/kitchen_sink.simf -a fixtures/kitchen_sink.args \
+ *         -w fixtures/kitchen_sink.wit -Z imports -Z enums -Z raw_hash \
+ *         --debug --json | jq '{program, witness}' > test-data/kitchen_sink.json
+ *
+ * `--debug` is needed because the regression test compiles with debug symbols.
  */
 
 // Type aliases, both of custom types and of builtin aliases
