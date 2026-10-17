@@ -135,6 +135,34 @@ mod tests {
     }
 
     #[test]
+    fn builtin_alias_tag_is_not_part_of_the_type() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let hash = |ty: &ResolvedType| {
+            let mut hasher = DefaultHasher::new();
+            ty.hash(&mut hasher);
+            hasher.finish()
+        };
+
+        let pubkey = BuiltinAlias::Pubkey.resolve();
+        let u256 = ResolvedType::u256();
+        assert_eq!(Some(BuiltinAlias::Pubkey), pubkey.builtin_alias());
+        assert_eq!(None, u256.builtin_alias());
+        assert_eq!(pubkey, u256);
+        assert!(pubkey.same_as(&u256));
+        assert_eq!(hash(&pubkey), hash(&u256));
+        assert_eq!("u256", &pubkey.to_string());
+
+        let point = BuiltinAlias::Point.resolve();
+        assert_eq!(Some(BuiltinAlias::Point), point.builtin_alias());
+        assert_eq!(
+            ResolvedType::tuple([ResolvedType::u1(), ResolvedType::u256()]),
+            point
+        );
+    }
+
+    #[test]
     fn never_type() {
         assert!(ResolvedType::never().is_never());
         assert!(!ResolvedType::unit().is_never());

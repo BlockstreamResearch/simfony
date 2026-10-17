@@ -1,4 +1,5 @@
 use core::fmt;
+use core::hash::{Hash, Hasher};
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -7,13 +8,31 @@ use miniscript::iter::{Tree, TreeLike};
 use super::{
     EnumInfo, StructuralType, TypeConstructible, TypeDeconstructible, TypeInner, UIntType,
 };
-use crate::num::NonZeroPow2Usize;
+use crate::{num::NonZeroPow2Usize, types::BuiltinAlias};
 
 /// SimplicityHL type without type aliases.
-#[derive(PartialEq, Eq, Hash, Clone)]
+#[derive(Clone)]
 pub struct ResolvedType {
     inner: TypeInner<Arc<Self>>,
     flags: TypeFlags,
+    builtin: Option<BuiltinAlias>,
+}
+
+/// The builtin alias is metadata for tooling, not part of the type,
+/// so `Pubkey` and `u256` stay interchangeable.
+impl PartialEq for ResolvedType {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner && self.flags == other.flags
+    }
+}
+
+impl Eq for ResolvedType {}
+
+impl Hash for ResolvedType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner.hash(state);
+        self.flags.hash(state);
+    }
 }
 
 /// Facts about a type, computed once from its parts when the type is built.
@@ -61,12 +80,26 @@ impl ResolvedType {
                 }),
         };
 
-        Self { inner, flags }
+        Self {
+            inner,
+            flags,
+            builtin: None,
+        }
     }
 
     /// Access the inner type primitive.
     pub fn as_inner(&self) -> &TypeInner<Arc<Self>> {
         &self.inner
+    }
+
+    /// Access the builtin alias that this type was resolved from, such as `Pubkey` or `Fe`.
+    pub const fn builtin_alias(&self) -> Option<BuiltinAlias> {
+        self.builtin
+    }
+
+    pub(crate) fn with_builtin_alias(mut self, alias: BuiltinAlias) -> Self {
+        self.builtin = Some(alias);
+        self
     }
 }
 
@@ -111,6 +144,7 @@ impl ResolvedType {
                 has_never: true,
                 has_never_in_enum: false,
             },
+            builtin: None,
         }
     }
 

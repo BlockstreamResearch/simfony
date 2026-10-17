@@ -14,9 +14,8 @@ There are three type structures in SimplicityHL:
   explicitly call `unify` on the Simplicity type inference engine to enforce this.
 
 * `AliasedType` is a copy of `ResolvedType` where everything is a (re)name. Essentially they are
-  "AST types". They feature primarily in parse.rs and ast.rs. Before these can be used, we call
+  "AST types". They feature primarily in parse.rs and ast/. Before these can be used, we call
   `aliased_type.resolve()` to get a `ResolvedType`.
 
 SimplicityHL does *not* currently support any form of nominal typing. All structurally equal types
 are considered interchangeable.
-
