@@ -1,9 +1,35 @@
 # Unreleased
 
+# 0.9.0 - 2026-10-21
+
+## Breaking Changes
+
+* Remove the `external-jets` cargo feature, the `jet::external` module and the `external-jet-lib-example` crate. [#440](https://github.com/BlockstreamResearch/SimplicityHL/pull/440)
+* `ResolvedType::enumeration` is no longer a `const fn`. [#430](https://github.com/BlockstreamResearch/SimplicityHL/pull/430)
+* Compiler directives restricted to 0.8, such as `simc "0.8"`, reject this release. Update the declared range after checking compatibility with 0.9.0.
+
 ## Added
 
+* Add `Pattern::identifiers`, which returns the identifiers bound by a pattern. [#448](https://github.com/BlockstreamResearch/SimplicityHL/pull/448)
 * Add the unstable `raw_hash::<T>(tuple)` builtin, which hashes a tuple of unsigned integers (`u8`, `u16`, `u32`, `u64`, `u128`, `u256`) with SHA-256, using one `sha_256_ctx_8_add_N` jet per element in source order. Enable with `-Z raw_hash`.  
 **Use with care:** the digest commits only to the bytes, not to the type, so `(u8, u8)` and `u16` hash identically. See `doc/unstable-features.md`. [#423](https://github.com/BlockstreamResearch/SimplicityHL/pull/423)
+* Add `simc --target <elements|core>` to select the jet set used for compilation. The default is `elements`.
+  The compiler output, including JSON, now reports the target. [#438](https://github.com/BlockstreamResearch/SimplicityHL/pull/438)
+* Add `ResolvedType::builtin_alias()`, which returns the builtin alias a type was resolved from. [#443](https://github.com/BlockstreamResearch/SimplicityHL/pull/443)
+* Add `ResolvedType::contains_never` and `ResolvedType::has_structural_type` for better multi-error handling. [#430](https://github.com/BlockstreamResearch/SimplicityHL/pull/430)
+
+## Changed
+
+* Keep analyzing a block after a statement fails. [#448](https://github.com/BlockstreamResearch/SimplicityHL/pull/448)
+* Keep analyzing the rest of the program after a function body fails. [#424](https://github.com/BlockstreamResearch/SimplicityHL/pull/424)
+* Keep analyzing after an undefined type (replaced with `!`) in a function signature, type alias or enum payload. [#430](https://github.com/BlockstreamResearch/SimplicityHL/pull/430)
+* Compile variable reads in linear time instead of quadratic time in the number of `let` bindings. [#439](https://github.com/BlockstreamResearch/SimplicityHL/pull/439)
+
+## Fixed
+
+* Reject functions that declare the same parameter more than once. [#435](https://github.com/BlockstreamResearch/SimplicityHL/pull/435)
+* Make `NonZeroPow2Usize::new_unchecked` and `Pow2Usize::new_unchecked` check their precondition in release builds, removing undefined behavior in `log2`. `mul2` on both types now panics on overflow instead of wrapping to zero. [#428](https://github.com/BlockstreamResearch/SimplicityHL/pull/428)
+* Correct the documented input order of the `build_tapbranch` jet. [#427](https://github.com/BlockstreamResearch/SimplicityHL/pull/427)
 
 # 0.8.0 - 2026-09-23
 
