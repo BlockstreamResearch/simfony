@@ -65,10 +65,9 @@ impl AbstractSyntaxTree for Expression {
             parse::ExpressionInner::Block(statements, expression) => {
                 let (ast_statements, ast_expression) =
                     scope.in_block(|scope| -> Result<_, Failure> {
-                        let ast_statements = statements
-                            .iter()
-                            .map(|s| Statement::analyze(s, &ResolvedType::unit(), scope))
-                            .collect::<Result<Arc<[Statement]>, Failure>>()?;
+                        let ast_statements = scope.analyze_all(statements.iter(), |s, scope| {
+                            Statement::analyze(s, &ResolvedType::unit(), scope)
+                        });
                         let ast_expression = match expression {
                             Some(expression) => Expression::analyze(expression, ty, scope)
                                 .map(Arc::new)
@@ -81,7 +80,7 @@ impl AbstractSyntaxTree for Expression {
                             .with_span(from)
                             .map_err(Failure::from),
                         }?;
-                        Ok((ast_statements, ast_expression))
+                        Ok((Arc::from(ast_statements?), ast_expression))
                     })?;
 
                 Ok(Self {
