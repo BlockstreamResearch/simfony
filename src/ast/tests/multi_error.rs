@@ -448,3 +448,46 @@ fn builtins_accept_broken_types() {
         ],
     );
 }
+
+#[test]
+fn broken_statement_does_not_stop_the_block() {
+    assert_errors(
+        "fn f() -> u32 {
+                let a: u32 = x;
+                let b: u32 = {
+                    let c: u32 = y;
+                    z
+                };
+                w
+            }
+            fn main() {}",
+        &[
+            "Variable `x` is not defined",
+            "Variable `y` is not defined",
+            "Variable `z` is not defined",
+            "Variable `w` is not defined",
+        ],
+    );
+}
+
+#[test]
+fn broken_let_still_defines_its_variables() {
+    assert_errors(
+        "fn main() {
+                let a: u32 = x;
+                let b: Missing = 1;
+                let (c, d): u32 = 5;
+                let e: (u32, Missing) = (y, 2);
+                let uses: (u32, u32, u32, u32) = (a, b, c, d);
+                let wrong: bool = a;
+            }",
+        &[
+            "Variable `x` is not defined",
+            "Type alias `Missing` is not defined",
+            "Expected expression of type `u32`; found something else",
+            "Type alias `Missing` is not defined",
+            "Variable `y` is not defined",
+            "Expected expression of type `bool`, found type `u32`",
+        ],
+    );
+}
