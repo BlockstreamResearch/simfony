@@ -1,4 +1,3 @@
-use crate::error::WithSpan;
 use crate::parse;
 use crate::types::{ResolvedType, TypeDeconstructible};
 
@@ -32,17 +31,34 @@ impl AbstractSyntaxTree for Assignment {
         //
         // However, the expression evaluated in the assignment does have a type,
         // namely the type specified in the assignment.
-        let ty_expr = scope.resolve(from.ty()).with_span(from)?;
-        let expression = Expression::analyze(from.expression(), &ty_expr, scope)?;
-        let typed_variables = from.pattern().is_of_type(&ty_expr).with_span(from)?;
-        for (identifier, ty) in typed_variables {
-            scope.insert_variable(identifier, ty);
-        }
+        let ty_expr = scope.resolve_or_never(from.ty(), from);
+        let expression = Expression::analyze(from.expression(), &ty_expr, scope);
 
-        Ok(Self {
-            pattern: from.pattern().clone(),
-            expression,
-            span: *from.as_ref(),
-        })
+        // The declared type tells what the pattern binds even if the expression failed,
+        // so later statements see the same variables as on success.
+        let pattern_matches = match from.pattern().is_of_type(&ty_expr) {
+            Ok(typed_variables) => {
+                for (identifier, ty) in typed_variables {
+                    scope.insert_variable(identifier, ty);
+                }
+                true
+            }
+            Err(error) => {
+                scope.report(error.with_span(*from.as_ref()));
+                for identifier in from.pattern().identifiers() {
+                    scope.insert_variable(identifier.clone(), ResolvedType::never());
+                }
+                false
+            }
+        };
+
+        match expression? {
+            expression if pattern_matches => Ok(Self {
+                pattern: from.pattern().clone(),
+                expression,
+                span: *from.as_ref(),
+            }),
+            _ => Err(Failure::Reported),
+        }
     }
 }

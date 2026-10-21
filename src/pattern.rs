@@ -89,6 +89,14 @@ impl Pattern {
         }
         Ok(output)
     }
+
+    /// Get an iterator over all identifiers inside the pattern.
+    pub fn identifiers(&self) -> impl Iterator<Item = &Identifier> {
+        self.pre_order_iter().filter_map(|pattern| match pattern {
+            Pattern::Identifier(identifier) => Some(identifier),
+            _ => None,
+        })
+    }
 }
 
 impl_require_feature!(Pattern {
