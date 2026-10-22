@@ -11,11 +11,6 @@ mod pipeline;
 #[cfg(test)]
 mod tests;
 
-pub use self::grammar::ChumskyParse;
-#[cfg(feature = "fmt")]
-pub use self::lossless::ParsedSource;
-pub use self::pipeline::{ParseFromStr, ParseFromStrWithErrors};
-
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -34,6 +29,11 @@ use crate::str::{
 use crate::types::{AliasedType, TypeConstructible};
 use crate::unstable::{impl_require_feature, FeatureRequirement, RequireFeature, UnstableFeature};
 use crate::TemplateProgramWitness;
+
+pub use self::grammar::ChumskyParse;
+#[cfg(feature = "fmt")]
+pub use self::lossless::ParsedSource;
+pub use self::pipeline::{ParseFromStr, ParseFromStrWithErrors};
 
 /// A program is a sequence of items.
 #[derive(Clone, Debug)]
