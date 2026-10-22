@@ -1,4 +1,5 @@
 mod imports;
+mod locals;
 
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -13,6 +14,7 @@ use crate::types::{AliasedType, EnumInfo, EnumVariantInfo, ResolvedType};
 use crate::witness::{Parameters, WitnessTypes};
 use crate::TemplateProgramWitness;
 
+use self::locals::Locals;
 use super::recovery::{mentions_never, Failure};
 use super::{CustomFunction, ElementsJetHinter, Expression, JetHinter, Program};
 
@@ -40,8 +42,7 @@ pub(super) struct Scope {
     /// Global scope where items from the main file that live at the root level.
     root: ModuleScope,
 
-    /// Block-level variable scopes. Push on block enter, pop on block exit.
-    variables: Vec<HashMap<Identifier, ResolvedType>>,
+    locals: Locals,
     parameters: HashMap<TemplateProgramWitness, ResolvedType>,
     witnesses: HashMap<TemplateProgramWitness, ResolvedType>,
     /// Allow enum constructions to name an enum by its declared name even
@@ -69,7 +70,7 @@ impl Scope {
         Self {
             module_path: Vec::new(),
             root: ModuleScope::default(),
-            variables: Vec::new(),
+            locals: Locals::default(),
             parameters: HashMap::new(),
             witnesses: HashMap::new(),
             unscoped_enum_names: false,
@@ -139,27 +140,25 @@ impl Scope {
     }
 
     pub(super) fn is_outside_function(&self) -> bool {
-        self.variables.is_empty()
-    }
-
-    /// Enter a new block inside the current function.
-    fn enter_block(&mut self) {
-        self.variables.push(HashMap::new());
+        // Entering a function body pushes a new map of variables,
+        // and every nested block inside it pushes another one.
+        // The stack is empty only when we are not inside any function.
+        self.locals.depth() == 0
     }
 
     /// Analyze within a nested block scope and restore the previous scope afterwards
     pub(super) fn in_block<T>(&mut self, analyze: impl FnOnce(&mut Self) -> T) -> T {
-        let outer_depth = self.variables.len();
-        self.enter_block();
+        let outer_depth = self.locals.depth();
+        self.locals.enter_block();
         let result = analyze(self);
         debug_assert_eq!(
-            self.variables.len(),
+            self.locals.depth(),
             outer_depth + 1,
             "Unbalanced nested block scopes"
         );
-        self.exit_block();
+        self.locals.exit_block();
         debug_assert_eq!(
-            self.variables.len(),
+            self.locals.depth(),
             outer_depth,
             "Block scope was not restored"
         );
@@ -191,7 +190,7 @@ impl Scope {
     fn enter_main(&mut self) {
         assert!(!self.is_main, "Already inside main function");
         assert!(self.is_outside_function(), "Already inside a function body");
-        self.enter_block();
+        self.locals.enter_block();
         self.is_main = true;
     }
 
@@ -202,7 +201,7 @@ impl Scope {
 
         debug_assert!(self.is_main, "Main scope was exited during analysis");
         debug_assert_eq!(
-            self.variables.len(),
+            self.locals.depth(),
             1,
             "Unbalanced nested blocks in main scope"
         );
@@ -216,15 +215,6 @@ impl Scope {
         result
     }
 
-    /// Exit the current block inside the curreent function.
-    ///
-    /// ## Panics
-    ///
-    /// - No acive block to exit.
-    fn exit_block(&mut self) {
-        self.variables.pop().expect("No active block to exit");
-    }
-
     /// Pop the scope of the main function from the stack.
     ///
     /// ## Panics
@@ -233,7 +223,7 @@ impl Scope {
     /// - Unclosed nested blocks remain.
     fn exit_main(&mut self) {
         assert!(self.is_main, "Current scope is not inside main function");
-        self.exit_block();
+        self.locals.exit_block();
         self.is_main = false;
         assert!(
             self.is_outside_function(),
@@ -325,18 +315,12 @@ impl Scope {
     ///
     /// - No active block.
     pub(super) fn insert_variable(&mut self, identifier: Identifier, ty: ResolvedType) {
-        self.variables
-            .last_mut()
-            .expect("Stack is empty")
-            .insert(identifier, ty);
+        self.locals.insert(identifier, ty);
     }
 
     /// Get the type of the variable.
     pub(super) fn get_variable(&self, identifier: &Identifier) -> Option<&ResolvedType> {
-        self.variables
-            .iter()
-            .rev()
-            .find_map(|scope| scope.get(identifier))
+        self.locals.get(identifier)
     }
 
     /// Retrieves the resolved type of a type alias in the current module scope.
@@ -565,11 +549,11 @@ mod scope_balance_tests {
     fn scopes_are_restored_after_failed_analysis() {
         let mut scope = Scope::new(Box::new(ElementsJetHinter));
 
-        scope.enter_block();
+        scope.locals.enter_block();
         let result: Result<(), ()> = scope.in_block(|_| Err(()));
         assert!(result.is_err());
-        assert_eq!(scope.variables.len(), 1);
-        scope.exit_block();
+        assert_eq!(scope.locals.depth(), 1);
+        scope.locals.exit_block();
 
         let result: Result<(), ()> = scope.in_main(|_| Err(()));
         assert!(result.is_err());
