@@ -7,15 +7,19 @@ mod display;
 mod grammar;
 #[cfg(feature = "fmt")]
 mod lossless;
+mod pipeline;
 
-pub use crate::parse::grammar::ChumskyParse;
+pub use self::grammar::ChumskyParse;
+#[cfg(feature = "fmt")]
+pub use self::lossless::ParsedSource;
+pub use self::pipeline::{ParseFromStr, ParseFromStrWithErrors};
 
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use chumsky::input::{Input, ValueInput};
+use chumsky::input::ValueInput;
 use chumsky::prelude::{
     any, choice, empty, just, nested_delimiters, none_of, one_of, recursive, skip_then_retry_until,
     via_parser,
@@ -26,11 +30,10 @@ use either::Either;
 use itertools::Itertools;
 use miniscript::iter::{Tree, TreeLike};
 
-use crate::driver::{CRATE_STR, MAIN_MODULE};
-use crate::error::DiagnosticManager;
+use crate::driver::CRATE_STR;
 use crate::error::{Diagnostic, Error, Span};
 use crate::impl_eq_hash;
-use crate::lexer::{Token, Tokens};
+use crate::lexer::Token;
 use crate::num::NonZeroPow2Usize;
 use crate::parse::grammar::{
     delimited_with_recovery, parse_token_with_recovery, ParseError, RESERVED_PATTERN_NAMES,
@@ -41,10 +44,7 @@ use crate::str::{
     SymbolName,
 };
 use crate::types::{AliasedType, BuiltinAlias, TypeConstructible, UIntType};
-use crate::unstable::{
-    impl_require_feature, FeatureRequirement, RequireFeature, UnstableFeature, UnstableFeatures,
-};
-use crate::version::SimcDirective;
+use crate::unstable::{impl_require_feature, FeatureRequirement, RequireFeature, UnstableFeature};
 use crate::TemplateProgramWitness;
 
 /// A program is a sequence of items.
@@ -1138,174 +1138,6 @@ impl TreeLike for ExprTree<'_> {
                     )
                     .collect(),
             ),
-        }
-    }
-}
-
-trait AstNode: ChumskyParse + crate::unstable::RequireFeature + std::fmt::Debug {}
-
-impl<T> AstNode for T where T: ChumskyParse + crate::unstable::RequireFeature + std::fmt::Debug {}
-
-/// Copy of [`FromStr`] that internally uses the `chumsky` parser.
-pub trait ParseFromStr: Sized {
-    /// Parse a value from the string `s`.
-    fn parse_from_str(s: &str) -> Result<Self, Diagnostic>;
-}
-
-/// Trait for parsing with collection of errors.
-pub trait ParseFromStrWithErrors: Sized {
-    /// Parse a value from the string `content` with Errors.
-    ///
-    /// Feature-gated syntax in the parsed AST is checked against
-    /// `unstable_features`; uses of disabled features are pushed to `diagnostics`.
-    fn parse_from_str_with_errors(
-        file_id: usize,
-        content: &str,
-        unstable_features: &UnstableFeatures,
-        diagnostics: &mut DiagnosticManager,
-    ) -> Option<Self>;
-}
-
-mod pipeline {
-    use super::*;
-    /// Handle the `simc` directive before lexing: an incompatible or malformed
-    /// directive is reported as the only diagnostic (the rest is noise), and
-    /// lexing starts right after a valid one, so the lexer and grammar never
-    /// see it.
-    pub fn directive_prescan(
-        content: &str,
-        file_id: usize,
-        diagnostics: &mut DiagnosticManager,
-    ) -> Option<usize> {
-        match SimcDirective::prescan(content, file_id) {
-            Ok(start) => Some(start),
-            Err(box_error) => {
-                let (err, span) = *box_error;
-                diagnostics.push(Diagnostic::new(err, span));
-                None
-            }
-        }
-    }
-
-    pub fn is_lex_ok(
-        mut lex_errs: Vec<Diagnostic>,
-        diagnostics: &mut DiagnosticManager,
-    ) -> Option<bool> {
-        // A stray `simc` makes every other diagnostic noise — its `"<range>";` remnant
-        // does not lex — so the reserved-keyword errors are reported alone.
-        if lex_errs
-            .iter()
-            .any(|e| matches!(e.error(), Error::ReservedSimcKeyword))
-        {
-            lex_errs.retain(|e| matches!(e.error(), Error::ReservedSimcKeyword));
-            diagnostics.extend(lex_errs);
-            None
-        } else {
-            let lex_ok = lex_errs.is_empty();
-            diagnostics.extend(lex_errs);
-            Some(lex_ok)
-        }
-    }
-
-    pub fn parse_ast<T: ChumskyParse>(
-        file_id: usize,
-        src: &str,
-        tokens: Tokens<'_>,
-        diagnostics: &mut DiagnosticManager,
-    ) -> (Option<T>, bool) {
-        let eoi = Span::eof(file_id, src.len());
-        let (ast, parse_errs) = T::parser()
-            .parse(tokens.as_slice().map(eoi, |(t, s)| (t, s)))
-            .into_output_errors();
-
-        let parse_ok = parse_errs.is_empty();
-        diagnostics.extend(parse_errs);
-        (ast, parse_ok)
-    }
-
-    pub fn post_check<T: RequireFeature>(
-        unstable_features: &UnstableFeatures,
-        program: Option<&T>,
-        diagnostics: &mut DiagnosticManager,
-    ) {
-        if let Some(ast) = program {
-            unstable_features.check_program(ast, diagnostics);
-        }
-    }
-}
-
-/// This implementation only returns first encountered error.
-impl<A: ChumskyParse + std::fmt::Debug> ParseFromStr for A {
-    fn parse_from_str(s: &str) -> Result<Self, Diagnostic> {
-        let (tokens, mut lex_errs) = crate::lexer::lex(MAIN_MODULE, s, 0);
-
-        // The `simc` directive is source-file syntax, so fragments have no prescan
-        // and `simc` lexes as a reserved keyword. Its `"<range>";` remnant does not
-        // lex either, so the first reserved-keyword error is reported alone.
-        if let Some(err) = lex_errs
-            .iter()
-            .find(|diag| matches!(diag.error(), Error::ReservedSimcKeyword))
-        {
-            return Err(err.clone());
-        }
-
-        let Some(tokens) = tokens else {
-            return Err(lex_errs
-                .pop()
-                .unwrap_or(Diagnostic::global(Error::CannotParse {
-                    msg: "Empty token stream without an error".to_string(),
-                })));
-        };
-
-        let (ast, parse_errs) = A::parser()
-            .map_with(|parsed, _| parsed)
-            .parse(
-                tokens
-                    .as_slice()
-                    .map(Span::eof(MAIN_MODULE, s.len()), |(t, s)| (t, s)),
-            )
-            .into_output_errors();
-
-        if parse_errs.is_empty() {
-            Ok(ast.ok_or(Diagnostic::global(Error::CannotParse {
-                msg: "Empty AST without an error.".to_string(),
-            }))?)
-        } else {
-            let err = parse_errs.first().unwrap().clone();
-            Err(err)
-        }
-    }
-}
-
-impl<A: AstNode> ParseFromStrWithErrors for A {
-    fn parse_from_str_with_errors(
-        file_id: usize,
-        content: &str,
-        unstable_features: &UnstableFeatures,
-        diagnostics: &mut DiagnosticManager,
-    ) -> Option<Self> {
-        let before = diagnostics.error_count();
-
-        let start = pipeline::directive_prescan(content, file_id, diagnostics)?;
-
-        let (tokens, lex_errs) = crate::lexer::lex(file_id, content, start);
-
-        let lex_ok = pipeline::is_lex_ok(lex_errs, diagnostics)?;
-
-        let tokens = tokens?;
-
-        let (ast, parse_status) = pipeline::parse_ast::<A>(file_id, content, tokens, diagnostics);
-
-        if lex_ok && parse_status {
-            let () = pipeline::post_check(unstable_features, ast.as_ref(), diagnostics);
-        }
-
-        // TODO: We should return parsed result if we found errors, but because analyzing in `ast` module
-        // is not handling poisoned tree right now, we don't return parsed result
-        if diagnostics.error_count() > before {
-            None
-        } else {
-            ast
         }
     }
 }
@@ -2699,8 +2531,11 @@ mod type_alias {
 
 #[cfg(test)]
 mod regular_parsing {
+    use crate::driver::MAIN_MODULE;
+    use crate::error::DiagnosticManager;
+    use crate::{parse, UnstableFeatures};
+
     use super::*;
-    use crate::parse;
 
     impl UseDecl {
         /// Creates a dummy `UseDecl` specifically for testing `DependencyMap` resolution.
@@ -3010,7 +2845,10 @@ fn main() {
 #[cfg(test)]
 #[cfg(feature = "fmt")]
 mod fmt_parsing {
+    use crate::driver::MAIN_MODULE;
+    use crate::error::DiagnosticManager;
     use crate::parse::lossless::ParsedSource;
+    use crate::UnstableFeatures;
 
     use super::*;
 
