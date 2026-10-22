@@ -1,6 +1,6 @@
 mod call;
 mod expression;
-pub(crate) mod matching;
+mod matching;
 mod program;
 mod statement;
 mod types;
@@ -22,11 +22,11 @@ pub trait ChumskyParse: Sized {
         I: ValueInput<'tokens, Token = Token<'src>, Span = Span>;
 }
 
-pub(super) type ParseError<'src> = extra::Err<Diagnostic>;
+type ParseError<'src> = extra::Err<Diagnostic>;
 
 /// Identifiers of the built-in binary match patterns.
 /// An enum may not use them as its name, because e.g. `Left::A` in a match arm would parse as the built-in `Left(..)` pattern.
-pub(crate) const RESERVED_PATTERN_NAMES: [&str; 4] = ["Left", "Right", "Some", "None"];
+pub(super) const RESERVED_PATTERN_NAMES: [&str; 4] = ["Left", "Right", "Some", "None"];
 
 macro_rules! impl_parse_wrapped_string {
     ($wrapper: ident, $label: literal) => {
@@ -55,7 +55,7 @@ impl_parse_wrapped_string!(ModuleName, "module name");
 ///
 /// Should be only used when we know that this token should be there. For example, type of
 /// `List<ty, bound>` would require comma inside angle brackets.
-pub(super) fn parse_token_with_recovery<'tokens, 'src: 'tokens, I>(
+fn parse_token_with_recovery<'tokens, 'src: 'tokens, I>(
     tok: Token<'src>,
 ) -> impl Parser<'tokens, I, Token<'src>, ParseError<'src>> + Clone
 where
@@ -67,7 +67,7 @@ where
 /// Parser with error recovery for expressions, which would always contains given delimiters.
 ///
 /// Can track span of open delimiter (if any).
-pub(super) fn delimited_with_recovery<'tokens, 'src: 'tokens, I, P, T, F>(
+fn delimited_with_recovery<'tokens, 'src: 'tokens, I, P, T, F>(
     parser: P,
     open: Token<'src>,
     close: Token<'src>,

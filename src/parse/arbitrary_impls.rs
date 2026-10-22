@@ -65,7 +65,7 @@ impl<'a> arbitrary::Arbitrary<'a> for EnumDeclaration {
     }
 }
 
-pub(crate) fn generate_arbitrary_items<'a>(
+fn generate_arbitrary_items<'a>(
     u: &mut arbitrary::Unstructured<'a>,
 ) -> arbitrary::Result<Vec<Item>> {
     let mut items_vec = Vec::new();

@@ -12,7 +12,7 @@ use super::super::{Assignment, Expression, Statement};
 use super::{delimited_with_recovery, parse_token_with_recovery, ChumskyParse, ParseError};
 
 impl Statement {
-    pub(crate) fn parser<'tokens, 'src: 'tokens, I, E>(
+    pub(super) fn parser<'tokens, 'src: 'tokens, I, E>(
         expr: E,
     ) -> impl Parser<'tokens, I, Self, ParseError<'src>> + Clone
     where

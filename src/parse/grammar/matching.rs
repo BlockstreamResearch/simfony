@@ -290,7 +290,7 @@ fn assemble_match_arms(
 /// Handles both binary matches (exactly 2 arms: Left/Right, None/Some,
 /// false/true) and enum matches (arms of the form `EnumName::Variant`).
 /// Dispatches to [`Match`] or [`EnumMatch`] based on the patterns found.
-pub(crate) fn match_expr_parser<'tokens, 'src: 'tokens, I, E>(
+pub(super) fn match_expr_parser<'tokens, 'src: 'tokens, I, E>(
     expr: E,
 ) -> impl Parser<'tokens, I, SingleExpressionInner, ParseError<'src>> + Clone
 where
