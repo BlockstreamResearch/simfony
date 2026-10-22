@@ -34,10 +34,10 @@ pub(super) struct Scope {
     /// Allow enum constructions to name an enum by its declared name even
     /// when that name is not an alias in scope. Enabled only for value
     /// parsing (witness and argument files), which runs without a scope.
-    pub(super) unscoped_enum_names: bool,
-    pub(super) jet_hinter: Box<dyn JetHinter>,
+    unscoped_enum_names: bool,
+    jet_hinter: Box<dyn JetHinter>,
     /// Errors reported during analysis that did not stop it.
-    pub(super) diagnostics: Vec<Diagnostic>,
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl Default for Scope {
@@ -118,6 +118,19 @@ impl Scope {
             unscoped_enum_names: true,
             ..Self::default()
         }
+    }
+
+    pub(super) fn unscoped_enum_names(&self) -> bool {
+        self.unscoped_enum_names
+    }
+
+    pub(super) fn jet_hinter(&self) -> &dyn JetHinter {
+        self.jet_hinter.as_ref()
+    }
+
+    /// Consume the scope and return the errors reported during analysis.
+    pub(super) fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
     }
 
     pub(super) fn is_outside_function(&self) -> bool {

@@ -296,7 +296,7 @@ impl CallName {
     // Take parse::Call, so we have access to the span for pretty errors
     fn analyze(from: &parse::Call, scope: &mut Scope) -> Result<Self, Failure> {
         let name = match from.name() {
-            parse::CallName::Jet(name) => match scope.jet_hinter.parse_jet(name.as_inner()) {
+            parse::CallName::Jet(name) => match scope.jet_hinter().parse_jet(name.as_inner()) {
                 Some(jet) if !jet.is_disabled() => Ok(Self::Jet(jet)),
                 _ => Err(Error::JetDoesNotExist { name: name.clone() }).with_span(from),
             },
@@ -329,7 +329,7 @@ impl CallName {
                     })
                     .with_span(from)?;
 
-                match RawHashJets::new(scope.jet_hinter.as_ref(), widths) {
+                match RawHashJets::new(scope.jet_hinter(), widths) {
                     Ok(jets) => Ok(Self::RawHash(tuple_ty, jets)),
                     Err(RawHashJetsError::UnsupportedWidth(_)) => {
                         Err(Error::RawHashUnsupportedType { ty: tuple_ty }).with_span(from)

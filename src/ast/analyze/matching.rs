@@ -50,7 +50,7 @@ impl AbstractSyntaxTree for EnumConstruction {
                         found: resolved,
                     })
                     .with_span(span)?,
-                    Err(_) => scope.unscoped_enum_names && written == info.name(),
+                    Err(_) => scope.unscoped_enum_names() && written == info.name(),
                 }
             }
             _ => false,
