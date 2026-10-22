@@ -4,6 +4,8 @@
 #[cfg(feature = "arbitrary")]
 mod arbitrary_impls;
 mod display;
+#[cfg(feature = "fmt")]
+mod lossless;
 
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
@@ -39,48 +41,11 @@ use crate::unstable::{
 use crate::version::SimcDirective;
 use crate::TemplateProgramWitness;
 
-#[cfg(feature = "fmt")]
-use crate::lexer::{FmtToken, FmtTokens};
-
 /// A program is a sequence of items.
 #[derive(Clone, Debug)]
 pub struct Program {
     items: Arc<[Item]>,
     span: Span,
-}
-
-/// Source-aware parse result used by formatters.
-///
-/// The compiler keeps using [`Program`] directly. Formatters need the same
-/// semantic tree plus the lossless trivia stream that the grammar intentionally
-/// does not consume.
-#[cfg(feature = "fmt")]
-#[derive(Clone, Debug)]
-pub struct ParsedSource<'src> {
-    program: Program,
-    tokens: FmtTokens<'src>,
-    prefix: Span,
-}
-
-#[cfg(feature = "fmt")]
-impl<'src> ParsedSource<'src> {
-    /// Access the semantic program used for formatting.
-    pub fn program(&self) -> &Program {
-        &self.program
-    }
-
-    /// Access the lossless token stream in source order.
-    pub fn tokens(&self) -> &FmtTokens<'src> {
-        &self.tokens
-    }
-
-    /// Access the source prefix skipped by the version-directive prescan.
-    ///
-    /// A formatter should preserve this range verbatim until the directive gains
-    /// its own formatting grammar.
-    pub fn prefix(&self) -> Span {
-        self.prefix
-    }
 }
 
 impl Program {
@@ -95,50 +60,6 @@ impl Program {
     /// Access the items of the program.
     pub fn items(&self) -> &[Item] {
         &self.items
-    }
-
-    /// Parse source for formatting while retaining all comments and whitespace.
-    #[cfg(feature = "fmt")]
-    pub fn parse_with_errors_for_fmt<'src>(
-        file_id: usize,
-        source: &'src str,
-        unstable_features: &UnstableFeatures,
-        diagnostics: &mut DiagnosticManager,
-    ) -> Option<ParsedSource<'src>> {
-        let before = diagnostics.error_count();
-
-        let start = pipeline::directive_prescan(source, file_id, diagnostics)?;
-
-        let (tokens, lex_errors) = crate::lexer::lex_lossless(file_id, source, start);
-        let lex_ok = pipeline::is_lex_ok(lex_errors, diagnostics)?;
-
-        let tokens = tokens?;
-
-        let semantic_tokens = tokens
-            .iter()
-            .filter_map(|(token, span)| match token {
-                FmtToken::Token(token) => Some((token.clone(), *span)),
-                FmtToken::Trivia(_) => None,
-            })
-            .collect::<Vec<_>>();
-
-        let (program, parse_ok) =
-            pipeline::parse_ast(file_id, source, semantic_tokens, diagnostics);
-
-        if parse_ok && lex_ok {
-            pipeline::post_check(unstable_features, program.as_ref(), diagnostics);
-        }
-
-        if diagnostics.error_count() > before {
-            None
-        } else {
-            let program = program?;
-            Some(ParsedSource {
-                program,
-                tokens,
-                prefix: Span::new(file_id, 0..start),
-            })
-        }
     }
 }
 
@@ -3177,6 +3098,8 @@ fn main() {
 #[cfg(test)]
 #[cfg(feature = "fmt")]
 mod fmt_parsing {
+    use crate::parse::lossless::ParsedSource;
+
     use super::*;
 
     /// Parse `input`, appending any formatter diagnostics to `diagnostics`.
@@ -3449,7 +3372,7 @@ fn main() {
         ] {
             let (rejected, _, program) = parse_with_extended_out(input, &UnstableFeatures::all());
             assert!(!rejected, "parsing works");
-            assert_eq!(program.unwrap().program.to_string(), format!("{input}\n"));
+            assert_eq!(program.unwrap().program().to_string(), format!("{input}\n"));
         }
     }
 
@@ -3459,7 +3382,7 @@ fn main() {
 
         let (rejected, _, program) = parse_with_extended_out(input, &UnstableFeatures::none());
         assert!(!rejected, "parsing works");
-        let program = program.unwrap().program;
+        let program = program.unwrap().program().clone();
 
         let Item::Function(function) = &program.items()[0] else {
             panic!("expected a function item");
@@ -3478,7 +3401,7 @@ fn main() {
     fn parse_item(input: &str) -> Item {
         let (rejected, _, program) = parse_with_extended_out(input, &UnstableFeatures::all());
         assert!(!rejected, "parsing works");
-        let program = program.unwrap().program;
+        let program = program.unwrap().program().clone();
 
         program.items().first().expect("expected one item").clone()
     }
@@ -3550,7 +3473,7 @@ fn main() {
         ] {
             assert!(
                     parsed.tokens().iter().any(
-                        |(token, _)| matches!(token, FmtToken::Trivia(token_trivia) if token_trivia.kind() == trivia)
+                        |(token, _)| matches!(token, crate::lexer::FmtToken::Trivia(token_trivia) if token_trivia.kind() == trivia)
                     ),
                     "formatter token stream should retain {trivia:?}"
                 );
