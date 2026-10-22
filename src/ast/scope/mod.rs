@@ -1,20 +1,20 @@
 mod imports;
 mod locals;
+mod program_inputs;
 
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::Arc;
 
-use crate::debug::{CallTracker, TrackedCallName};
+use crate::debug::TrackedCallName;
 use crate::error::{Diagnostic, DiagnosticManager, Error, Span};
 use crate::parse::{self, Visibility};
 use crate::str::{AliasName, FunctionName, Identifier, ModuleName};
 use crate::types::{AliasedType, EnumInfo, EnumVariantInfo, ResolvedType};
-use crate::witness::{Parameters, WitnessTypes};
 use crate::TemplateProgramWitness;
 
 use self::locals::Locals;
+use self::program_inputs::ProgramInputs;
 use super::recovery::{mentions_never, Failure};
 use super::{CustomFunction, ElementsJetHinter, Expression, JetHinter, Program};
 
@@ -43,14 +43,13 @@ pub(super) struct Scope {
     root: ModuleScope,
 
     locals: Locals,
-    parameters: HashMap<TemplateProgramWitness, ResolvedType>,
-    witnesses: HashMap<TemplateProgramWitness, ResolvedType>,
+    inputs: ProgramInputs,
+
+    is_main: bool,
     /// Allow enum constructions to name an enum by its declared name even
     /// when that name is not an alias in scope. Enabled only for value
     /// parsing (witness and argument files), which runs without a scope.
     pub(super) unscoped_enum_names: bool,
-    is_main: bool,
-    call_tracker: CallTracker,
     pub(super) jet_hinter: Box<dyn JetHinter>,
     /// Errors reported during analysis that did not stop it.
     pub(super) diagnostics: Vec<Diagnostic>,
@@ -71,11 +70,9 @@ impl Scope {
             module_path: Vec::new(),
             root: ModuleScope::default(),
             locals: Locals::default(),
-            parameters: HashMap::new(),
-            witnesses: HashMap::new(),
-            unscoped_enum_names: false,
+            inputs: ProgramInputs::default(),
             is_main: false,
-            call_tracker: CallTracker::default(),
+            unscoped_enum_names: false,
             jet_hinter,
             diagnostics: Vec::new(),
         }
@@ -427,33 +424,12 @@ impl Scope {
         Ok(())
     }
 
-    /// Insert a parameter into the global map.
-    ///
-    /// ## Errors
-    ///
-    /// * [`Error::ExpressionTypeMismatch`] A parameter of the same name has already been defined as a different type.
     pub(super) fn insert_parameter(
         &mut self,
         name: TemplateProgramWitness,
         ty: ResolvedType,
     ) -> Result<(), Error> {
-        // A use with a broken type says nothing reliable about the parameter,
-        // so the stored type never contains `!` and never changes once stored.
-        if ty.contains_never() {
-            return Ok(());
-        }
-
-        match self.parameters.entry(name.clone()) {
-            Entry::Occupied(entry) if entry.get().same_as(&ty) => Ok(()),
-            Entry::Occupied(entry) => Err(Error::ExpressionTypeMismatch {
-                expected: entry.get().clone(),
-                found: ty,
-            }),
-            Entry::Vacant(entry) => {
-                entry.insert(ty);
-                Ok(())
-            }
-        }
+        self.inputs.insert_parameter(name, ty)
     }
 
     /// Insert a witness into the global map.
@@ -471,13 +447,7 @@ impl Scope {
             return Err(Error::WitnessOutsideMain);
         }
 
-        match self.witnesses.entry(name.clone()) {
-            Entry::Occupied(_) => Err(Error::WitnessReused { name }),
-            Entry::Vacant(entry) => {
-                entry.insert(ty);
-                Ok(())
-            }
-        }
+        self.inputs.insert_witness(name, ty)
     }
 
     /// Consume the scope and build the analyzed program with the given `main` body.
@@ -488,12 +458,7 @@ impl Scope {
     ) -> Option<Program> {
         let main = main.map_err(|failure| self.report(failure));
         match main {
-            Ok(main) if self.diagnostics.is_empty() => Some(Program {
-                main,
-                parameters: Parameters::from(self.parameters),
-                witness_types: WitnessTypes::from(self.witnesses),
-                call_tracker: Arc::new(self.call_tracker),
-            }),
+            Ok(main) if self.diagnostics.is_empty() => Some(self.inputs.into_program(main)),
             _ => {
                 diagnostics.extend(self.diagnostics);
                 None
@@ -535,9 +500,8 @@ impl Scope {
             .ok_or_else(|| Error::FunctionUndefined { name: name.clone() })
     }
 
-    /// Track a call expression with its span.
     pub(super) fn track_call<S: AsRef<Span>>(&mut self, span: &S, name: TrackedCallName) {
-        self.call_tracker.track_call(*span.as_ref(), name);
+        self.inputs.track_call(span, name);
     }
 }
 
