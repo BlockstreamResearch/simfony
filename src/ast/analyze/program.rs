@@ -32,7 +32,7 @@ impl Program {
         let items = Item::analyze_items(from.items(), scope)?;
         debug_assert!(scope.is_outside_function());
         debug_assert!(
-            scope.module_path.is_empty(),
+            scope.module_path().is_empty(),
             "Unclosed module scopes remain"
         );
 

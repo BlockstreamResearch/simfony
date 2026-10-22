@@ -1,14 +1,195 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::sync::Arc;
 
+use crate::ast::CustomFunction;
 use crate::driver::{CRATE_STR, MAIN_STR};
 use crate::error::Error;
 use crate::parse::{self, UseDecl, Visibility};
-use crate::str::{ModuleName, SymbolName};
+use crate::str::{AliasName, FunctionName, ModuleName, SymbolName};
+use crate::types::{AliasedType, EnumInfo, EnumVariantInfo, ResolvedType};
 
-use super::{ModuleScope, Scope};
+/// A single module namespace. Handles arbitrary nesting via `submodules`.
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+struct ModuleScope {
+    aliases: HashMap<AliasName, (ResolvedType, Visibility)>,
+    functions: HashMap<FunctionName, (CustomFunction, Visibility)>,
+    /// Nested inling `mod` blocks, each becoming a child scope.
+    submodules: HashMap<ModuleName, (ModuleScope, Visibility)>,
+}
 
-impl Scope {
+/// The modules of the program and the current position inside them.
+#[derive(Default)]
+pub(super) struct ModuleTree {
+    /// Current position in the module tree. Push on `mod` enter, pop on exit.
+    /// Empty path means we are at the root (main file) scope.
+    path: Vec<ModuleName>,
+
+    /// Global scope where items from the main file that live at the root level.
+    root: ModuleScope,
+}
+
+impl ModuleTree {
+    pub(super) fn path(&self) -> &[ModuleName] {
+        &self.path
+    }
+
+    /// Enter a named module, pushing it onto the module path.
+    ///
+    /// ## Errors
+    ///
+    /// * [`Error::ModuleRedefined`] A module with this name is already defined in the current scope.
+    pub(super) fn enter(&mut self, name: ModuleName, visibility: Visibility) -> Result<(), Error> {
+        let current = self.current_mut();
+        if current.submodules.contains_key(&name) {
+            return Err(Error::ModuleRedefined { name });
+        }
+
+        current
+            .submodules
+            .insert(name.clone(), (ModuleScope::default(), visibility));
+        self.path.push(name);
+        Ok(())
+    }
+
+    /// Exit the current module, popping it from the module path.
+    ///
+    /// ## Panics
+    ///
+    /// Not inside any module.
+    pub(super) fn exit(&mut self) {
+        self.path.pop().expect("Not inside any module");
+    }
+
+    /// This allows us to perform read-only checks (like redefinitions) and
+    /// call `resolve` without taking a premature mutable borrow of `self`.
+    fn current(&self) -> &ModuleScope {
+        self.path.iter().fold(&self.root, |scope, segment| {
+            &scope.submodules.get(segment).expect("Module not found").0
+        })
+    }
+
+    /// We use iterations and `O(N)` algorithm, because nested block are not so deep.
+    /// It will be strange to see 100 nested blocks, so common `.fold()` will be enough for that.
+    fn current_mut(&mut self) -> &mut ModuleScope {
+        self.path.iter().fold(&mut self.root, |scope, segment| {
+            &mut scope
+                .submodules
+                .get_mut(segment)
+                .expect("Module not found")
+                .0
+        })
+    }
+
+    /// Retrieves the resolved type of a type alias in the current module scope.
+    ///
+    /// ## Errors
+    ///
+    /// * [`Error::UndefinedAlias`]: The alias is not defined in the current scope.
+    pub(super) fn get_alias(&self, name: &AliasName) -> Result<ResolvedType, Error> {
+        self.current()
+            .aliases
+            .get(name)
+            .map(|(ty, _)| ty.clone())
+            .ok_or_else(|| Error::UndefinedAlias { name: name.clone() })
+    }
+
+    /// Resolve a type with aliases to a type without aliases.
+    ///
+    /// ## Errors
+    ///
+    /// * [`Error::UndefinedAlias`]: The alias is not found in the global registry.
+    pub(super) fn resolve(&self, ty: &AliasedType) -> Result<ResolvedType, Error> {
+        ty.resolve(|name| self.get_alias(name))
+    }
+
+    /// Error if `name` is already defined as an alias in the current module.
+    pub(super) fn check_alias_free(&self, name: &AliasName) -> Result<(), Error> {
+        if self.current().aliases.contains_key(name) {
+            return Err(Error::RedefinedAlias { name: name.clone() });
+        }
+
+        Ok(())
+    }
+
+    /// Insert a type alias into the current module scope.
+    ///
+    /// The caller checks [`Self::check_alias_free`] first, before resolving the aliased type.
+    pub(super) fn insert_alias(
+        &mut self,
+        name: AliasName,
+        ty: ResolvedType,
+        visibility: Visibility,
+    ) {
+        self.current_mut().aliases.insert(name, (ty, visibility));
+    }
+
+    /// Insert an enum declaration into the current module.
+    ///
+    /// An enum is a type alias for a nominal enum type, so its name resolves as a type
+    /// and its identity travels wherever the alias is imported.
+    ///
+    /// Enums may only be declared at the top level of the program's own files
+    /// (the parser rejects declarations inside `mod` blocks, the driver rejects them in dependency files),
+    /// so the bare name is unique program-wide and identifies the enum in the ABI.
+    ///
+    /// ## Errors
+    ///
+    /// * [`Error::RedefinedAlias`]: The name is already defined in the current module.
+    pub(super) fn insert_enum(
+        &mut self,
+        name: AliasName,
+        visibility: Visibility,
+        variants: Arc<[EnumVariantInfo]>,
+    ) -> Result<(), Error> {
+        self.check_alias_free(&name)?;
+
+        let info = EnumInfo::new(Arc::clone(name.as_inner()), variants);
+        let resolved = ResolvedType::enumeration(info);
+
+        self.current_mut()
+            .aliases
+            .insert(name, (resolved, visibility));
+
+        Ok(())
+    }
+
+    /// Insert a custom function into the global map.
+    ///
+    /// ## Errors
+    ///
+    /// * [`Error::FunctionRedefined`] The function has already been defined.
+    pub(super) fn insert_function(
+        &mut self,
+        name: FunctionName,
+        visibility: Visibility,
+        function: CustomFunction,
+    ) -> Result<(), Error> {
+        if self.current().functions.contains_key(&name) {
+            return Err(Error::FunctionRedefined { name });
+        }
+
+        self.current_mut()
+            .functions
+            .insert(name, (function, visibility));
+        Ok(())
+    }
+
+    /// Retrieves the definition of a custom function, enforcing strict error prioritization.
+    ///
+    /// ## Errors
+    ///
+    /// * [`Error::FunctionUndefined`]: The function is not found in the global registry.
+    pub(super) fn get_function(&self, name: &FunctionName) -> Result<CustomFunction, Error> {
+        self.current()
+            .functions
+            .get(name)
+            .map(|(func, _)| func.clone())
+            .ok_or_else(|| Error::FunctionUndefined { name: name.clone() })
+    }
+}
+
+impl ModuleTree {
     // TODO: Consider to optimize it (we definitely can do it)
     /// Resolves a `use` declaration by navigating the module tree, checking visibility,
     /// and importing matching items into the current scope.
@@ -20,7 +201,7 @@ impl Scope {
     /// * [`Error::ModuleIsPrivate`] Attempted to navigate into a private module from an unauthorized scope.
     /// * [`Error::MainCannotBeAlias`] Attempted to alias an imported item to the reserved `main` identifier.
     /// * May also return errors propagated from item collection and insertion, such as [`Error::PrivateItem`] or [`Error::RedefinedItem`].
-    pub(in crate::ast) fn resolve_use(&mut self, use_decl: &UseDecl) -> Result<(), Error> {
+    pub(super) fn resolve_use(&mut self, use_decl: &UseDecl) -> Result<(), Error> {
         let path = use_decl.path();
         if path.first().map(|id| id.as_str()) != Some(CRATE_STR) {
             return Err(Error::MissingCrateKeyword);
@@ -39,7 +220,7 @@ impl Scope {
             // TODO: Part, that can be optimized
             // How many segments do the caller's path and the target's path have in common?
             let shared_prefix_len = self
-                .module_path
+                .path
                 .iter()
                 .zip(&path[1..])
                 .take_while(|(curr, nav)| curr.as_str() == nav.as_str())
@@ -84,7 +265,7 @@ impl Scope {
 
         // Phase 2: validate against existing names and stage the complete import.
         // Failed declarations discard these maps without changing the module tree.
-        let current = self.current_module();
+        let current = self.current();
         let mut pending = ModuleScope::default();
         for (alias_res, func_res, mod_res) in collected {
             Self::resolve_processing_use_items_error(&[
@@ -95,7 +276,7 @@ impl Scope {
         }
 
         // Phase 3: commit because every item was resolved successfully
-        let current = self.current_module_mut();
+        let current = self.current_mut();
         current.aliases.extend(pending.aliases);
         current.functions.extend(pending.functions);
         current.submodules.extend(pending.submodules);
@@ -202,12 +383,13 @@ impl Scope {
 
 #[cfg(test)]
 mod transactional_use_tests {
-    use super::*;
     use crate::parse::ParseFromStr;
     use crate::str::AliasName;
     use crate::types::{ResolvedType, TypeConstructible};
 
-    fn resolve(scope: &mut Scope, source: &str) -> Result<(), Error> {
+    use super::*;
+
+    fn resolve(scope: &mut ModuleTree, source: &str) -> Result<(), Error> {
         let program = parse::Program::parse_from_str(source).unwrap();
         let parse::Item::Use(decl) = &program.items()[0] else {
             panic!("expected use declaration");
@@ -215,23 +397,23 @@ mod transactional_use_tests {
         scope.resolve_use(decl)
     }
 
-    fn scope() -> Scope {
-        let mut scope = Scope::default();
+    fn scope() -> ModuleTree {
+        let mut scope = ModuleTree::default();
         scope
-            .enter_module(ModuleName::from_str_unchecked("source"), Visibility::Public)
+            .enter(ModuleName::from_str_unchecked("source"), Visibility::Public)
             .unwrap();
 
-        scope.current_module_mut().aliases.insert(
+        scope.current_mut().aliases.insert(
             AliasName::from_str_unchecked("Good"),
             (ResolvedType::u32(), Visibility::Public),
         );
 
-        scope.current_module_mut().aliases.insert(
+        scope.current_mut().aliases.insert(
             AliasName::from_str_unchecked("Secret"),
             (ResolvedType::u16(), Visibility::Private),
         );
 
-        scope.exit_module();
+        scope.exit();
         scope
     }
 
@@ -271,25 +453,25 @@ mod transactional_use_tests {
                 let mut scope = scope();
                 if nested {
                     scope
-                        .enter_module(
+                        .enter(
                             ModuleName::from_str_unchecked("consumer"),
                             Visibility::Private,
                         )
                         .unwrap();
                 }
 
-                scope.current_module_mut().aliases.insert(
+                scope.current_mut().aliases.insert(
                     AliasName::from_str_unchecked("Taken"),
                     (ResolvedType::u8(), Visibility::Private),
                 );
 
                 let before = scope.root.clone();
-                let path = scope.module_path.clone();
+                let path = scope.path.clone();
                 let error = resolve(&mut scope, source).expect_err(source);
 
                 assert_eq!(error.to_string(), expected.to_string(), "{source}");
                 assert_eq!(scope.root, before, "failed import mutated scope: {source}");
-                assert_eq!(scope.module_path, path, "{source}");
+                assert_eq!(scope.path, path, "{source}");
 
                 resolve(&mut scope, "use crate::source::Good;").unwrap();
             }
