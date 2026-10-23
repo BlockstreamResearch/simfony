@@ -11,6 +11,7 @@ use crate::error::{Diagnostic, DiagnosticManager, Error, Span};
 use crate::parse::{self, UseDecl, Visibility};
 use crate::str::{AliasName, FunctionName, Identifier, ModuleName};
 use crate::types::{AliasedType, EnumVariantInfo, ResolvedType};
+use crate::value::Value;
 use crate::TemplateProgramWitness;
 
 use self::locals::Locals;
@@ -290,6 +291,19 @@ impl Scope {
 
     pub(super) fn get_function(&self, name: &FunctionName) -> Result<CustomFunction, Error> {
         self.modules.get_function(name)
+    }
+
+    pub(super) fn insert_constant(
+        &mut self,
+        name: Identifier,
+        visibility: Visibility,
+        value: Value,
+    ) -> Result<(), Error> {
+        self.modules.insert_constant(name, visibility, value)
+    }
+
+    pub(super) fn get_constant(&self, name: &Identifier) -> Option<&Value> {
+        self.modules.get_constant(name)
     }
 
     /// Insert a variable into the current block.
