@@ -258,8 +258,12 @@ impl Scope {
         self.modules.path()
     }
 
-    pub(super) fn resolve_use(&mut self, use_decl: &UseDecl) -> Result<(), Error> {
-        self.modules.resolve_use(use_decl)
+    pub(super) fn resolve_use(&mut self, use_decl: &UseDecl) {
+        let span = Span::from(use_decl);
+
+        for error in self.modules.resolve_use(use_decl) {
+            self.report(error.with_span(span));
+        }
     }
 
     pub(super) fn get_alias(&self, name: &AliasName) -> Result<ResolvedType, Error> {
