@@ -1,5 +1,5 @@
 use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::ast::CustomFunction;
@@ -16,6 +16,8 @@ struct ModuleScope {
     functions: HashMap<FunctionName, (CustomFunction, Visibility)>,
     /// Nested inling `mod` blocks, each becoming a child scope.
     submodules: HashMap<ModuleName, (ModuleScope, Visibility)>,
+    /// Names of failed imports, whose uses are not reported again.
+    poisoned: HashSet<SymbolName>,
 }
 
 /// The modules of the program and the current position inside them.
@@ -87,11 +89,18 @@ impl ModuleTree {
     ///
     /// * [`Error::UndefinedAlias`]: The alias is not defined in the current scope.
     pub(super) fn get_alias(&self, name: &AliasName) -> Result<ResolvedType, Error> {
-        self.current()
-            .aliases
-            .get(name)
-            .map(|(ty, _)| ty.clone())
-            .ok_or_else(|| Error::UndefinedAlias { name: name.clone() })
+        let current = self.current();
+
+        match current.aliases.get(name) {
+            Some((ty, _)) => Ok(ty.clone()),
+            None if current.poisoned.contains(name.as_str()) => Ok(ResolvedType::never()),
+            None => Err(Error::UndefinedAlias { name: name.clone() }),
+        }
+    }
+
+    /// Check whether `name` comes from a failed import in the current module.
+    pub(super) fn is_poisoned(&self, name: &str) -> bool {
+        self.current().poisoned.contains(name)
     }
 
     /// Resolve a type with aliases to a type without aliases.

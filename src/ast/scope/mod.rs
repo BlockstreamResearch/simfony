@@ -288,8 +288,16 @@ impl Scope {
         self.modules.insert_function(name, visibility, function)
     }
 
-    pub(super) fn get_function(&self, name: &FunctionName) -> Result<CustomFunction, Error> {
-        self.modules.get_function(name)
+    pub(super) fn get_function(
+        &self,
+        name: &FunctionName,
+        span: impl Into<Span>,
+    ) -> Result<CustomFunction, Failure> {
+        match self.modules.get_function(name) {
+            Ok(function) => Ok(function),
+            Err(_) if self.modules.is_poisoned(name.as_str()) => Err(Failure::Reported),
+            Err(error) => Err(error.with_span(span.into()).into()),
+        }
     }
 
     /// Insert a variable into the current block.
