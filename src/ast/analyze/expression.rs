@@ -40,7 +40,7 @@ impl Expression {
             .map_err(|failure| empty_scope.report(failure));
 
         // Value parsing has no diagnostic manager: return the first error analysis found.
-        match empty_scope.diagnostics.into_iter().next() {
+        match empty_scope.into_diagnostics().into_iter().next() {
             Some(error) => Err(error),
             // This cannot panic: a failed analysis always leaves an error,
             // because types with `!` were rejected above.

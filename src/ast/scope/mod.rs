@@ -1,29 +1,22 @@
-mod imports;
+mod locals;
+mod modules;
+mod program_inputs;
 
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::Arc;
 
-use crate::debug::{CallTracker, TrackedCallName};
+use crate::ast::scope::modules::ModuleTree;
+use crate::debug::TrackedCallName;
 use crate::error::{Diagnostic, DiagnosticManager, Error, Span};
-use crate::parse::{self, Visibility};
+use crate::parse::{self, UseDecl, Visibility};
 use crate::str::{AliasName, FunctionName, Identifier, ModuleName};
-use crate::types::{AliasedType, EnumInfo, EnumVariantInfo, ResolvedType};
-use crate::witness::{Parameters, WitnessTypes};
+use crate::types::{AliasedType, EnumVariantInfo, ResolvedType};
 use crate::TemplateProgramWitness;
 
+use self::locals::Locals;
+use self::program_inputs::ProgramInputs;
 use super::recovery::{mentions_never, Failure};
 use super::{CustomFunction, ElementsJetHinter, Expression, JetHinter, Program};
-
-/// A single module namespace. Handles arbitrary nesting via `submodules`.
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
-struct ModuleScope {
-    aliases: HashMap<AliasName, (ResolvedType, Visibility)>,
-    functions: HashMap<FunctionName, (CustomFunction, Visibility)>,
-    /// Nested inling `mod` blocks, each becoming a child scope.
-    submodules: HashMap<ModuleName, (ModuleScope, Visibility)>,
-}
 
 /// Scope for generating the abstract syntax tree.
 ///
@@ -33,26 +26,18 @@ struct ModuleScope {
 /// 3. Assigning types to each witness expression
 /// 4. Resolving calls to custom functions
 pub(super) struct Scope {
-    /// Current position in the module tree. Push on `mod` enter, pop on exit.
-    /// Empty path means we are at the root (main file) scope.
-    pub(super) module_path: Vec<ModuleName>,
+    modules: ModuleTree,
+    locals: Locals,
+    inputs: ProgramInputs,
 
-    /// Global scope where items from the main file that live at the root level.
-    root: ModuleScope,
-
-    /// Block-level variable scopes. Push on block enter, pop on block exit.
-    variables: Vec<HashMap<Identifier, ResolvedType>>,
-    parameters: HashMap<TemplateProgramWitness, ResolvedType>,
-    witnesses: HashMap<TemplateProgramWitness, ResolvedType>,
+    is_main: bool,
     /// Allow enum constructions to name an enum by its declared name even
     /// when that name is not an alias in scope. Enabled only for value
     /// parsing (witness and argument files), which runs without a scope.
-    pub(super) unscoped_enum_names: bool,
-    is_main: bool,
-    call_tracker: CallTracker,
-    pub(super) jet_hinter: Box<dyn JetHinter>,
+    unscoped_enum_names: bool,
+    jet_hinter: Box<dyn JetHinter>,
     /// Errors reported during analysis that did not stop it.
-    pub(super) diagnostics: Vec<Diagnostic>,
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl Default for Scope {
@@ -67,14 +52,11 @@ impl Default for Scope {
 impl Scope {
     pub(super) fn new(jet_hinter: Box<dyn JetHinter>) -> Self {
         Self {
-            module_path: Vec::new(),
-            root: ModuleScope::default(),
-            variables: Vec::new(),
-            parameters: HashMap::new(),
-            witnesses: HashMap::new(),
-            unscoped_enum_names: false,
+            modules: ModuleTree::default(),
+            locals: Locals::default(),
+            inputs: ProgramInputs::default(),
             is_main: false,
-            call_tracker: CallTracker::default(),
+            unscoped_enum_names: false,
             jet_hinter,
             diagnostics: Vec::new(),
         }
@@ -138,28 +120,39 @@ impl Scope {
         }
     }
 
-    pub(super) fn is_outside_function(&self) -> bool {
-        self.variables.is_empty()
+    pub(super) fn unscoped_enum_names(&self) -> bool {
+        self.unscoped_enum_names
     }
 
-    /// Enter a new block inside the current function.
-    fn enter_block(&mut self) {
-        self.variables.push(HashMap::new());
+    pub(super) fn jet_hinter(&self) -> &dyn JetHinter {
+        self.jet_hinter.as_ref()
+    }
+
+    /// Consume the scope and return the errors reported during analysis.
+    pub(super) fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
+
+    pub(super) fn is_outside_function(&self) -> bool {
+        // Entering a function body pushes a new map of variables,
+        // and every nested block inside it pushes another one.
+        // The stack is empty only when we are not inside any function.
+        self.locals.depth() == 0
     }
 
     /// Analyze within a nested block scope and restore the previous scope afterwards
     pub(super) fn in_block<T>(&mut self, analyze: impl FnOnce(&mut Self) -> T) -> T {
-        let outer_depth = self.variables.len();
-        self.enter_block();
+        let outer_depth = self.locals.depth();
+        self.locals.enter_block();
         let result = analyze(self);
         debug_assert_eq!(
-            self.variables.len(),
+            self.locals.depth(),
             outer_depth + 1,
             "Unbalanced nested block scopes"
         );
-        self.exit_block();
+        self.locals.exit_block();
         debug_assert_eq!(
-            self.variables.len(),
+            self.locals.depth(),
             outer_depth,
             "Block scope was not restored"
         );
@@ -191,7 +184,7 @@ impl Scope {
     fn enter_main(&mut self) {
         assert!(!self.is_main, "Already inside main function");
         assert!(self.is_outside_function(), "Already inside a function body");
-        self.enter_block();
+        self.locals.enter_block();
         self.is_main = true;
     }
 
@@ -202,7 +195,7 @@ impl Scope {
 
         debug_assert!(self.is_main, "Main scope was exited during analysis");
         debug_assert_eq!(
-            self.variables.len(),
+            self.locals.depth(),
             1,
             "Unbalanced nested blocks in main scope"
         );
@@ -216,15 +209,6 @@ impl Scope {
         result
     }
 
-    /// Exit the current block inside the curreent function.
-    ///
-    /// ## Panics
-    ///
-    /// - No acive block to exit.
-    fn exit_block(&mut self) {
-        self.variables.pop().expect("No active block to exit");
-    }
-
     /// Pop the scope of the main function from the stack.
     ///
     /// ## Panics
@@ -233,30 +217,12 @@ impl Scope {
     /// - Unclosed nested blocks remain.
     fn exit_main(&mut self) {
         assert!(self.is_main, "Current scope is not inside main function");
-        self.exit_block();
+        self.locals.exit_block();
         self.is_main = false;
         assert!(
             self.is_outside_function(),
             "Current scope is not nested in topmost scope"
         )
-    }
-
-    /// Enter a named module, pushing it onto the module path.
-    ///
-    /// ## Errors
-    ///
-    /// * [`Error::ModuleRedefined`] A module with this name is already defined in the current scope.
-    fn enter_module(&mut self, name: ModuleName, visibility: Visibility) -> Result<(), Error> {
-        let current = self.current_module_mut();
-        if current.submodules.contains_key(&name) {
-            return Err(Error::ModuleRedefined { name });
-        }
-
-        current
-            .submodules
-            .insert(name.clone(), (ModuleScope::default(), visibility));
-        self.module_path.push(name);
-        Ok(())
     }
 
     /// Analyze within a named module and restore the enclosing module afterwards.
@@ -266,57 +232,64 @@ impl Scope {
         visibility: Visibility,
         analyze: impl FnOnce(&mut Self) -> T,
     ) -> Result<T, Error> {
-        let outer_depth = self.module_path.len();
-        self.enter_module(name.clone(), visibility)?;
+        let outer_depth = self.modules.path().len();
+        self.modules.enter(name.clone(), visibility)?;
         let result = analyze(self);
         debug_assert_eq!(
-            self.module_path.len(),
+            self.modules.path().len(),
             outer_depth + 1,
             "Unbalanced nested module scopes"
         );
         debug_assert_eq!(
-            self.module_path.last(),
+            self.modules.path().last(),
             Some(&name),
             "Current module changed during analysis"
         );
-        self.exit_module();
+        self.modules.exit();
         debug_assert_eq!(
-            self.module_path.len(),
+            self.modules.path().len(),
             outer_depth,
             "Module scope was not restored"
         );
         Ok(result)
     }
 
-    /// Exit the current module, popping it from the module path.
-    ///
-    /// ## Panics
-    ///
-    /// Not inside any module.
-    fn exit_module(&mut self) {
-        self.module_path.pop().expect("Not inside any module");
+    pub(super) fn module_path(&self) -> &[ModuleName] {
+        self.modules.path()
     }
 
-    /// This allows us to perform read-only checks (like redefinitions) and
-    /// call `resolve` without taking a premature mutable borrow of `self`.
-    fn current_module(&self) -> &ModuleScope {
-        self.module_path.iter().fold(&self.root, |scope, segment| {
-            &scope.submodules.get(segment).expect("Module not found").0
-        })
+    pub(super) fn resolve_use(&mut self, use_decl: &UseDecl) -> Result<(), Error> {
+        self.modules.resolve_use(use_decl)
     }
 
-    /// We use iterations and `O(N)` algorithm, because nested block are not so deep.
-    /// It will be strange to see 100 nested blocks, so common `.fold()` will be enough for that.
-    fn current_module_mut(&mut self) -> &mut ModuleScope {
-        self.module_path
-            .iter()
-            .fold(&mut self.root, |scope, segment| {
-                &mut scope
-                    .submodules
-                    .get_mut(segment)
-                    .expect("Module not found")
-                    .0
-            })
+    pub(super) fn get_alias(&self, name: &AliasName) -> Result<ResolvedType, Error> {
+        self.modules.get_alias(name)
+    }
+
+    pub(super) fn resolve(&self, ty: &AliasedType) -> Result<ResolvedType, Error> {
+        self.modules.resolve(ty)
+    }
+
+    pub(super) fn insert_enum(
+        &mut self,
+        name: AliasName,
+        visibility: Visibility,
+        variants: Arc<[EnumVariantInfo]>,
+    ) -> Result<(), Error> {
+        self.modules.insert_enum(name, visibility, variants)
+    }
+
+    pub(super) fn insert_function(
+        &mut self,
+        name: FunctionName,
+        visibility: Visibility,
+        function: CustomFunction,
+    ) -> Result<(), Error> {
+        self.modules.insert_function(name, visibility, function)
+    }
+
+    pub(super) fn get_function(&self, name: &FunctionName) -> Result<CustomFunction, Error> {
+        self.modules.get_function(name)
     }
 
     /// Insert a variable into the current block.
@@ -325,40 +298,12 @@ impl Scope {
     ///
     /// - No active block.
     pub(super) fn insert_variable(&mut self, identifier: Identifier, ty: ResolvedType) {
-        self.variables
-            .last_mut()
-            .expect("Stack is empty")
-            .insert(identifier, ty);
+        self.locals.insert(identifier, ty);
     }
 
     /// Get the type of the variable.
     pub(super) fn get_variable(&self, identifier: &Identifier) -> Option<&ResolvedType> {
-        self.variables
-            .iter()
-            .rev()
-            .find_map(|scope| scope.get(identifier))
-    }
-
-    /// Retrieves the resolved type of a type alias in the current module scope.
-    ///
-    /// ## Errors
-    ///
-    /// * [`Error::UndefinedAlias`]: The alias is not defined in the current scope.
-    pub(super) fn get_alias(&self, name: &AliasName) -> Result<ResolvedType, Error> {
-        self.current_module()
-            .aliases
-            .get(name)
-            .map(|(ty, _)| ty.clone())
-            .ok_or_else(|| Error::UndefinedAlias { name: name.clone() })
-    }
-
-    /// Resolve a type with aliases to a type without aliases.
-    ///
-    /// ## Errors
-    ///
-    /// * [`Error::UndefinedAlias`]: The alias is not found in the global registry.
-    pub(super) fn resolve(&self, ty: &AliasedType) -> Result<ResolvedType, Error> {
-        ty.resolve(|name| self.get_alias(name))
+        self.locals.get(identifier)
     }
 
     /// Resolve a type, reporting every undefined alias and replacing it with `!`.
@@ -372,7 +317,7 @@ impl Scope {
         let mut errors = Vec::new();
         let resolved = ty
             .resolve(|name| {
-                Ok::<_, Infallible>(self.get_alias(name).unwrap_or_else(|error| {
+                Ok::<_, Infallible>(self.modules.get_alias(name).unwrap_or_else(|error| {
                     errors.push(error);
                     ResolvedType::never()
                 }))
@@ -387,89 +332,28 @@ impl Scope {
         resolved
     }
 
-    /// Error if `name` is already defined as an alias in the current module.
-    fn check_alias_free(&self, name: &AliasName) -> Result<(), Error> {
-        if self.current_module().aliases.contains_key(name) {
-            return Err(Error::RedefinedAlias { name: name.clone() });
-        }
-
-        Ok(())
-    }
-
     /// Insert a type alias into the current module scope.
     ///
     /// ## Errors
     ///
     /// * [`Error::RedefinedAlias`]: The alias name is already defined in the current scope.
     pub(super) fn insert_alias(&mut self, alias: parse::TypeAlias) -> Result<(), Error> {
-        self.check_alias_free(alias.name())?;
+        self.modules.check_alias_free(alias.name())?;
 
         let resolved = self.resolve_or_never(alias.ty(), &alias);
 
-        self.current_module_mut()
-            .aliases
-            .insert(alias.name().clone(), (resolved, alias.visibility().clone()));
+        self.modules
+            .insert_alias(alias.name().clone(), resolved, alias.visibility().clone());
 
         Ok(())
     }
 
-    /// Insert an enum declaration into the current module.
-    ///
-    /// An enum is a type alias for a nominal enum type, so its name resolves as a type
-    /// and its identity travels wherever the alias is imported.
-    ///
-    /// Enums may only be declared at the top level of the program's own files
-    /// (the parser rejects declarations inside `mod` blocks, the driver rejects them in dependency files),
-    /// so the bare name is unique program-wide and identifies the enum in the ABI.
-    ///
-    /// ## Errors
-    ///
-    /// * [`Error::RedefinedAlias`]: The name is already defined in the current module.
-    pub(super) fn insert_enum(
-        &mut self,
-        name: AliasName,
-        visibility: Visibility,
-        variants: Arc<[EnumVariantInfo]>,
-    ) -> Result<(), Error> {
-        self.check_alias_free(&name)?;
-
-        let info = EnumInfo::new(Arc::clone(name.as_inner()), variants);
-        let resolved = ResolvedType::enumeration(info);
-
-        self.current_module_mut()
-            .aliases
-            .insert(name, (resolved, visibility));
-
-        Ok(())
-    }
-
-    /// Insert a parameter into the global map.
-    ///
-    /// ## Errors
-    ///
-    /// * [`Error::ExpressionTypeMismatch`] A parameter of the same name has already been defined as a different type.
     pub(super) fn insert_parameter(
         &mut self,
         name: TemplateProgramWitness,
         ty: ResolvedType,
     ) -> Result<(), Error> {
-        // A use with a broken type says nothing reliable about the parameter,
-        // so the stored type never contains `!` and never changes once stored.
-        if ty.contains_never() {
-            return Ok(());
-        }
-
-        match self.parameters.entry(name.clone()) {
-            Entry::Occupied(entry) if entry.get().same_as(&ty) => Ok(()),
-            Entry::Occupied(entry) => Err(Error::ExpressionTypeMismatch {
-                expected: entry.get().clone(),
-                found: ty,
-            }),
-            Entry::Vacant(entry) => {
-                entry.insert(ty);
-                Ok(())
-            }
-        }
+        self.inputs.insert_parameter(name, ty)
     }
 
     /// Insert a witness into the global map.
@@ -487,13 +371,7 @@ impl Scope {
             return Err(Error::WitnessOutsideMain);
         }
 
-        match self.witnesses.entry(name.clone()) {
-            Entry::Occupied(_) => Err(Error::WitnessReused { name }),
-            Entry::Vacant(entry) => {
-                entry.insert(ty);
-                Ok(())
-            }
-        }
+        self.inputs.insert_witness(name, ty)
     }
 
     /// Consume the scope and build the analyzed program with the given `main` body.
@@ -504,12 +382,7 @@ impl Scope {
     ) -> Option<Program> {
         let main = main.map_err(|failure| self.report(failure));
         match main {
-            Ok(main) if self.diagnostics.is_empty() => Some(Program {
-                main,
-                parameters: Parameters::from(self.parameters),
-                witness_types: WitnessTypes::from(self.witnesses),
-                call_tracker: Arc::new(self.call_tracker),
-            }),
+            Ok(main) if self.diagnostics.is_empty() => Some(self.inputs.into_program(main)),
             _ => {
                 diagnostics.extend(self.diagnostics);
                 None
@@ -517,43 +390,8 @@ impl Scope {
         }
     }
 
-    /// Insert a custom function into the global map.
-    ///
-    /// ## Errors
-    ///
-    /// * [`Error::FunctionRedefined`] The function has already been defined.
-    pub(super) fn insert_function(
-        &mut self,
-        name: FunctionName,
-        visibility: Visibility,
-        function: CustomFunction,
-    ) -> Result<(), Error> {
-        if self.current_module().functions.contains_key(&name) {
-            return Err(Error::FunctionRedefined { name });
-        }
-
-        self.current_module_mut()
-            .functions
-            .insert(name, (function, visibility));
-        Ok(())
-    }
-
-    /// Retrieves the definition of a custom function, enforcing strict error prioritization.
-    ///
-    /// ## Errors
-    ///
-    /// * [`Error::FunctionUndefined`]: The function is not found in the global registry.
-    pub(super) fn get_function(&self, name: &FunctionName) -> Result<CustomFunction, Error> {
-        self.current_module()
-            .functions
-            .get(name)
-            .map(|(func, _)| func.clone())
-            .ok_or_else(|| Error::FunctionUndefined { name: name.clone() })
-    }
-
-    /// Track a call expression with its span.
     pub(super) fn track_call<S: AsRef<Span>>(&mut self, span: &S, name: TrackedCallName) {
-        self.call_tracker.track_call(*span.as_ref(), name);
+        self.inputs.track_call(span, name);
     }
 }
 
@@ -565,11 +403,11 @@ mod scope_balance_tests {
     fn scopes_are_restored_after_failed_analysis() {
         let mut scope = Scope::new(Box::new(ElementsJetHinter));
 
-        scope.enter_block();
+        scope.locals.enter_block();
         let result: Result<(), ()> = scope.in_block(|_| Err(()));
         assert!(result.is_err());
-        assert_eq!(scope.variables.len(), 1);
-        scope.exit_block();
+        assert_eq!(scope.locals.depth(), 1);
+        scope.locals.exit_block();
 
         let result: Result<(), ()> = scope.in_main(|_| Err(()));
         assert!(result.is_err());
@@ -584,6 +422,6 @@ mod scope_balance_tests {
             )
             .expect("module entry succeeds");
         assert!(result.is_err());
-        assert!(scope.module_path.is_empty());
+        assert!(scope.module_path().is_empty());
     }
 }
