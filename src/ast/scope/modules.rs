@@ -583,6 +583,37 @@ mod use_tests {
     }
 
     #[test]
+    fn uses_of_poisoned_names_are_not_reported() {
+        let mut scope = scope();
+        scope
+            .enter(
+                ModuleName::from_str_unchecked("reexport"),
+                Visibility::Public,
+            )
+            .unwrap();
+        assert_eq!(
+            resolve(&mut scope, "pub use crate::source::Missing;").len(),
+            1
+        );
+        scope.exit();
+
+        for source in [
+            "use crate::reexport::Missing;",
+            "use crate::reexport::Missing::Inner;",
+        ] {
+            let mut scope = ModuleTree {
+                root: scope.root.clone(),
+                path: Vec::new(),
+            };
+            assert_eq!(
+                resolve(&mut scope, source),
+                Vec::<String>::new(),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
     fn successful_import_commits_all_namespaces_and_visibility() {
         let mut scope = scope();
         let source = &mut scope
